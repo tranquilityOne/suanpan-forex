@@ -103,7 +103,8 @@ node --test src/Suanpan.Portal/wwwroot/js/calc        # 前台计算器公式测
 
 ## 协作与工具
 
-- 工单在 Linear（团队 Janehui）。本项目**不使用 Seeker / skr**。
+- 工单在 Linear：工作区 janehui，项目 suanpan-forex，编号前缀 JAN。父任务与 PRD 的 FR / ENG 编号一一对应，对照表见 data-hub PRD §10.5。本项目**不使用 Seeker / skr**。
+- 子任务在对应模块的设计文档评审通过后再拆，一个子任务对应一个 PR；提交说明和 PR 标题带上 JAN 编号。
 - 修改 PRD 时遵循 skr-prd 的规则：文档版本 `X.Y.Z.R`，初稿阶段只动第 4 位；每次修改在 §2 修订记录和 §11 变更影响分析中各记一条。
 - 提交说明格式：`类型: 描述`，类型如 `docs`、`feat`、`fix`、`refactor`、`test`、`chore`。分支策略待定。
 
