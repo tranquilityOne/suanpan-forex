@@ -1,0 +1,10 @@
+<Project>
+
+  <!-- 所有项目共用的编译设置，见 docs/conventions/backend.md §3.1 -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

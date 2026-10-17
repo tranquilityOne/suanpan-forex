@@ -1,0 +1,9 @@
+<Project>
+
+  <!-- 第三方包版本统一写在这里，各项目的 PackageReference 不写 Version。
+       程序项目（Collector、Job、Crm、Portal）不直接引用第三方包，见 docs/conventions/backend.md §2、§3.1 -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+</Project>

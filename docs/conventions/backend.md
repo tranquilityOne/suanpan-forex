@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.1 |
+| 版本 | v1.2 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -21,6 +21,8 @@
 
 ```
 suanpan-forex/
+├─ Suanpan.sln
+├─ global.json、Directory.Build.props、Directory.Packages.props、nuget.config、.editorconfig    工程配置（§3.1）
 ├─ docs/
 │  ├─ product/                     PRD
 │  └─ conventions/                 技术约定（本文所在目录）
@@ -164,6 +166,28 @@ Portal                 ──►  Data（只用对外视图的只读上下文）
 | 测试 | xUnit | |
 
 引入新的第三方包前，先确认许可证（PRD §13.2.4），并登记到 SBOM。
+
+### 3.1 工程配置
+
+| 文件 | 作用 |
+|---|---|
+| `global.json` | 锁定 .NET SDK 版本（10.0.101，允许滚动到更高的特性版本） |
+| `Directory.Build.props` | 所有项目共用的编译设置：`net10.0`、可空引用、隐式 using |
+| `Directory.Packages.props` | 集中管理第三方包版本 |
+| `nuget.config` | 包源只用 nuget.org，不继承本机配置的其他包源 |
+| `.editorconfig` | 代码格式 |
+| `.gitignore` | 忽略编译输出、IDE 文件、`.env`、`.env.*`（`.env.example` 除外）、`appsettings.Local.json`、`appsettings.*.Local.json` |
+
+- **编译设置只写在 `Directory.Build.props`**：各项目的 csproj 只写 SDK 类型、项目引用和包引用。个别项目确需不同设置时，在该项目中单独覆盖，并注释原因。
+- **包版本只写在 `Directory.Packages.props`**：新增包时在这里加 `<PackageVersion Include="…" Version="…" />`，项目中的 `<PackageReference>` 不写 `Version`。第三方包只加在类库上，程序项目不加（§2）。
+- **四个程序都使用 `Microsoft.NET.Sdk.Web`**：Collector、Job 需要对外提供健康检查；Web SDK 自带 ASP.NET Core 共享框架，程序项目不用再引用托管相关的包。
+- **编译警告不视为错误**：本地和 CI 一致，不设 `TreatWarningsAsErrors`。
+- **代码格式**（`.editorconfig`，只在 IDE 中提示，不影响编译）：
+  - UTF-8，4 空格缩进（JSON、XML、csproj、props、YAML 为 2 空格），文件末尾换行，去掉行尾空格（Markdown 除外）；
+  - 文件级命名空间，如 `namespace Suanpan.Core.Calendar;`；
+  - `using` 放在命名空间外，`System` 开头的排在最前；
+  - 私有字段用 `_camelCase`，常量用 PascalCase；
+  - 大括号另起一行。
 
 ---
 
@@ -414,3 +438,4 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 |---|---|---|---|
 | v1.0 | 2026-10-17 | vivo.li / Claude | 初版：基于 VVPay 后端框架和 PRD v1.0.0.2 的技术决策整理 |
 | v1.1 | 2026-10-17 | vivo.li / Claude | 新增 §1.1 模块、§1.2 项目内目录组织（按模块和功能分文件夹，不平铺）；明确约定未覆盖的情况不参考 VVPay；系统模块名定为 `Sys`，并规定模块名不能与 .NET 根命名空间同名；§6.6、§6.7 的详细规则移到新的数据库变更约定 |
+| v1.2 | 2026-10-17 | vivo.li / Claude | 新增 §3.1 工程配置（统一编译设置、集中管理包版本、包源只用 nuget.org、程序项目使用 Web SDK、警告不视为错误、代码格式）；§1 目录树补充解决方案文件和工程配置文件 |
