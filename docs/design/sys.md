@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.2（草稿） |
+| 版本 | v0.3（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -63,7 +63,7 @@
 
 ## 3. 数据设计
 
-所有表由 EF Core Migrations 创建，编写和上线规则见数据库变更约定（`docs/conventions/database.md`）。列名 snake_case，时间列为 `timestamptz`（UTC），不建物理外键，关联列加索引。带"审计四件套"的表含 `created_by`、`created_at`、`updated_by`、`updated_at`，由拦截器填充。
+所有表由 EF Core Migrations 创建，编写和上线规则见数据库变更约定（`docs/conventions/database.md`）。列名 snake_case，时间列为 `timestamptz`（UTC），不建物理外键，关联列加索引。带"审计四件套"的表含 `created_by`、`created_at`、`updated_by`、`updated_at`，由拦截器填充。主键、索引的名字由 `SuanpanDbContext` 统一生成（`pk_`、`ux_`、`ix_`，见后端约定 §6.2）。
 
 ### 3.1 表清单
 
@@ -141,22 +141,22 @@
 | `id` | bigint，PK，自增 | |
 | `user_id` | bigint | |
 | `username` | varchar(64) | |
-| `roles` | varchar(256) | 操作当时的角色编码，逗号分隔 |
+| `roles` | varchar(256) | 操作当时的角色编码，逗号分隔；没有角色时为空串 |
 | `module` | varchar(64) | `[OpLog]` 的模块名 |
 | `action` | varchar(64) | `[OpLog]` 的动作名 |
-| `perm_code` | varchar(128) | 自动采集 |
+| `perm_code` | varchar(128)，可空 | 自动采集 |
 | `http_method` | varchar(8) | |
 | `request_url` | varchar(256) | |
-| `request_params` | text | 序列化后的请求参数，已脱敏（§7.1） |
-| `reason` | varchar(512) | 请求参数中名为 `reason` 的字段（如有） |
+| `request_params` | text，可空 | 序列化后的请求参数，已脱敏（§7.1） |
+| `reason` | varchar(512)，可空 | 请求参数中名为 `reason` 的字段（如有） |
 | `is_success` | boolean | |
-| `error_msg` | varchar(512) | |
+| `error_msg` | varchar(512)，可空 | |
 | `duration_ms` | integer | |
-| `ip` | varchar(64) | |
-| `user_agent` | varchar(256) | |
-| `trace_id` | varchar(64) | |
+| `ip` | varchar(64)，可空 | |
+| `user_agent` | varchar(256)，可空 | |
+| `trace_id` | varchar(64)，可空 | |
 | `created_at` | timestamptz | |
-| `prev_hash` | varchar(64) | 哈希链（NFR-041，P1）。第一阶段先建列，暂不填写 |
+| `prev_hash` | varchar(64)，可空 | 哈希链（NFR-041，P1）。第一阶段先建列，暂不填写 |
 
 **`sys_login_log`（登录日志，只追加）** —— 不带审计四件套
 
@@ -167,10 +167,12 @@
 | `user_id` | bigint，可空 | |
 | `stage` | smallint | 1 密码、2 TOTP、3 激活、4 退出 |
 | `is_success` | boolean | |
-| `fail_reason` | varchar(128) | 内部记录的真实原因（页面上统一提示，见 §5.1） |
-| `ip` | varchar(64) | |
-| `user_agent` | varchar(256) | |
+| `fail_reason` | varchar(128)，可空 | 内部记录的真实原因（页面上统一提示，见 §5.1） |
+| `ip` | varchar(64)，可空 | |
+| `user_agent` | varchar(256)，可空 | |
 | `created_at` | timestamptz | |
+
+两张日志表中，未注明"可空"的列都不可空。
 
 ### 3.2 索引
 
@@ -652,3 +654,4 @@ public interface IConfigService
 |---|---|---|---|
 | v0.1 | 2026-10-17 | vivo.li / Claude | 初稿；模块名由 System 改为 Sys（文件名同步改为 sys.md） |
 | v0.2 | 2026-10-17 | vivo.li / Claude | ENG-002.1 实施：§8.1 补充 `HttpContextCurrentUser`、`PagedResult` 的位置。`ICurrentUser` 只有 `UserId`、`UserName`，未登录时为空，不再回落为 "system"（审计字段的程序名由数据层的 `IAuditActorProvider` 提供） |
+| v0.3 | 2026-10-17 | vivo.li / Claude | ENG-002.2 实施：§3.1 写明两张日志表哪些列可空（`roles` 不可空，没有角色时为空串）；§3 补充主键、索引的命名方式 |
