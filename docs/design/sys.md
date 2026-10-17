@@ -1,0 +1,652 @@
+# sys 模块（系统管理）技术设计
+
+| 项目 | 内容 |
+|---|---|
+| 版本 | v0.1（草稿） |
+| 日期 | 2026-10-17 |
+| 状态 | 待评审 |
+| 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
+| 依据 | data-hub PRD v1.0.0.3；后端约定 v1.1；前端约定 v1.1 |
+| 代码来源 | VVPay 系统模块（ENG-002 迁移），差异见 §2 |
+
+> 本文只写"怎么实现"。需求、业务规则和验收标准以 PRD 为准，这里引用编号，不复述。
+> 实现偏离本文时，在同一个 PR 里更新本文。
+
+---
+
+## 1. 范围
+
+**包含**：后台账号、角色、权限点与菜单、登录（密码 + TOTP + 失败锁定 + 首次激活）、会话与安全戳、后台访问 IP 白名单、操作日志、登录日志、系统配置、Hangfire 面板入口，以及 Crm 程序的整体框架（布局、菜单、公共部件）。
+
+**不包含**：
+- 部门、数据权限（PRD §10.10 明确不需要）。
+- 商户、代理等其他用户体系（本项目只有后台一个登录端）。
+- 告警的发送渠道（属于 Ops 模块，FR-025）。本模块只调用告警接口。
+
+| 需求 / 任务 | 本文章节 |
+|---|---|
+| FR-028 账号与权限（BR-139 ~ BR-145、BR-152） | §4、§5、§6、§9 |
+| FR-029 操作日志（BR-146 ~ BR-151） | §7 |
+| ENG-002 迁移 VVPay 通用模块 | §2、§8 |
+| ENG-003 系统表迁移与数据库账号 | §3 |
+| ENG-004 Crm 框架 | §9.3 |
+| ENG-005 补齐 VVPay 缺的能力 | §2 中标 ENG-005 的条目 |
+
+---
+
+## 2. 与 VVPay 的差异（迁移清单）
+
+迁移时逐条对照，标"去掉"的不迁移，标"改为"的迁移后修改。
+
+| 项目 | VVPay 现状 | 本项目 | 依据 | 任务 |
+|---|---|---|---|---|
+| 数据库与表结构 | MySQL，手写 SQL | PostgreSQL，EF Core Migrations 生成 | DEC-009、DEC-015 | ENG-003 |
+| 多端字段 `client` | 权限点、日志表都有 `client`（admin / merchant / agent） | 去掉，只有后台一个端 | — | ENG-002 |
+| 部门、数据权限 | `sys_dept`、`sys_role.data_scope` | 去掉 | PRD §10.10 | ENG-002 |
+| 手机号 | `sys_user.phone` | 去掉，只存姓名和邮箱 | NFR-061 | ENG-002 |
+| 二次验证 | 可选，未绑定也能登录 | **强制**，未绑定不能进入任何功能页 | FR-028 验收标准 1 | ENG-005 |
+| 账号激活 | 管理员建号即可用 | 新账号为"待激活"，首次登录必须改密码并绑定 TOTP | FR-028 主流程 | ENG-005 |
+| 密码规则 | ≥ 8 位 | ≥ 12 位，同时含字母和数字 | BR-140 | ENG-005 |
+| 密码错误锁定 | 没有（只有 TOTP 步限流） | 连续 5 次失败锁定 15 分钟，TOTP 失败也计数；管理员可手动解锁 | BR-140 | ENG-005 |
+| 会话时长 | 8 小时滑动续期 | 空闲 30 分钟超时 | BR-142 | ENG-002 |
+| 初始管理员 | 种子数据硬编码默认密码 | 账号和初始密码来自环境变量 | NFR-033 | ENG-002 |
+| 按钮显隐 | 不按权限隐藏 | `asp-permission` 标签助手按权限隐藏 | BR-152 | ENG-005 |
+| 操作日志写入失败 | 只记 Warning | 记 Error 并触发告警 | BR-151 | ENG-005 |
+| 操作日志表权限 | 可改可删 | 应用账号只能 INSERT 和 SELECT | BR-148 | ENG-003 |
+| 操作日志字段 | 无角色、无原因 | 增加 `roles`、`reason` | BR-147 | ENG-002 |
+| 时间 | `DateTime.Now` 与数据库时间混用 | 全部 UTC | 后端约定 §10 | ENG-002 |
+| IP 白名单 | 用于代付接口 | 改为限制后台访问 | BR-141 | ENG-005 |
+| 栏目清单 | 订单、商户、通道等 6 个 | 9 个模块，见 §6.2 | 后端约定 §1.1 | ENG-004 |
+| 系统模块名 | Area 和命名空间为 `System` | 改为 `Sys`，显示名仍为"系统管理"；URL `/Sys/...`，权限码前缀 `sys:` | 后端约定 §1.1 | ENG-002、ENG-004 |
+
+---
+
+## 3. 数据设计
+
+所有表由 EF Core Migrations 创建，编写和上线规则见数据库变更约定（`docs/conventions/database.md`）。列名 snake_case，时间列为 `timestamptz`（UTC），不建物理外键，关联列加索引。带"审计四件套"的表含 `created_by`、`created_at`、`updated_by`、`updated_at`，由拦截器填充。
+
+### 3.1 表清单
+
+**`sys_user`（后台账号）** —— 带审计四件套
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | bigint | PK，自增 | |
+| `username` | varchar(64) | 唯一，非空 | 登录名，创建后不可修改 |
+| `password_hash` | varchar(256) | 非空 | 自描述格式 `pbkdf2$迭代次数$盐$哈希` |
+| `real_name` | varchar(64) | 非空 | 姓名 |
+| `email` | varchar(128) | 可空 | |
+| `status` | smallint | 非空 | 1 待激活、2 启用、3 停用（§4.1） |
+| `must_change_password` | boolean | 非空 | 首次登录或管理员重置密码后为 true |
+| `totp_secret` | varchar(256) | 可空 | AES 加密后的密钥（`enc:` 前缀）；空表示尚未绑定 |
+| `security_stamp` | varchar(64) | 非空 | 安全戳（§5.3） |
+| `login_fail_count` | integer | 非空，默认 0 | 连续失败次数（密码和 TOTP 共用） |
+| `locked_until` | timestamptz | 可空 | 锁定截止时间；为空或早于当前时间表示未锁定 |
+| `last_login_at` | timestamptz | 可空 | |
+| `last_login_ip` | varchar(64) | 可空 | |
+
+**`sys_role`（角色）** —— 带审计四件套
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | bigint | PK | |
+| `role_code` | varchar(64) | 唯一 | 如 `super_admin`、`engineer` |
+| `role_name` | varchar(64) | 非空 | |
+| `is_builtin` | boolean | 非空 | 内置角色不可修改、删除和授权 |
+| `is_enabled` | boolean | 非空 | |
+| `remark` | varchar(256) | 可空 | |
+
+**`sys_user_role`（账号与角色，多对多）**：`user_id`、`role_id` 联合主键，另有 `created_by`、`created_at`；`role_id` 单独建索引。
+
+**`sys_permission`（权限点，同时也是菜单）** —— 带审计四件套
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | bigint | PK | 重建时保留已有 id，角色授权按 id 关联 |
+| `parent_id` | bigint | 非空，0 表示根 | 树形结构 |
+| `perm_type` | smallint | 非空 | 1 目录（Area）、2 菜单（Controller）、3 按钮（Action） |
+| `perm_code` | varchar(128) | 唯一 | `{area}:{controller}:{action}`，由代码自动生成（§4.3） |
+| `perm_name` | varchar(64) | 非空 | 显示名 |
+| `menu_url` | varchar(256) | 可空 | 菜单的路由，如 `/Calendar/Event` |
+| `icon` | varchar(64) | 可空 | Tabler Icons 名称 |
+| `sort` | integer | 非空 | |
+| `is_enabled` | boolean | 非空 | 代码中已不存在的权限点在重建时被停用，不删除 |
+
+**`sys_role_permission`（角色与权限点）**：`role_id`、`perm_id` 联合主键；`perm_id` 单独建索引。
+
+**`sys_config`（系统配置）** —— 带审计四件套
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | integer | PK | |
+| `config_key` | varchar(128) | 唯一 | 格式 `模块:键名`，如 `security:login_max_failures` |
+| `config_value` | text | 非空 | |
+| `value_type` | smallint | 非空 | 1 字符串、2 整数、3 小数、4 布尔、5 JSON；保存时按类型校验 |
+| `config_group` | varchar(64) | 非空 | 页面分组展示用 |
+| `description` | varchar(256) | 可空 | |
+
+**`sys_ip_whitelist`（后台访问 IP 白名单）** —— 带审计四件套
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | bigint | PK | |
+| `ip_value` | varchar(64) | 唯一 | 单个 IP 或 CIDR 网段（IPv4、IPv6） |
+| `remark` | varchar(128) | 可空 | 如"办公室网络" |
+| `is_enabled` | boolean | 非空 | |
+
+**`sys_op_log`（操作日志，只追加）** —— 不带审计四件套
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `id` | bigint，PK，自增 | |
+| `user_id` | bigint | |
+| `username` | varchar(64) | |
+| `roles` | varchar(256) | 操作当时的角色编码，逗号分隔 |
+| `module` | varchar(64) | `[OpLog]` 的模块名 |
+| `action` | varchar(64) | `[OpLog]` 的动作名 |
+| `perm_code` | varchar(128) | 自动采集 |
+| `http_method` | varchar(8) | |
+| `request_url` | varchar(256) | |
+| `request_params` | text | 序列化后的请求参数，已脱敏（§7.1） |
+| `reason` | varchar(512) | 请求参数中名为 `reason` 的字段（如有） |
+| `is_success` | boolean | |
+| `error_msg` | varchar(512) | |
+| `duration_ms` | integer | |
+| `ip` | varchar(64) | |
+| `user_agent` | varchar(256) | |
+| `trace_id` | varchar(64) | |
+| `created_at` | timestamptz | |
+| `prev_hash` | varchar(64) | 哈希链（NFR-041，P1）。第一阶段先建列，暂不填写 |
+
+**`sys_login_log`（登录日志，只追加）** —— 不带审计四件套
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `id` | bigint，PK，自增 | |
+| `username` | varchar(64) | 输入的登录名（账号不存在时也记录） |
+| `user_id` | bigint，可空 | |
+| `stage` | smallint | 1 密码、2 TOTP、3 激活、4 退出 |
+| `is_success` | boolean | |
+| `fail_reason` | varchar(128) | 内部记录的真实原因（页面上统一提示，见 §5.1） |
+| `ip` | varchar(64) | |
+| `user_agent` | varchar(256) | |
+| `created_at` | timestamptz | |
+
+### 3.2 索引
+
+| 表 | 索引 | 用途 |
+|---|---|---|
+| `sys_op_log` | `(created_at)`、`(user_id, created_at)`、`(module, action, created_at)` | 按时间、操作人、模块检索（BR-150） |
+| `sys_login_log` | `(created_at)`、`(username, created_at)` | |
+| `sys_permission` | `(parent_id)` | 树形查询 |
+
+### 3.3 数据库授权
+
+写在迁移里（`migrationBuilder.Sql`），对应后端约定 §6.7 和数据库变更约定 §2.3：
+
+- `sys_` 表的读写权限来自第一个迁移中设置的默认授权，不需要逐表授权。
+- 创建 `sys_op_log`、`sys_login_log` 的迁移中，撤销 `suanpan_app` 对这两张表的 `UPDATE`、`DELETE` 权限，只保留 `INSERT`、`SELECT`（BR-148）。
+- `suanpan_portal` 对所有 `sys_` 表无任何权限。
+
+### 3.4 初始化数据
+
+| 数据 | 方式 | 说明 |
+|---|---|---|
+| 4 个预置角色 | 迁移中的种子数据 | `super_admin`（管理员，内置）、`engineer`（采集工程师）、`editor`（编辑）、`viewer`（只读） |
+| 初始管理员 | 程序启动时的种子服务 | 仅当 `sys_user` 为空时执行；登录名和初始密码读环境变量 `SUANPAN__Seed__AdminUsername`、`SUANPAN__Seed__AdminPassword`，未设置则跳过并记录 Error 日志；账号状态为"待激活"，绑定 `super_admin` |
+| 权限点 | 不做种子 | 部署后在后台执行"从代码重建"生成（§6.3） |
+| 系统配置默认值 | 不做种子 | 代码中有默认值，表里有值时才覆盖（§10.2） |
+
+---
+
+## 4. 领域规则（`Suanpan.Core/Sys/Rules/`）
+
+### 4.1 账号状态
+
+```mermaid
+stateDiagram-v2
+    state "待激活" as Pending
+    state "启用" as Active
+    state "停用" as Disabled
+    [*] --> Pending: 管理员新建 / 初始管理员
+    Pending --> Active: 首次登录改密码并绑定 TOTP
+    Active --> Disabled: 管理员停用
+    Disabled --> Active: 管理员启用
+    Pending --> Disabled: 管理员停用
+```
+
+- **锁定**不是单独的状态，而是叠加在"启用"上的时间条件：`locked_until` 晚于当前时间即为锁定。账号列表中显示为"锁定（剩余 N 分钟）"。
+- 停用、启用、重置密码、重置 TOTP 都会刷新安全戳，让该账号已登录的会话立即失效（§5.3）。
+- 不能停用自己；不能停用最后一个启用的管理员（BR-144，ERR-AUTH-004）。
+- 账号没有删除功能（BR-143）。
+
+### 4.2 密码规则
+
+- 长度 ≥ 12 位，同时包含字母和数字（BR-140）；新密码不能与旧密码相同。
+- 哈希：PBKDF2-SHA256，10 万次迭代，16 字节盐，32 字节哈希，比较时用固定时间比较（沿用 VVPay）。
+
+### 4.3 失败计数与锁定
+
+- 密码错误、TOTP 错误都使 `login_fail_count` 加 1，用一条 SQL 原子更新：`login_fail_count = login_fail_count + 1`。
+- 加 1 后达到上限（默认 5 次，配置 `security:login_max_failures`）时，同时写入 `locked_until = 当前时间 + 锁定时长`（默认 15 分钟，配置 `security:login_lock_minutes`）。
+- 锁定期间，密码正确也拒绝登录。
+- 登录成功时，失败次数清零。
+- 管理员手动解锁：失败次数清零，`locked_until` 置空，并记录操作日志。
+- 锁定期满后，第一次登录失败从 1 重新计数。
+
+### 4.4 权限码生成
+
+`{area}:{controller}:{action}`，三段都转成 snake_case，如 `CalendarController.Forecast` 生成 `calendar:calendar:forecast`，`OpLogController.Export` 生成 `sys:op_log:export`。规则写在 `Suanpan.Shared/Auth/PermCodeHelper`，Convention 和重建服务共用同一份规则，保证两边生成的码一致。
+
+### 4.5 预置角色的默认授权
+
+- 管理员（`super_admin`）是内置角色，授权判断时直接放行，不需要逐项授权。
+- 其余 3 个预置角色的默认权限由代码中的"预置授权表"定义：每个角色对应一组权限码通配规则，如 `calendar:*:index`、`calendar:forecast:*`。
+- 各模块的设计文档在"权限码与预置角色"一节给出本模块的规则；本模块只提供应用机制。
+- 后台"角色管理"提供"恢复默认授权"操作：按预置授权表重新授权该角色，覆盖当前授权，需要二次确认。
+- 本模块自身的权限码只授给管理员（§9.1）。
+
+---
+
+## 5. 认证
+
+### 5.1 登录流程
+
+```mermaid
+sequenceDiagram
+    participant B as 浏览器
+    participant W as IP 白名单中间件
+    participant A as AccountController
+    participant S as AuthService
+    B->>W: 任意请求
+    W-->>B: 不在白名单：返回 403（ERR-AUTH-003）
+    B->>A: POST /Account/Login（登录名、密码）
+    A->>S: PasswordSignInAsync
+    S->>S: 账号不存在 / 停用 / 锁定 / 密码错误 → 失败，计数（§4.3）
+    S-->>A: 结果
+    alt 需要改密码（待激活或已被重置）
+        A->>B: 签发待完成 Cookie → 跳转 /Account/ChangePassword
+        B->>A: 提交新密码
+    end
+    alt 未绑定 TOTP
+        A->>B: 跳转 /Account/TwoFactorSetup，扫码并验证一次
+    else 已绑定
+        A->>B: 跳转 /Account/TwoFactor，输入验证码
+    end
+    A->>S: 验证 TOTP（失败计数、防重放）
+    S->>S: 待激活 → 启用；清零失败次数；记录登录日志
+    A->>B: 注销待完成 Cookie，签发正式 Cookie
+```
+
+- **失败提示统一**：账号不存在、密码错误统一提示"用户名或密码错误"；已锁定提示剩余时间；已停用提示"账号已停用"。真实原因记入登录日志（ERR-AUTH-001、ERR-AUTH-005）。
+- **每一步都记录登录日志**，包括成功和失败（§7.2）。
+- 改密码和绑定 TOTP 这两步都在"待完成 Cookie"下进行，这个 Cookie 不带任何业务权限。
+
+### 5.2 Cookie
+
+| Cookie | 用途 | 有效期 | 说明 |
+|---|---|---|---|
+| `suanpan.crm.auth` | 正式登录 | 空闲 30 分钟（滑动） | HttpOnly、Secure、SameSite=Lax（BR-142） |
+| `suanpan.crm.pending` | 密码已通过、尚未完成改密或 TOTP | 10 分钟（不滑动） | 只能访问改密码、绑定 TOTP、TOTP 验证三个页面 |
+
+正式 Cookie 中的 Claims：用户 id、登录名、`suanpan:real_name`、`suanpan:security_stamp`。角色和权限不放进 Claims，每次从权限快照读取（§6.1），这样调整权限后不需要重新登录。
+
+### 5.3 安全戳
+
+沿用 VVPay：
+
+- 登录时把 `security_stamp` 的副本写入 Claims；Cookie 中间件在 `OnValidatePrincipal` 中逐请求比对，不一致或账号已停用即注销。
+- 比对结果缓存 60 秒；走服务修改的场景会主动让缓存失效，所以是即时生效的。
+- **刷新安全戳的操作**：修改密码、管理员重置密码、停用账号、绑定或重置 TOTP。
+- 用户自己修改密码或绑定 TOTP 后，用新的安全戳重签当前 Cookie，本会话不受影响，其他设备上的会话失效。
+
+### 5.4 TOTP
+
+沿用 VVPay 的实现：
+
+- RFC 6238：HMAC-SHA1，30 秒一个时间步，6 位验证码，允许前后各 1 个时间步的误差。
+- 密钥为 20 字节，Base32 编码；保存前用 AES 加密（`ISecretProtector`），加密密钥来自环境变量 `SUANPAN__Security__EncryptionKey`。
+- 绑定时，待绑定的密钥加密后放在页面隐藏域里，验证通过才保存。
+- **防重放**：Redis 键 `suanpan:totp:used:{userId}:{时间步}` 用 SETNX 写入，同一个时间步的验证码只能用一次。
+- **限流**：TOTP 失败计入 §4.3 的统一失败次数，不再单独设 Redis 计数（与 VVPay 不同）。
+- **救援**：管理员在账号编辑页执行"重置二次验证"，清空密钥并刷新安全戳；该账号下次登录时必须重新绑定。
+
+### 5.5 后台访问 IP 白名单（BR-141）
+
+- 在 Crm 的请求管道中，紧跟 `UseForwardedHeaders` 之后、认证之前执行，拦截所有请求（包括登录页）。
+- 判断数据来自 `sys_ip_whitelist` 中启用的条目，30 秒内存缓存；后台增删改后本实例立即生效。
+- **总开关**：配置 `security:admin_ip_whitelist_enabled`，默认关闭（访问方式是 IP 白名单还是 VPN 还没定，见 PRD Q-003）。
+- **应急放行**：环境变量 `SUANPAN__Security__BootstrapAllowedIps`（逗号分隔）中的 IP 总是放行，防止把所有人都挡在外面。
+- 客户端 IP 取自 ForwardedHeaders 处理后的地址；部署时必须正确配置可信代理，否则所有请求都会显示为代理的 IP。
+
+---
+
+## 6. 授权与菜单
+
+### 6.1 权限判断
+
+沿用 VVPay 的"动态 Policy 三件套"：
+
+| 组件 | 位置 | 作用 |
+|---|---|---|
+| `HasPermissionAttribute`、`PermissionRequirement`、`PermissionPolicyProvider` | `Suanpan.Shared/Auth/` | `perm:` 前缀的 Policy 按需生成，不必逐个注册 |
+| `PermissionAuthorizationHandler` | `Suanpan.Services/Sys/Rbac/` | 取当前用户的权限快照：管理员直接放行，其他人检查权限码 |
+| `PermissionService` | `Suanpan.Services/Sys/Rbac/` | 生成权限快照：账号启用 → 角色（启用的）→ 权限码集合；已停用的账号返回空快照 |
+
+### 6.2 自动绑定权限与栏目清单
+
+- `AutoPermissionConvention`（`Suanpan.Crm/Auth/`）给每个 Area 内的 action 自动加上权限要求；忘了标特性的 action 会返回 403，不会裸奔。
+- Controller 必须标 `[Area("模块名")]` 和 `[PermMenu("菜单名", Icon = "...", Sort = n)]`；特殊 action 按需标 `[PermName("中文名")]`。
+- 多个 action 共用一个权限码，或需要特殊权限码时，显式标 `[HasPermission("...")]`。
+- 根目录的 `AccountController`、`HomeController` 只要求登录，不进入权限体系。
+- 栏目（Area）清单在 `Suanpan.Crm/Auth/AreaCatalog` 中集中维护：
+
+| Area | 栏目名 | 图标 | 排序 |
+|---|---|---|---|
+| Calendar | 财经日历 | `calendar-event` | 10 |
+| Flash | 快讯 | `bolt` | 20 |
+| Collect | 数据采集 | `cloud-download` | 30 |
+| Reference | 基础数据 | `database` | 40 |
+| Market | 市场数据 | `chart-line` | 50 |
+| News | 新闻 | `news` | 60 |
+| Publish | 前台发布 | `world-upload` | 70 |
+| Ops | 运维 | `activity` | 80 |
+| Sys | 系统管理 | `settings` | 90 |
+
+### 6.3 权限树重建
+
+沿用 VVPay，"系统管理 → 权限点 → 从代码重建"：
+
+- Area 生成目录，Controller 生成菜单（权限码取 Index 的码，菜单路由自动为 `/{Area}/{Controller}`），其余 action 生成按钮。
+- **代码是唯一的事实来源**：名称、层级、路由以代码为准覆盖；代码中已不存在的权限码停用，不删除；已存在的行保留 id，所以角色授权不会丢。
+- 重建完成后，菜单缓存和全部权限快照立即失效。
+- 在页面上手工新增的权限点，会在下次重建时被停用，因此不提供手工新增入口。
+
+### 6.4 菜单
+
+- 侧边栏 = 当前用户有权限的"目录 + 菜单"树：管理员看到全部；其他人只看到有权限的菜单，目录在其下至少有一个可见菜单时才显示。
+- 布局通过注入 `IMenuService` 渲染，当前路径按前缀高亮。
+
+### 6.5 缓存与失效
+
+单实例 Crm 使用本机内存缓存（第一阶段只部署一个 Crm 实例）。
+
+| 缓存 | 键 | 有效期 | 主动失效时机 |
+|---|---|---|---|
+| 权限快照 | `perms:{userId}` | 5 分钟 | 账号的角色变更、停用（按账号）；角色授权变更、角色启停（找出持有该角色的所有账号逐个失效）；权限树重建（全部） |
+| 菜单源数据 | `menusrc` | 5 分钟 | 权限点修改、重建 |
+| 安全戳 | `stamp:{userId}` | 60 秒 | 见 §5.3 |
+| 系统配置 | `config:{key}` | 60 秒 | 配置保存 |
+| IP 白名单 | `ipwhitelist` | 30 秒 | 白名单增删改 |
+
+Crm 将来部署多个实例时，以上缓存需要改为分布式失效（如 Redis 发布订阅），接口不变。
+
+### 6.6 按权限隐藏按钮（BR-152）
+
+标签助手 `asp-permission`（`Suanpan.Crm/TagHelpers/`）：当前用户的权限快照中没有指定权限码时，不输出该元素；管理员总是输出。写法：`<a asp-permission="sys:user:edit" ...>`。这只影响显示，后端校验照常进行。
+
+---
+
+## 7. 操作日志与登录日志
+
+### 7.1 操作日志（FR-029）
+
+由全局过滤器 `OpLogActionFilter`（`Suanpan.Services/Sys/Logging/`）写入，只处理标了 `[OpLog("模块","动作")]` 的 action：
+
+1. 执行前采集请求参数，经 `SensitiveDataMasker` 脱敏后序列化。
+2. 执行 action，计时。
+3. 判断结果：未处理的异常、`TempData["Error"]`、ModelState 校验失败都算失败。
+4. 从 `[HasPermission]` 元数据中取权限码，从当前用户的权限快照中取角色编码，从参数中取 `reason` 字段。
+5. 写入 `sys_op_log`。
+
+**脱敏**：参数名包含以下任一词（不区分大小写）的字段，值替换为 `***`：`password`、`pwd`、`secret`、`token`、`totp`、`apikey`、`api_key`、`privatekey`、`private_key`、`credential`、`encryptionkey`。不要加入单独的 `key`、`code`，否则会误伤 `config_key`、`perm_code` 这类正常字段（VVPay 的经验）。
+
+**写入失败**（BR-151）：不影响业务请求的结果；记录 Error 级日志，并调用告警接口 `IAlertService`。告警接口由 Ops 模块（FR-025，M2）实现；M1 阶段先提供一个只写 Error 日志的空实现。
+
+**哪些 action 要标 `[OpLog]`**：所有写操作（新增、修改、删除、状态变更、授权、重置、解锁、重建、导出、手动触发）。查询类 action 不标。
+
+### 7.2 登录日志
+
+由 `AuthService` 在每一步写入：密码步、TOTP 步、激活（改密 + 绑定）、退出，成功和失败都记。`fail_reason` 记真实原因，如"账号不存在""密码错误""已锁定""TOTP 错误""TOTP 重放"。
+
+### 7.3 查询与导出
+
+- 操作日志页：按操作人、模块、动作、结果、时间范围筛选，按时间倒序分页。
+- 登录日志页：按登录名、结果、时间范围筛选。
+- 导出 CSV（UTF-8 带 BOM）：按当前筛选条件导出，单次最多 10 万行；导出动作本身标 `[OpLog]`（BR-150）。
+- 两个日志都没有修改、删除入口；保留期限见 BR-149，第一阶段不做清理任务。
+
+---
+
+## 8. 代码结构与服务接口
+
+### 8.1 目录
+
+```
+Suanpan.Core/Sys/
+├─ Entities/      SysUser、SysRole、SysUserRole、SysPermission、SysRolePermission、
+│                 SysConfig、SysIpWhitelist、SysOpLog、SysLoginLog
+├─ Enums/         UserStatus、PermType、ConfigValueType、LoginStage
+└─ Rules/         PasswordPolicy、LockoutRule、UserStatusRule
+
+Suanpan.Shared/Auth/      AuthSchemes、SuanpanClaimTypes、ICurrentUser、HasPermission 三件套、
+                          PermMenu / PermName 特性、PermCodeHelper
+Suanpan.Shared/Mvc/       OpLogAttribute、ManageResult
+
+Suanpan.Data/
+├─ SuanpanDbContext.Sys.cs
+└─ Configurations/Sys/
+
+Suanpan.Services/Sys/
+├─ Auth/          AuthService、SecurityStampValidator、AdminSeeder
+├─ Rbac/          PermissionService、PermissionAuthorizationHandler、PermissionRebuildService、
+│                 PresetRoleGrantService、MenuService、UserManageService、RoleManageService、
+│                 PermissionManageService
+├─ Logging/       OpLogActionFilter、SensitiveDataMasker、OpLogService、LoginLogService
+├─ Configs/       ConfigService
+└─ Security/      Pbkdf2PasswordHasher、TotpService、AesSecretProtector、IpWhitelistService、
+                  IpWhitelistMatcher、QrCodeHelper
+
+Suanpan.Crm/
+├─ Auth/          AutoPermissionConvention、AreaCatalog、HangfireDashboardAuthFilter、
+│                 IpWhitelistMiddleware
+├─ Controllers/   AccountController、HomeController
+├─ Areas/Sys/  见 §9.1
+├─ Models/Sys/
+└─ TagHelpers/    见 §9.3
+```
+
+### 8.2 主要接口
+
+```csharp
+// Services/Sys/Auth
+public interface IAuthService
+{
+    Task<LoginResult> PasswordSignInAsync(string username, string password, ClientInfo client, CancellationToken ct);
+    Task<LoginResult> VerifyTotpAsync(long userId, string code, ClientInfo client, CancellationToken ct);
+    Task<ManageResult> ChangePasswordAsync(long userId, string? oldPassword, string newPassword, CancellationToken ct);
+    Task<TotpSetupInfo> BeginTotpSetupAsync(long userId, CancellationToken ct);
+    Task<LoginResult> ConfirmTotpSetupAsync(long userId, string protectedSecret, string code, ClientInfo client, CancellationToken ct);
+}
+
+public enum LoginStep { Succeeded, RequiresPasswordChange, RequiresTotpSetup, RequiresTotp, Failed, Locked, Disabled }
+public sealed record LoginResult(LoginStep Step, long? UserId, string? Message, DateTime? LockedUntilUtc);
+public sealed record ClientInfo(string? Ip, string? UserAgent);
+
+// Services/Sys/Rbac
+public interface IPermissionService
+{
+    Task<PermissionSnapshot> GetSnapshotAsync(long userId, CancellationToken ct);
+    void Invalidate(long userId);
+    void InvalidateAll();
+}
+public sealed record PermissionSnapshot(bool IsSuperAdmin, IReadOnlyList<string> RoleCodes, IReadOnlySet<string> Codes);
+
+public interface IUserManageService
+{
+    Task<PagedResult<UserRow>> QueryAsync(UserQuery query, CancellationToken ct);
+    Task<ManageResult> CreateAsync(UserCreateInput input, CancellationToken ct);       // 状态为待激活
+    Task<ManageResult> UpdateAsync(UserUpdateInput input, CancellationToken ct);       // 姓名、邮箱、角色
+    Task<ManageResult> SetStatusAsync(long userId, UserStatus status, CancellationToken ct);
+    Task<ManageResult> ResetPasswordAsync(long userId, string newPassword, CancellationToken ct);
+    Task<ManageResult> ResetTotpAsync(long userId, CancellationToken ct);
+    Task<ManageResult> UnlockAsync(long userId, CancellationToken ct);
+}
+
+public interface IPresetRoleGrantService
+{
+    Task<ManageResult> ApplyDefaultsAsync(string roleCode, CancellationToken ct);
+}
+
+// Services/Sys/Configs
+public interface IConfigService
+{
+    Task<int> GetIntAsync(string key, int defaultValue, CancellationToken ct = default);
+    Task<bool> GetBoolAsync(string key, bool defaultValue, CancellationToken ct = default);
+    Task<string?> GetStringAsync(string key, string? defaultValue, CancellationToken ct = default);
+    Task<ManageResult> SaveAsync(string key, string value, CancellationToken ct);
+}
+```
+
+其余服务（角色管理、权限点管理、菜单、日志查询、IP 白名单、TOTP、加密）的接口与 VVPay 一致，迁移时按 §2 调整。
+
+---
+
+## 9. 后台页面
+
+### 9.1 系统管理栏目（Area：Sys）
+
+所有写操作都标 `[OpLog("系统管理", "...")]`。本模块不使用 HTMX。
+
+| 页面 | 路由 | 权限码 | 说明 |
+|---|---|---|---|
+| 账号列表 | `/Sys/User` | `sys:user:index` | 显示状态、角色、是否锁定、最后登录时间 |
+| 新建账号 | `/Sys/User/Create` | `sys:user:create` | 填写登录名、姓名、邮箱、角色、初始密码；状态为待激活 |
+| 编辑账号 | `/Sys/User/Edit/{id}` | `sys:user:edit` | 姓名、邮箱、角色；登录名不可改 |
+| 启用 / 停用 | POST | `sys:user:set_status` | 二次确认；不能停用自己和最后一个管理员 |
+| 重置密码 | POST | `sys:user:reset_password` | 设为待改密码状态，刷新安全戳 |
+| 重置二次验证 | POST | `sys:user:reset_totp` | 二次确认 |
+| 解锁 | POST | `sys:user:unlock` | 只在锁定时显示 |
+| 角色列表 | `/Sys/Role` | `sys:role:index` | 内置角色只读 |
+| 新建 / 编辑 / 删除角色 | `/Sys/Role/...` | `sys:role:create` / `edit` / `delete` | 删除前须解除所有账号绑定 |
+| 角色授权 | `/Sys/Role/Assign/{id}` | `sys:role:assign` | 复选框权限树（勾选父节点全选子节点，勾选子节点自动选中祖先） |
+| 恢复默认授权 | POST | `sys:role:apply_defaults` | 只对 3 个预置角色可用；二次确认 |
+| 权限点 | `/Sys/Permission` | `sys:permission:index` | 树形表格 |
+| 修改权限点 | `/Sys/Permission/Edit/{id}` | `sys:permission:edit` | 只允许改图标、排序、启停 |
+| 从代码重建 | POST | `sys:permission:rebuild` | 二次确认；完成后显示新增、更新、停用的数量 |
+| 系统配置 | `/Sys/Config` | `sys:config:index` | 按分组展示 |
+| 修改配置 | `/Sys/Config/Edit/{id}` | `sys:config:edit` | 按类型校验 |
+| IP 白名单 | `/Sys/IpWhitelist` | `sys:ip_whitelist:index` | |
+| 新增 / 编辑 / 删除白名单 | `/Sys/IpWhitelist/...` | `sys:ip_whitelist:create` / `edit` / `delete` | 删除需二次确认 |
+| 操作日志 | `/Sys/OpLog` | `sys:op_log:index` | §7.3 |
+| 导出操作日志 | GET | `sys:op_log:export` | |
+| 登录日志 | `/Sys/LoginLog` | `sys:login_log:index` | |
+| 导出登录日志 | GET | `sys:login_log:export` | |
+| 任务面板 | `/Sys/hangfire` | `sys:job:index` | Hangfire 自带面板，由授权过滤器校验此权限码 |
+
+**权限码与预置角色**：以上权限码只默认授予管理员（内置，直接放行）；`engineer`、`editor`、`viewer` 默认没有 系统管理栏目的任何权限（PRD §13.1.2）。
+
+### 9.2 根目录页面（只要求登录，或允许匿名）
+
+| 页面 | 路由 | 访问条件 |
+|---|---|---|
+| 登录 | `/Account/Login` | 匿名 |
+| 修改密码（激活或被重置后强制进入） | `/Account/ChangePassword` | 待完成 Cookie 或正式 Cookie |
+| 绑定二次验证 | `/Account/TwoFactorSetup` | 待完成 Cookie 或正式 Cookie |
+| 输入验证码 | `/Account/TwoFactor` | 待完成 Cookie |
+| 退出 | POST `/Account/Logout` | 正式 Cookie |
+| 无权限 | `/Account/AccessDenied` | 正式 Cookie |
+| 首页 | `/` | 正式 Cookie |
+
+### 9.3 Crm 框架（ENG-004）
+
+本模块负责 Crm 的公共框架，其他模块在此基础上开发：
+
+| 部件 | 位置 | 说明 |
+|---|---|---|
+| 布局 | `Views/Shared/_Layout.cshtml` | Tabler 垂直导航；统一加载 Tabler、jQuery、HTMX、site.js（前端约定 §3.1）；`<body>` 上设置携带防伪令牌的 `hx-headers` |
+| 消息提示 | 布局内 | 显示 `TempData["Message"]`、`TempData["Error"]` |
+| 表单校验 | `Views/Shared/_ValidationScriptsPartial.cshtml` | 先加载 jquery-validation，再加载 unobtrusive；表单页通过 `@section Scripts` 引用 |
+| 公共部件 | `Views/Shared/`、`TagHelpers/` | `_Pager`、`_EmptyState`、`<status-badge>`、`<confirm-form>`、`asp-permission`、`<utc-time>`（前端约定 §6） |
+| HTMX 辅助 | `Suanpan.Crm/Mvc/` | `Request.IsHtmx()` 扩展方法；site.js 中统一处理 `htmx:responseError`，并在 `htmx.onLoad` 中重新解析表单校验 |
+| 操作者时区 | `<utc-time>` | 第一阶段统一按 Asia/Shanghai 显示；按账号设置时区作为后续扩展 |
+
+---
+
+## 10. 配置项
+
+### 10.1 环境变量（基础设施和密钥）
+
+| 键 | 说明 |
+|---|---|
+| `SUANPAN__ConnectionStrings__Main` | 应用账号的连接串 |
+| `SUANPAN__Redis__Configuration` | Redis 连接串 |
+| `SUANPAN__RabbitMq__Uri` | RabbitMQ 连接串 |
+| `SUANPAN__Security__EncryptionKey` | AES 加密密钥（TOTP 密钥、数据源凭据共用） |
+| `SUANPAN__Security__BootstrapAllowedIps` | 应急放行 IP，逗号分隔（§5.5） |
+| `SUANPAN__Seed__AdminUsername`、`SUANPAN__Seed__AdminPassword` | 初始管理员（§3.4） |
+| `SUANPAN__Auth__IdleTimeoutMinutes` | 会话空闲超时，默认 30 |
+
+### 10.2 `sys_config`（业务开关，可在后台修改）
+
+| 键 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `security:login_max_failures` | 整数 | 5 | 连续失败多少次锁定 |
+| `security:login_lock_minutes` | 整数 | 15 | 锁定时长 |
+| `security:admin_ip_whitelist_enabled` | 布尔 | false | 后台 IP 白名单总开关 |
+
+配置键用常量类 `SysConfigKeys` 集中定义，读取时代码中的默认值兜底（后端约定 §7）。
+
+---
+
+## 11. 错误码
+
+| 错误码 | 场景 | 处理 |
+|---|---|---|
+| ERR-AUTH-001 | 密码错误、账号不存在、已锁定 | 统一提示"用户名或密码错误"；已锁定时提示剩余时间；记登录日志 |
+| ERR-AUTH-002 | 无权限 | 页面请求跳转无权限页；HTMX 请求返回 403 片段 |
+| ERR-AUTH-003 | IP 不在白名单 | 返回 403 页面，不暴露原因细节 |
+| ERR-AUTH-004 | 停用最后一个管理员、停用自己 | `ManageResult` 返回错误，显示在页面上 |
+| ERR-AUTH-005 | TOTP 错误或重放 | 提示"验证码错误"，计入失败次数 |
+| ERR-AUD-001 | 操作日志写入失败 | 业务不受影响；Error 日志 + 告警 |
+
+---
+
+## 12. 测试要点
+
+| 验收标准 | 测试方式 |
+|---|---|
+| FR-028 #1 未绑定 TOTP 无法进入功能页 | 集成测试：待完成 Cookie 访问任意 Area 页面被重定向 |
+| FR-028 #2 非白名单 IP 被拒 | 集成测试：开关打开时，非白名单 IP 访问返回 403；应急 IP 放行 |
+| FR-028 #3 后端拒绝越权 | 集成测试：编辑角色直接 POST 系统管理栏目的写操作，返回 403 |
+| FR-028 #4 连续 5 次锁定 15 分钟，管理员解锁 | 单元测试 `LockoutRule`（第 4、5、6 次的状态，期满后重新计数）；集成测试：锁定期间密码正确也拒绝，解锁后可登录 |
+| FR-028 #5 不能停用最后一个管理员 | 单元测试 `UserStatusRule` |
+| FR-028 #6 新页面默认拒绝 | 集成测试：新增一个未授权的测试 Controller，非管理员访问返回 403 |
+| FR-028 #7 无权限的按钮不显示 | 标签助手单元测试：有权限、无权限、管理员三种情况 |
+| FR-029 #1 写操作有日志 | 集成测试：执行一次写操作后查询 `sys_op_log` |
+| FR-029 #2 凭据脱敏 | `SensitiveDataMasker` 单元测试：覆盖每个敏感词，且 `config_key`、`perm_code` 不被误伤 |
+| FR-029 #3 日志表不可改删 | 用 `suanpan_app` 账号执行 UPDATE、DELETE，预期失败 |
+| FR-029 #4 导出被记录 | 集成测试 |
+| FR-029 #5 日志写入失败不影响业务 | 单元测试：模拟 `IOpLogService` 抛异常，action 结果不变，告警接口被调用 |
+| 其他 | `PasswordPolicy`、`PermCodeHelper`（含 snake_case 转换）、预置授权的通配规则匹配：单元测试 |
+
+---
+
+## 13. 待确认
+
+| # | 问题 | 当前设计 | 说明 |
+|---|---|---|---|
+| 1 | ~~模块名用 `System` 会与 .NET 的 `System` 命名空间冲突~~ | **已确认（2026-10-17）**：模块的目录名、命名空间、Area 名都用 `Sys`，后台显示名仍为"系统管理"；URL 为 `/Sys/...`，权限码前缀为 `sys:` | 规则已写入后端约定 §1.1 |
+| 2 | 管理员角色的实现方式 | 内置 `super_admin`，授权时直接放行，不可修改 | PRD BR-139 说"角色权限可在后台调整"，管理员角色除外 |
+| 3 | 新账号如何"激活" | 管理员建号时设置初始密码，线下告知本人；首次登录强制改密码并绑定 TOTP | PRD FR-028 写的是"发送激活方式"，这里理解为线下告知，不做邮件发送 |
+| 4 | TOTP 失败是否计入锁定次数 | 计入，与密码错误共用一个计数 | 与 PRD ERR-AUTH-005"计入失败次数"一致；VVPay 是分开计数的 |
+| 5 | 会话是否设绝对时长上限 | 只设空闲 30 分钟超时 | 如需"无论是否活跃，最长 12 小时必须重新登录"，再加一条 |
+| 6 | IP 白名单还是 VPN（PRD Q-003） | 两者都支持：白名单功能做好，总开关默认关闭 | 确定方案后修改开关默认值 |
+
+---
+
+## 变更记录
+
+| 版本 | 日期 | 修改人 | 内容 |
+|---|---|---|---|
+| v0.1 | 2026-10-17 | vivo.li / Claude | 初稿；模块名由 System 改为 Sys（文件名同步改为 sys.md） |

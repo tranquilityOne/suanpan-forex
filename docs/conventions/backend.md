@@ -2,15 +2,16 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.0 |
+| 版本 | v1.1 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
-| 相关约定 | [前端技术约定](frontend.md) |
+| 相关约定 | [前端技术约定](frontend.md)、[数据库变更约定](database.md) |
 
 > 本文是写代码时必须遵守的约定，记录"怎么做"；"为什么这样定"见 PRD 的决策日志。
 > 标有 **【与 VVPay 不同】** 的条目，是本项目有意偏离 VVPay 做法的地方，迁移 VVPay 代码时要特别注意。
 > 约定与代码不一致时，以本文为准修正代码；确需调整约定的，先改本文（走评审），再改代码。
+> **本文没有覆盖到的情况，不要参考 VVPay 或其他项目自行决定**，先提出问题，确认后补充进本文再实现。
 
 ---
 
@@ -46,7 +47,87 @@ suanpan-forex/
 | Crm | Web 程序（MVC + Areas） | 运营后台；挂载 Hangfire 面板 | 香港 → 香港 |
 | Portal | Web 程序（MVC） | 前台站点 | 香港 → 大陆（连大陆只读副本） |
 
-**【与 VVPay 不同】** VVPay 的 Admin、Worker 对应这里的 Crm、Job；Collector 和 Portal 是新增的程序；VVPay 的 Adapters 类库对应 Collector 程序内部的适配器目录。
+**【与 VVPay 不同】** VVPay 的 Admin、Worker 对应这里的 Crm、Job；Collector 和 Portal 是新增的程序；VVPay 的 Adapters 类库对应 Collector 程序内部的数据源目录。
+
+### 1.1 模块
+
+全项目统一使用以下 9 个模块名。同一个模块在各项目中的目录名、命名空间、后台的 Area 名都使用同一个英文名。
+
+| 模块 | 目录名 | 范围 | 对应 PRD |
+|---|---|---|---|
+| 系统 | `Sys` | 账号、角色、权限、操作日志、登录日志、系统配置 | FR-028、FR-029 |
+| 基础数据 | `Reference` | 经济体、货币、指标字典 | FR-005、FR-006 |
+| 数据采集 | `Collect` | 数据源、采集任务、运行记录、快照、盯盘 | FR-001 ~ FR-004 |
+| 财经日历 | `Calendar` | 排期、公布值、事件、预期值、字段锁定、历史回填 | FR-007 ~ FR-012 |
+| 快讯 | `Flash` | 模板、生成、审核、汇总 | FR-013 ~ FR-017 |
+| 市场数据 | `Market` | 央行利率、参考汇率 | FR-018、FR-022 |
+| 新闻 | `News` | 新闻源、采集、去重、翻译、审核 | FR-019 ~ FR-021 |
+| 前台发布 | `Publish` | 对外视图、前台缓存刷新、前台冻结 | FR-023、FR-024 |
+| 运维 | `Ops` | 告警、质量校验、运营看板 | FR-025 ~ FR-027 |
+
+新增模块前先补充本表。
+
+**模块名不能与 .NET 的根命名空间（`System`、`Microsoft`）同名。** 否则命名空间中会出现 `.System` 这样的段（如 `Suanpan.Services.System`），在这些命名空间内写以 `System.` 开头的完整类型名时会解析到本项目的命名空间，导致编译失败。所以系统模块用 `Sys`（与表名前缀 `sys_` 一致），后台栏目的显示名仍为"系统管理"。
+
+### 1.2 项目内目录组织
+
+**每个项目内部都按模块、功能或同类分文件夹，不允许把文件平铺在项目根目录或一个大目录下。**
+
+```
+Suanpan.Core/
+├─ Common/                         跨模块的基础类型（如审计字段基类）
+└─ {模块}/                         如 Calendar/
+   ├─ Entities/                    实体
+   ├─ Enums/                       枚举
+   └─ Rules/                       领域规则（状态流转、利多利空判定等）
+
+Suanpan.Shared/
+├─ Auth/、Mvc/、Logging/、Paging/、Web/      按功能分
+└─ Messages/{模块}/                 消息契约
+
+Suanpan.Data/
+├─ SuanpanDbContext.cs
+├─ SuanpanDbContext.{模块}.cs       按模块拆分的 partial，只放该模块的 DbSet
+├─ Configurations/{模块}/           实体配置
+├─ Interceptors/                   审计字段拦截器
+├─ Migrations/                     迁移（由工具生成，不手工分目录）
+├─ PublicViews/                    对外视图定义与前台只读上下文（PortalReadDbContext）
+└─ Seed/                           初始化数据
+
+Suanpan.Infrastructure/
+└─ Redis/、Messaging/、Hangfire/、Http/      按组件分
+
+Suanpan.Services/
+├─ Common/                         跨模块服务（如时区换算、告警发送）
+└─ {模块}/                         如 Calendar/
+   ├─ IXxxService.cs、XxxService.cs
+   ├─ Models/                      Query、Row、Result 等 record
+   ├─ Jobs/                        本模块的 Hangfire 任务类
+   └─ Handlers/                    本模块的消息处理器
+
+Suanpan.Collector/
+├─ Sources/{经济体}/{机构}/          每个数据源的适配器、解析器和原始结构（如 Sources/US/Bls/）
+├─ Watch/                          盯盘后台服务
+├─ Execution/                      采集执行、重新解析
+└─ Handlers/                       消息处理器
+
+Suanpan.Job/
+├─ Registry/                       周期任务注册
+└─ Program.cs                      任务类和消息处理器放在 Services/{模块}/ 中
+
+Suanpan.Crm/                       目录组织见前端约定 §3.3
+Suanpan.Portal/                    目录组织见前端约定 §9.2
+
+tests/
+├─ Suanpan.Core.Tests/{模块}/                       与源码目录一一对应
+└─ Suanpan.Collector.Tests/Sources/{经济体}/{机构}/  测试代码 + Snapshots/ 快照样例
+```
+
+规则：
+- 命名空间与目录一致，如 `Suanpan.Services.Calendar`、`Suanpan.Collector.Sources.US.Bls`。
+- 跨模块共用的代码放 `Common/`，并按功能继续分文件夹；**不建 Utils、Helpers、Misc 这类没有主题的杂项目录**。
+- 一个文件夹里的文件超过约 15 个时，按子功能继续拆分。
+- 测试项目的目录与被测源码的目录一一对应。
 
 ---
 
@@ -183,19 +264,22 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 
 ### 6.6 表结构管理 **【与 VVPay 不同】**
 
-- 表结构只通过 EF Core Migrations 变更，Migrations 放在 `Suanpan.Data`。
-- 新增迁移：`dotnet ef migrations add <PascalCase 描述>`。
-- 上线：先用 `dotnet ef migrations script --idempotent` 导出可重复执行的 SQL，人工审核后，用迁移专用账号执行。
-- **生产环境禁止在程序启动时自动迁移。**
-- 对外视图（`v_pub_*`）和数据库账号授权也写在迁移里（用 `migrationBuilder.Sql`），不手工在库里改。
+完整规则见 **[数据库变更约定](database.md)**，这里只列要点：
+
+- 表结构只通过 EF Core Migrations 变更，Migrations 放在 `Suanpan.Data/Migrations/`；视图、授权、特殊索引也写在迁移里，不手工改库。
+- **预发布和生产环境禁止程序启动时自动迁移**；导出幂等 SQL 脚本，人工审核后用迁移专用账号执行。
+- 已在生产执行过的迁移不能修改或删除。
+- 每次数据库变更都必须兼容上一版程序，破坏性修改分两次发布（数据库变更约定 §5）。
 
 ### 6.7 数据库账号
 
 | 账号 | 使用方 | 权限 |
 |---|---|---|
-| `suanpan_migrator` | 上线执行迁移 | DDL |
-| `suanpan_app` | Collector、Job、Crm | 业务表读写；操作日志表只有 INSERT 和 SELECT（PRD BR-148） |
+| `suanpan_migrator` | 只用于执行迁移 | 业务表、视图、序列的所有者 |
+| `suanpan_app` | Collector、Job、Crm | 业务表读写；操作日志表只有 INSERT 和 SELECT（PRD BR-148）；`hangfire` schema 内可建表 |
 | `suanpan_portal` | Portal | 只能 SELECT `v_pub_*` 视图（PRD BR-121），并限制连接数（PRD NFR-014） |
+
+账号本身（包括密码）由运维创建，不写进迁移和代码仓库；授权方式见数据库变更约定 §2。
 
 ### 6.8 前台的数据读取
 
@@ -239,7 +323,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 
 本项目新增：
 
-- 消息契约放在 `Suanpan.Shared/Messages`，这样 Portal 不引用 Services 也能消费。
+- 消息契约放在 `Suanpan.Shared/Messages/{模块}/`，这样 Portal 不引用 Services 也能消费。
 - 命名：事件用过去式并以 `Event` 结尾，指令以 `Command` 结尾。
 
 当前的消息清单：
@@ -255,7 +339,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 
 ### 8.3 Hangfire
 
-- Server 只在 Job 中运行；Crm 只挂面板，路径 `/System/hangfire`，受权限码保护。
+- Server 只在 Job 中运行；Crm 只挂面板，路径 `/Sys/hangfire`，受权限码保护。
 - 用依赖注入的 `IRecurringJobManager` 注册任务，所有周期任务集中在 Job 的任务注册表中。
 - 任务模板：`[AutomaticRetry(Attempts = 0)]`（周期任务自带下一轮）+ 分布式锁防止多实例重入 + 业务幂等（重跑安全）。
 - **cron 一律按 UTC 配置。** **【与 VVPay 不同】** VVPay 使用 `TimeZoneInfo.Local`。
@@ -265,7 +349,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 
 ## 9. 采集（Collector）
 
-- **一个数据源一个适配器**（参考 VVPay.Adapters 的模式）。接入新的数据源 = 新增一个适配器类，加一行注册，主流程不改。
+- **一个数据源一个适配器**，放在 `Sources/{经济体}/{机构}/` 下。接入新的数据源 = 新增一个适配器目录，加一行注册，主流程不改。
 - **先存快照，再解析**：每次请求的原始响应先保存为快照（PRD FR-004），再交给解析器。
 - **解析器写成纯函数**：输入快照内容，输出标准化记录，不访问数据库和网络，这样可以直接用保存下来的快照写单元测试。
 - 每个数据源使用独立的命名 HttpClient，各自设置超时；User-Agent 带项目名和联系邮箱（PRD BR-005）。
@@ -311,7 +395,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 - `Suanpan.Core.Tests`：利多利空判定的全部分支、夏令时切换周的时区换算、数据质量校验规则（PRD NFR-133）。
 - `Suanpan.Collector.Tests`：每个解析器至少有一组基于真实快照的测试样例；官方页面改版后，把新快照补进样例。
 - 测试数据要带独立标记，测试结束后清理恢复原状（沿用 VVPay 的做法）。
-- GitHub Actions：构建、运行测试、依赖漏洞扫描、密钥扫描，任一项不通过都不能合并（PRD NFR-134）。
+- GitHub Actions：构建、运行测试、迁移校验（数据库变更约定 §6）、依赖漏洞扫描、密钥扫描，任一项不通过都不能合并（PRD NFR-134）。
 
 ---
 
@@ -329,3 +413,4 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | 版本 | 日期 | 修改人 | 内容 |
 |---|---|---|---|
 | v1.0 | 2026-10-17 | vivo.li / Claude | 初版：基于 VVPay 后端框架和 PRD v1.0.0.2 的技术决策整理 |
+| v1.1 | 2026-10-17 | vivo.li / Claude | 新增 §1.1 模块、§1.2 项目内目录组织（按模块和功能分文件夹，不平铺）；明确约定未覆盖的情况不参考 VVPay；系统模块名定为 `Sys`，并规定模块名不能与 .NET 根命名空间同名；§6.6、§6.7 的详细规则移到新的数据库变更约定 |

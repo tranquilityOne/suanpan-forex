@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.0 |
+| 版本 | v1.1 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 后台 Suanpan.Crm 和前台 Suanpan.Portal 的页面、视图、静态资源 |
 | 依据 | data-hub PRD v1.0.0.2（DEC-014、NFR-131、§10.10）；web-portal PRD v1.0.0.2（DEC-005 ~ DEC-007、NFR-120 ~ NFR-124）；VVPay `doc/frontend.md` |
@@ -10,6 +10,7 @@
 
 > 本文是写页面时必须遵守的约定。标有 **【与 VVPay 不同】** 的条目，是本项目有意偏离 VVPay 做法的地方。
 > 约定与代码不一致时，以本文为准修正代码；确需调整约定的，先改本文（走评审），再改代码。
+> **本文没有覆盖到的情况，不要参考 VVPay 或其他项目自行决定**，先提出问题，确认后补充进本文再实现。
 
 ---
 
@@ -62,35 +63,55 @@
 
 ### 3.2 Areas（栏目）
 
-每个栏目对应一个 Area，权限码格式为 `{area}:{controller}:{action}`（自动生成）。
+每个模块对应一个 Area，Area 名与后端约定 §1.1 的模块目录名一致；权限码格式为 `{area}:{controller}:{action}`（自动生成）。
 
 | Area | 栏目 | 主要页面 | 对应 PRD |
 |---|---|---|---|
-| System | 系统管理 | 用户、角色、权限、系统配置、操作日志、登录日志、任务面板 | FR-028、FR-029 |
-| Collect | 数据采集 | 数据源、采集任务、运行记录、快照与重新解析、盯盘状态 | FR-001 ~ FR-004 |
+| Sys | 系统管理 | 用户、角色、权限、系统配置、操作日志、登录日志、任务面板 | FR-028、FR-029 |
 | Reference | 基础数据 | 经济体、货币、指标字典 | FR-005、FR-006 |
+| Collect | 数据采集 | 数据源、采集任务、运行记录、快照与重新解析、盯盘状态 | FR-001 ~ FR-004 |
 | Calendar | 财经日历 | 日历事件、预期值录入、锁定冲突、历史回填 | FR-007 ~ FR-012 |
 | Flash | 快讯 | 快讯模板、待审快讯、快讯列表、定时汇总 | FR-013 ~ FR-017 |
 | Market | 市场数据 | 央行利率、参考汇率 | FR-018、FR-022 |
 | News | 新闻 | 新闻源、待审新闻、敏感词库 | FR-019 ~ FR-021 |
-| Ops | 运维 | 前台缓存与冻结开关、告警、质量校验规则、运营看板 | FR-023 ~ FR-027 |
+| Publish | 前台发布 | 前台缓存刷新、前台冻结开关 | FR-023、FR-024 |
+| Ops | 运维 | 告警、质量校验规则、运营看板 | FR-025 ~ FR-027 |
 
 - 根目录（不属于任何 Area）只放自助和匿名功能：登录（Account）、首页（Home）。
 - 跨栏目的链接必须显式写 `asp-area`。
 
 ### 3.3 文件组织
 
+按模块和功能分文件夹，不平铺（与后端约定 §1.2 一致）：
+
 ```
-Areas/{Area}/Controllers/XxxController.cs     [Area("{Area}")] + [PermMenu]
-Areas/{Area}/Views/_ViewImports.cshtml
-Areas/{Area}/Views/_ViewStart.cshtml          Layout = "_Layout"
-Areas/{Area}/Views/{Controller}/Index.cshtml  列表页
-                              /_Form.cshtml   新增和编辑共用的表单
-                              /Detail.cshtml  详情页
-                              /_Row.cshtml    HTMX 局部刷新用的行（如有）
-                              /_List.cshtml   HTMX 局部刷新用的列表区块（如有）
-Models/{域}ViewModels.cs                      ViewModel 按业务域分文件
+Suanpan.Crm/
+├─ Areas/{模块}/
+│  ├─ Controllers/XxxController.cs      [Area("{模块}")] + [PermMenu]
+│  └─ Views/
+│     ├─ _ViewImports.cshtml
+│     ├─ _ViewStart.cshtml               Layout = "_Layout"
+│     └─ {Controller}/
+│        ├─ Index.cshtml                 列表页
+│        ├─ _Form.cshtml                 新增和编辑共用的表单
+│        ├─ Detail.cshtml                详情页
+│        ├─ _Row.cshtml                  HTMX 局部刷新用的行（如有）
+│        └─ _List.cshtml                 HTMX 局部刷新用的列表区块（如有）
+├─ Controllers/                          只放根级的 Account、Home
+├─ Models/{模块}/                         ViewModel，每个 ViewModel 一个文件
+├─ TagHelpers/                           公共标签助手（§6）
+├─ Filters/                              全局过滤器
+├─ Auth/                                 权限约定、授权处理
+├─ Views/Shared/                         布局、公共局部视图（_Pager、_EmptyState 等）
+└─ wwwroot/
+   ├─ lib/                               第三方库（自托管）
+   ├─ css/
+   └─ js/
+      ├─ site.js                         公共脚本
+      └─ {模块}/                          页面脚本
 ```
+
+**【与 VVPay 不同】** VVPay 的 ViewModel 按业务域合并在一个文件里（如 `PayViewModels.cs`）；本项目按模块分文件夹，每个 ViewModel 一个文件。
 
 - 列表 ViewModel：筛选字段 + `PagedResult<T> Result`。
 - 表单 ViewModel：独立的 `XxxEditViewModel`，带 DataAnnotations 校验和 `[Display]` 中文名。
@@ -211,6 +232,31 @@ Models/{域}ViewModels.cs                      ViewModel 按业务域分文件
 - 字体用系统字体或自托管的可商用开源字体（如 SIL OFL 许可），不用 Google Fonts。
 - 利好、利空不能只靠颜色区分，必须同时配文字或符号（如 ▲ 利好美元 / ▼ 利空美元），满足 WCAG 2.1 AA。
 
+### 9.2 目录组织
+
+按功能分文件夹，不平铺：
+
+```
+Suanpan.Portal/
+├─ Controllers/                 按页面类型，一个功能一个控制器：Home、Calendar、Indicator、Flash、
+│                               CentralBank、Tools、MarketHours、News
+├─ Views/
+│  ├─ {控制器}/                  页面视图和该页面的局部视图
+│  └─ Shared/                   布局、公共部件（_Footer、_NotAdviceBadge 等，§16）
+├─ Models/{功能}/                ViewModel，每个 ViewModel 一个文件
+├─ Caching/                     输出缓存策略、缓存失效的消息处理器（§14）
+├─ Localization/                多语言路由
+├─ Resources/                   界面文案的 resx 文件（中、英）
+├─ Seo/                         sitemap、结构化数据（§13）
+└─ wwwroot/
+   ├─ lib/                      第三方库（自托管）
+   ├─ css/
+   └─ js/
+      ├─ site.js                公共脚本（时间显示、局部刷新出错处理）
+      ├─ calc/                  计算器公式（纯函数）及其测试
+      └─ {功能}/                 页面脚本（如 tools/ 下的计算器组件）
+```
+
 ## 10. 交互约定
 
 ### 10.1 HTMX（局部刷新）
@@ -311,3 +357,4 @@ Models/{域}ViewModels.cs                      ViewModel 按业务域分文件
 | 版本 | 日期 | 修改人 | 内容 |
 |---|---|---|---|
 | v1.0 | 2026-10-17 | vivo.li / Claude | 初版：基于 VVPay 前端框架、data-hub 与 web-portal PRD v1.0.0.2 的决策整理 |
+| v1.1 | 2026-10-17 | vivo.li / Claude | §3.2 新增 Publish Area，Area 名与模块名统一，系统管理的 Area 名为 `Sys`；§3.3 后台目录按模块分文件夹；新增 §9.2 前台目录组织；明确约定未覆盖的情况不参考 VVPay |
