@@ -36,7 +36,7 @@ src/Suanpan.Collector       程序：盯盘、采集、重新解析
 src/Suanpan.Job             程序：Hangfire 定时任务、快讯生成、告警
 src/Suanpan.Crm             程序：后台
 src/Suanpan.Portal          程序：前台（只读数据库）
-tests/                      Suanpan.Core.Tests、Suanpan.Collector.Tests
+tests/                      Suanpan.Core.Tests、Suanpan.Data.Tests、Suanpan.Collector.Tests
 deploy/                     Dockerfile、docker-compose
 ```
 

@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.4 |
+| 版本 | v1.5 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -38,6 +38,7 @@ suanpan-forex/
 │  └─ Suanpan.Portal       【程序】前台站点（MVC），只读数据库账号
 ├─ tests/
 │  ├─ Suanpan.Core.Tests           领域规则测试
+│  ├─ Suanpan.Data.Tests           数据层测试（审计拦截器、实体配置约定）
 │  └─ Suanpan.Collector.Tests      解析器测试（用保存的官方页面快照当样例）
 └─ deploy/                         Dockerfile、docker-compose
 ```
@@ -122,6 +123,7 @@ Suanpan.Portal/                    目录组织见前端约定 §9.2
 
 tests/
 ├─ Suanpan.Core.Tests/{模块}/                       与源码目录一一对应
+├─ Suanpan.Data.Tests/                             与 Suanpan.Data 的目录一一对应
 └─ Suanpan.Collector.Tests/Sources/{经济体}/{机构}/  测试代码 + Snapshots/ 快照样例
 ```
 
@@ -171,7 +173,7 @@ Portal                 ──►  Data（只用对外视图的只读上下文）
 
 | 文件 | 作用 |
 |---|---|
-| `global.json` | 锁定 .NET SDK 版本（10.0.101，允许滚动到更高的特性版本） |
+| `global.json` | 锁定 .NET SDK 版本（10.0.101，允许滚动到更高的特性版本）；`dotnet test` 使用 Microsoft.Testing.Platform 运行器 |
 | `Directory.Build.props` | 所有项目共用的编译设置：`net10.0`、可空引用、隐式 using |
 | `Directory.Packages.props` | 集中管理第三方包版本 |
 | `nuget.config` | 包源只用 nuget.org，不继承本机配置的其他包源 |
@@ -245,6 +247,11 @@ Portal 没有登录和权限体系。
 - 列名一律 `snake_case`，通过 `HasColumnName` 显式指定。
 - **实体不写导航属性，数据库不建物理外键**，关联列加普通索引，查询时显式 join（沿用 VVPay）。
 - 每张业务表都有审计四件套 `created_by`、`created_at`、`updated_by`、`updated_at`，由审计字段拦截器自动填充，业务代码不手工赋值。机器生成的派生表例外。
+  - 实体继承 `Suanpan.Core.Common.Auditing` 中的 `AuditedEntity`（四件套）或 `CreationAuditedEntity`（只有创建字段，如关联表）；实体配置中调用 `HasAuditColumns()` 或 `HasCreationAuditColumns()` 映射列。
+  - `created_by`、`updated_by` 为 `varchar(64)`，存后台账号的登录名；程序自动写入时存程序名（`collector`、`job`）。操作人由 `IAuditActorProvider` 提供：Collector、Job 用固定的程序名；Crm 注册自己的实现，返回登录名。
+  - 新增时只填 `created_by`、`created_at`（非空），`updated_by`、`updated_at` 为空；修改时只填修改字段，创建字段不随修改变化。
+  - `ExecuteUpdateAsync`、`ExecuteSqlAsync` 不经过拦截器，需要在 `SetProperty` 或 SQL 中自行写 `updated_by`、`updated_at`。
+- `SuanpanDbContext` 只扫描 `Configurations/` 下的配置；`PortalReadDbContext` 只扫描 `PublicViews/` 下的配置。`Suanpan.Data.Tests` 中的约定测试会检查：表名、视图名、列名都是 snake_case，没有导航属性和外键。
 
 ### 6.2 表命名
 
@@ -387,7 +394,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 ## 10. 时间与时区
 
 - 服务器时区统一设为 UTC；数据库只存 UTC。
-- 代码中一律使用 `DateTime.UtcNow`，**禁止使用 `DateTime.Now`**。
+- 代码中一律使用 `DateTime.UtcNow`，**禁止使用 `DateTime.Now`**。需要在测试中控制时间的地方，注入 `TimeProvider`（`AddSuanpanData` 已注册 `TimeProvider.System`），取 `GetUtcNow().UtcDateTime`。
 - 官方发布排期按机构当地时间解析，用 IANA 时区（如 `America/New_York`）换算成 UTC，夏令时由时区库处理（PRD BR-037）。
 - 转换成用户时区只在展示层做（后台按操作者时区，前台按访客时区），见前端约定。
 - 解析和格式化数字一律使用 `CultureInfo.InvariantCulture`。
@@ -436,6 +443,8 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 
 - `Suanpan.Core.Tests`：利多利空判定的全部分支、夏令时切换周的时区换算、数据质量校验规则（PRD NFR-133）。
 - `Suanpan.Collector.Tests`：每个解析器至少有一组基于真实快照的测试样例；官方页面改版后，把新快照补进样例。
+- `Suanpan.Data.Tests`：审计拦截器（用 EF Core InMemory）、实体配置约定（表名、列名、导航属性、外键）。不连接真实数据库。
+- 测试框架为 xUnit v3，通过 Microsoft.Testing.Platform 运行（`global.json` 中设置），测试项目的 `OutputType` 为 `Exe`。
 - 测试数据要带独立标记，测试结束后清理恢复原状（沿用 VVPay 的做法）。
 - GitHub Actions：构建、运行测试、迁移校验（数据库变更约定 §6）、依赖漏洞扫描、密钥扫描，任一项不通过都不能合并（PRD NFR-134）。
 
@@ -464,3 +473,4 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | v1.2 | 2026-10-17 | vivo.li / Claude | 新增 §3.1 工程配置（统一编译设置、集中管理包版本、包源只用 nuget.org、程序项目使用 Web SDK、警告不视为错误、代码格式）；§1 目录树补充解决方案文件和工程配置文件 |
 | v1.3 | 2026-10-17 | vivo.li / Claude | §3 写明 PostgreSQL 17、Valkey 8.1（代替 Redis 服务端）、RabbitMQ 4.1（PRD DEC-022）；§3.1 补充 `.gitattributes`；§14 补充 docker-compose 的用法、数据库初始化脚本，以及复用本机已有 Redis、RabbitMQ 的做法 |
 | v1.4 | 2026-10-17 | vivo.li / Claude | §12 补充配置的优先级、`SUANPAN__` 环境变量的绑定方式、共用的 user-secrets 和配置键清单（新增 `ConnectionStrings:Portal`、`Redis:InstanceName`）；§14 补充本地端口和 README |
+| v1.5 | 2026-10-17 | vivo.li / Claude | 新增测试项目 `Suanpan.Data.Tests`（§1、§1.2、§13）；§6.1 写明审计字段的基类、类型、填充规则和不经过拦截器的情况；§10 补充 `TimeProvider`；§3.1、§13 补充测试运行器 |
