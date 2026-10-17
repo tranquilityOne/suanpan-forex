@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.1（草稿） |
+| 版本 | v0.2（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -429,9 +429,10 @@ Suanpan.Core/Sys/
 ├─ Enums/         UserStatus、PermType、ConfigValueType、LoginStage
 └─ Rules/         PasswordPolicy、LockoutRule、UserStatusRule
 
-Suanpan.Shared/Auth/      AuthSchemes、SuanpanClaimTypes、ICurrentUser、HasPermission 三件套、
-                          PermMenu / PermName 特性、PermCodeHelper
+Suanpan.Shared/Auth/      AuthSchemes、SuanpanClaimTypes、ICurrentUser、HttpContextCurrentUser、
+                          HasPermission 三件套、PermMenu / PermName 特性、PermCodeHelper
 Suanpan.Shared/Mvc/       OpLogAttribute、ManageResult
+Suanpan.Shared/Paging/    PagedResult
 
 Suanpan.Data/
 ├─ SuanpanDbContext.Sys.cs
@@ -650,3 +651,4 @@ public interface IConfigService
 | 版本 | 日期 | 修改人 | 内容 |
 |---|---|---|---|
 | v0.1 | 2026-10-17 | vivo.li / Claude | 初稿；模块名由 System 改为 Sys（文件名同步改为 sys.md） |
+| v0.2 | 2026-10-17 | vivo.li / Claude | ENG-002.1 实施：§8.1 补充 `HttpContextCurrentUser`、`PagedResult` 的位置。`ICurrentUser` 只有 `UserId`、`UserName`，未登录时为空，不再回落为 "system"（审计字段的程序名由数据层的 `IAuditActorProvider` 提供） |

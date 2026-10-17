@@ -4,4 +4,9 @@
     <ProjectReference Include="..\Suanpan.Core\Suanpan.Core.csproj" />
   </ItemGroup>
 
+  <!-- 鉴权基础组件（HasPermission 特性、动态 Policy、当前用户）需要 ASP.NET Core 共享框架 -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
 </Project>

@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.5 |
+| 版本 | v1.6 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -38,6 +38,7 @@ suanpan-forex/
 │  └─ Suanpan.Portal       【程序】前台站点（MVC），只读数据库账号
 ├─ tests/
 │  ├─ Suanpan.Core.Tests           领域规则测试
+│  ├─ Suanpan.Shared.Tests         鉴权基础组件测试（权限码生成、动态 Policy）
 │  ├─ Suanpan.Data.Tests           数据层测试（审计拦截器、实体配置约定）
 │  └─ Suanpan.Collector.Tests      解析器测试（用保存的官方页面快照当样例）
 └─ deploy/                         Dockerfile、docker-compose
@@ -123,6 +124,7 @@ Suanpan.Portal/                    目录组织见前端约定 §9.2
 
 tests/
 ├─ Suanpan.Core.Tests/{模块}/                       与源码目录一一对应
+├─ Suanpan.Shared.Tests/                           与 Suanpan.Shared 的目录一一对应
 ├─ Suanpan.Data.Tests/                             与 Suanpan.Data 的目录一一对应
 └─ Suanpan.Collector.Tests/Sources/{经济体}/{机构}/  测试代码 + Snapshots/ 快照样例
 ```
@@ -443,7 +445,9 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 
 - `Suanpan.Core.Tests`：利多利空判定的全部分支、夏令时切换周的时区换算、数据质量校验规则（PRD NFR-133）。
 - `Suanpan.Collector.Tests`：每个解析器至少有一组基于真实快照的测试样例；官方页面改版后，把新快照补进样例。
+- `Suanpan.Shared.Tests`：权限码生成、动态 Policy、分页等 Shared 中的组件。
 - `Suanpan.Data.Tests`：审计拦截器（用 EF Core InMemory）、实体配置约定（表名、列名、导航属性、外键）。不连接真实数据库。
+- 每个类库对应一个测试项目（`Suanpan.{类库}.Tests`），需要测试的类库还没有测试项目时，先新建再写测试。
 - 测试框架为 xUnit v3，通过 Microsoft.Testing.Platform 运行（`global.json` 中设置），测试项目的 `OutputType` 为 `Exe`。
 - 测试数据要带独立标记，测试结束后清理恢复原状（沿用 VVPay 的做法）。
 - GitHub Actions：构建、运行测试、迁移校验（数据库变更约定 §6）、依赖漏洞扫描、密钥扫描，任一项不通过都不能合并（PRD NFR-134）。
@@ -474,3 +478,4 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | v1.3 | 2026-10-17 | vivo.li / Claude | §3 写明 PostgreSQL 17、Valkey 8.1（代替 Redis 服务端）、RabbitMQ 4.1（PRD DEC-022）；§3.1 补充 `.gitattributes`；§14 补充 docker-compose 的用法、数据库初始化脚本，以及复用本机已有 Redis、RabbitMQ 的做法 |
 | v1.4 | 2026-10-17 | vivo.li / Claude | §12 补充配置的优先级、`SUANPAN__` 环境变量的绑定方式、共用的 user-secrets 和配置键清单（新增 `ConnectionStrings:Portal`、`Redis:InstanceName`）；§14 补充本地端口和 README |
 | v1.5 | 2026-10-17 | vivo.li / Claude | 新增测试项目 `Suanpan.Data.Tests`（§1、§1.2、§13）；§6.1 写明审计字段的基类、类型、填充规则和不经过拦截器的情况；§10 补充 `TimeProvider`；§3.1、§13 补充测试运行器 |
+| v1.6 | 2026-10-17 | vivo.li / Claude | 新增测试项目 `Suanpan.Shared.Tests`（§1、§1.2、§13）；§13 明确每个类库对应一个测试项目 |
