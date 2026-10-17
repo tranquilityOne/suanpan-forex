@@ -8,6 +8,7 @@
 
 | 要了解 | 看哪里 |
 |---|---|
+| 本地环境怎么搭、程序怎么运行、配置怎么设 | `README.md` |
 | 要做什么（需求、业务规则、验收标准） | `docs/product/data-hub/prd.md`（采集与后台）、`docs/product/web-portal/prd.md`（前台） |
 | 全局怎么写（后端） | `docs/conventions/backend.md` |
 | 全局怎么写（前端，含后台和前台） | `docs/conventions/frontend.md` |
@@ -47,6 +48,7 @@ deploy/                     Dockerfile、docker-compose
 cp deploy/.env.example deploy/.env                    # 首次使用：复制后填写密码（.env 不提交）
 docker compose -f deploy/docker-compose.yml up -d     # 启动 PostgreSQL、Redis（Valkey）、RabbitMQ
 docker compose -f deploy/docker-compose.yml up -d postgres   # 本机已有 Redis、RabbitMQ 时只启动 PostgreSQL
+dotnet user-secrets list --project src/Suanpan.Crm   # 查看本地配置了哪些键（四个程序共用一份 user-secrets）
 dotnet build                                          # 编译整个解决方案
 dotnet test                                           # 运行全部测试
 dotnet run --project src/Suanpan.Crm                  # 运行后台（其他程序同理）

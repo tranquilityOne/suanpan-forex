@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.3 |
+| 版本 | v1.4 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -409,9 +409,26 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 ## 12. 配置与密钥
 
 - 基础设施连接串（PostgreSQL、Redis、RabbitMQ）和加密密钥：`appsettings.json` 只放占位值，实际值通过环境变量注入，格式为 `SUANPAN__节__键`；本地开发用 user-secrets。
+  - `appsettings.json` 中的密码、连接串、密钥一律留空；不涉密的默认值（如 `Redis:InstanceName`、`Auth:IdleTimeoutMinutes`）直接写在 `appsettings.json`。
+  - 各程序在 `Program.cs` 中调用 `builder.Configuration.AddEnvironmentVariables(prefix: "SUANPAN__")`。配置的优先级从低到高：`appsettings.json` → `appsettings.{环境}.json` → user-secrets（只在 Development 环境）→ 环境变量 → 命令行参数 → `SUANPAN__` 环境变量。
+  - 四个程序共用一份 user-secrets：`Directory.Build.props` 给 Web SDK 项目统一设置 `UserSecretsId` 为 `suanpan-forex`。
 - **仓库里不得出现任何真实密码、连接串和密钥**；CI 做密钥扫描（PRD NFR-033、NFR-134）。**【与 VVPay 不同】** VVPay 的 appsettings 中有明文密码。
 - 初始管理员密码在首次部署时通过环境变量设置，不硬编码在种子数据里。
 - 业务动态开关放 `sys_config` 表（60 秒缓存，变更后立即失效；键不存在时用代码默认值）。基础设施配置不放 `sys_config`，因为它自身依赖数据库。
+
+配置键（新增配置键时补充本表）：
+
+| 键 | 说明 | Crm | Job | Collector | Portal |
+|---|---|---|---|---|---|
+| `ConnectionStrings:Main` | 应用账号 `suanpan_app` 的连接串 | ✓ | ✓ | ✓ | |
+| `ConnectionStrings:Portal` | 前台只读账号 `suanpan_portal` 的连接串；中期改连大陆只读副本时只改这个值（PRD BR-119） | | | | ✓ |
+| `Redis:Configuration` | StackExchange.Redis 连接串（含密码） | ✓ | ✓ | ✓ | 可选 |
+| `Redis:InstanceName` | 键前缀，默认 `suanpan:`；与其他项目共用 Redis 时靠它隔离 | ✓ | ✓ | ✓ | 可选 |
+| `RabbitMq:Uri` | AMQP URI，虚拟主机为 `suanpan`，如 `amqp://用户:密码@主机:5672/suanpan` | ✓ | ✓ | ✓ | ✓ |
+| `Security:EncryptionKey` | AES 加密密钥，TOTP 密钥和数据源凭据共用 | ✓ | | ✓ | |
+| `Security:BootstrapAllowedIps` | 后台 IP 白名单的应急放行 IP，逗号分隔 | ✓ | | | |
+| `Seed:AdminUsername`、`Seed:AdminPassword` | 初始管理员（sys 设计 §3.4） | ✓ | | | |
+| `Auth:IdleTimeoutMinutes` | 后台会话空闲超时，默认 30 | ✓ | | | |
 
 ---
 
@@ -433,6 +450,8 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 - 不依赖只有境外才有的云服务，方便迁移（PRD NFR-120）。
 - Windows 本地开发：编译前先停掉正在运行的 Suanpan.* 进程，否则 bin 目录下的 DLL 会被锁住（VVPay 踩过）。
 - 本地连接串用 `127.0.0.1`，不用 `localhost`（VVPay 的经验）。
+- 本地端口固定（`Properties/launchSettings.json`，只用 http，只绑定 `127.0.0.1`）：Crm 5100、Portal 5200、Job 5300、Collector 5400。
+- 从零到本地运行的完整步骤见仓库根目录的 `README.md`。
 
 ---
 
@@ -444,3 +463,4 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | v1.1 | 2026-10-17 | vivo.li / Claude | 新增 §1.1 模块、§1.2 项目内目录组织（按模块和功能分文件夹，不平铺）；明确约定未覆盖的情况不参考 VVPay；系统模块名定为 `Sys`，并规定模块名不能与 .NET 根命名空间同名；§6.6、§6.7 的详细规则移到新的数据库变更约定 |
 | v1.2 | 2026-10-17 | vivo.li / Claude | 新增 §3.1 工程配置（统一编译设置、集中管理包版本、包源只用 nuget.org、程序项目使用 Web SDK、警告不视为错误、代码格式）；§1 目录树补充解决方案文件和工程配置文件 |
 | v1.3 | 2026-10-17 | vivo.li / Claude | §3 写明 PostgreSQL 17、Valkey 8.1（代替 Redis 服务端）、RabbitMQ 4.1（PRD DEC-022）；§3.1 补充 `.gitattributes`；§14 补充 docker-compose 的用法、数据库初始化脚本，以及复用本机已有 Redis、RabbitMQ 的做法 |
+| v1.4 | 2026-10-17 | vivo.li / Claude | §12 补充配置的优先级、`SUANPAN__` 环境变量的绑定方式、共用的 user-secrets 和配置键清单（新增 `ConnectionStrings:Portal`、`Redis:InstanceName`）；§14 补充本地端口和 README |

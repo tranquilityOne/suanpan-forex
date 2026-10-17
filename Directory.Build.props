@@ -7,4 +7,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- 四个程序（Web SDK）共用一份本地 user-secrets，见 docs/conventions/backend.md §12 -->
+  <PropertyGroup Condition="'$(UsingMicrosoftNETSdkWeb)' == 'true'">
+    <UserSecretsId>suanpan-forex</UserSecretsId>
+  </PropertyGroup>
+
 </Project>
