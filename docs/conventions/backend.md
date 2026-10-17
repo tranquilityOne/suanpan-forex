@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.2 |
+| 版本 | v1.3 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -155,11 +155,11 @@ Portal                 ──►  Data（只用对外视图的只读上下文）
 | 运行时 | .NET 10（LTS） | 沿用 VVPay |
 | Web | ASP.NET Core MVC（Controller + Razor） | 后台页面不用 Razor Pages / Minimal API |
 | ORM | EF Core 10 + Npgsql | **【与 VVPay 不同】** VVPay 为 Pomelo + MySQL |
-| 数据库 | PostgreSQL | **【与 VVPay 不同】** PRD DEC-009 |
+| 数据库 | PostgreSQL 17 | **【与 VVPay 不同】** PRD DEC-009、DEC-022 |
 | 表结构管理 | EF Core Migrations | **【与 VVPay 不同】** VVPay 为手写 SQL，见 §6.6 |
 | 定时任务 | Hangfire + Hangfire.PostgreSql | Server 只在 Job 中运行 |
-| 缓存 / 锁 / 限流 | Redis（StackExchange.Redis） | 沿用 VVPay |
-| 跨进程消息 | RabbitMQ（RabbitMQ.Client） | 沿用 VVPay 的事件总线 |
+| 缓存 / 锁 / 限流 | Redis 协议（StackExchange.Redis）；服务端用 Valkey 8.1 | 接入方式沿用 VVPay；服务端见 PRD DEC-022 |
+| 跨进程消息 | RabbitMQ 4.1（RabbitMQ.Client） | 沿用 VVPay 的事件总线 |
 | 校验 | DataAnnotations | 后台表单；本项目没有对外 API |
 | 权限 | 自建 RBAC + `IAuthorizationHandler` | 不用 ASP.NET Identity |
 | 日志 | 内置 `ILogger`，JSON 格式输出 | Serilog 为可选项 |
@@ -176,6 +176,7 @@ Portal                 ──►  Data（只用对外视图的只读上下文）
 | `Directory.Packages.props` | 集中管理第三方包版本 |
 | `nuget.config` | 包源只用 nuget.org，不继承本机配置的其他包源 |
 | `.editorconfig` | 代码格式 |
+| `.gitattributes` | `*.sh` 固定使用 LF 换行（在容器内执行） |
 | `.gitignore` | 忽略编译输出、IDE 文件、`.env`、`.env.*`（`.env.example` 除外）、`appsettings.Local.json`、`appsettings.*.Local.json` |
 
 - **编译设置只写在 `Directory.Build.props`**：各项目的 csproj 只写 SDK 类型、项目引用和包引用。个别项目确需不同设置时，在该项目中单独覆盖，并注释原因。
@@ -425,7 +426,10 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 
 ## 14. 部署与开发环境
 
-- 每个程序一个 Dockerfile；`deploy/docker-compose.yml` 包含 PostgreSQL、Redis、RabbitMQ 和四个程序，用于本地联调和第一阶段部署。
+- `deploy/docker-compose.yml` 用于本地联调和第一阶段部署，包含依赖服务 PostgreSQL 17、Valkey 8.1（Redis 协议）、RabbitMQ 4.1（含管理界面，虚拟主机 `suanpan`）；四个程序各有一个 Dockerfile，由 ENG-006.3 加入。
+- 首次使用时把 `deploy/.env.example` 复制为 `deploy/.env` 并填写密码，`.env` 不提交。端口只绑定 `127.0.0.1`，与本机已有的服务冲突时在 `.env` 中修改。
+- PostgreSQL 首次启动时，由 `deploy/postgres/init/` 中的脚本创建业务库和三个数据库账号（数据库变更约定 §2.2）。脚本只在数据卷为空时执行，修改账号或密码要先删除数据卷（`docker compose -f deploy/docker-compose.yml down -v`）。
+- 开发机上已有 Redis、RabbitMQ 时，只启动 PostgreSQL（`docker compose -f deploy/docker-compose.yml up -d postgres`），复用已有的服务；与其他项目共用时，RabbitMQ 使用独立的虚拟主机 `suanpan`，Redis 的键加前缀 `suanpan:`。
 - 不依赖只有境外才有的云服务，方便迁移（PRD NFR-120）。
 - Windows 本地开发：编译前先停掉正在运行的 Suanpan.* 进程，否则 bin 目录下的 DLL 会被锁住（VVPay 踩过）。
 - 本地连接串用 `127.0.0.1`，不用 `localhost`（VVPay 的经验）。
@@ -439,3 +443,4 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | v1.0 | 2026-10-17 | vivo.li / Claude | 初版：基于 VVPay 后端框架和 PRD v1.0.0.2 的技术决策整理 |
 | v1.1 | 2026-10-17 | vivo.li / Claude | 新增 §1.1 模块、§1.2 项目内目录组织（按模块和功能分文件夹，不平铺）；明确约定未覆盖的情况不参考 VVPay；系统模块名定为 `Sys`，并规定模块名不能与 .NET 根命名空间同名；§6.6、§6.7 的详细规则移到新的数据库变更约定 |
 | v1.2 | 2026-10-17 | vivo.li / Claude | 新增 §3.1 工程配置（统一编译设置、集中管理包版本、包源只用 nuget.org、程序项目使用 Web SDK、警告不视为错误、代码格式）；§1 目录树补充解决方案文件和工程配置文件 |
+| v1.3 | 2026-10-17 | vivo.li / Claude | §3 写明 PostgreSQL 17、Valkey 8.1（代替 Redis 服务端）、RabbitMQ 4.1（PRD DEC-022）；§3.1 补充 `.gitattributes`；§14 补充 docker-compose 的用法、数据库初始化脚本，以及复用本机已有 Redis、RabbitMQ 的做法 |

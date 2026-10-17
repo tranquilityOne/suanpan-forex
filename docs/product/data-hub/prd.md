@@ -10,7 +10,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 文档版本 | v1.0.0.4 |
+| 文档版本 | v1.0.0.5 |
 | 状态 | 草稿 |
 | 产品类型 | 金融（财经资讯与工具，不涉及交易与资金） |
 | 创建日期 | 2026-10-17 |
@@ -32,6 +32,7 @@
 | v1.0.0.2 | 2026-10-17 | vivo.li / Claude | 修订 | 单体解决方案（Collector、Job、Crm、Portal）；Collector 独立程序；前台直接查询数据库对外视图，FR-023 改为前台数据可见性与缓存刷新；FR-024 总开关改为前台冻结；HTMX 按需引入；后台前端四项优化 | Added: DEC-019 ~ DEC-021、BR-152、NFR-014、RISK-016；Changed: FR-023、FR-024、BR-035 等，详见 §11；Removed: 发布目标 | §3、§4、§5、§6、§7、§8、§9、§10、§11、§12、§13 |
 | v1.0.0.3 | 2026-10-17 | vivo.li / Claude | 修订 | 补充工程任务清单（项目创建、框架初始化、开发环境、持续集成、数据源适配器、香港环境部署） | Added: ENG-001 ~ ENG-010；Changed: §10.1、§10.5 说明、§12 | §10.1、§10.5、§11、§12 |
 | v1.0.0.4 | 2026-10-17 | vivo.li / Claude | 修订 | 回填 Linear 工单编号（JAN-5 ~ JAN-43）；Linear 改为只放摘要和链接 | Changed: §10.5 两张追踪表的"Linear 工单"列、DEC-006、文首说明、§1 文档位置 | §1、§10.5、§10.6、§11、§12 |
+| v1.0.0.5 | 2026-10-17 | vivo.li / Claude | 修订 | 确定依赖服务版本：PostgreSQL 17、Valkey 8.1（Redis 协议兼容）、RabbitMQ 4.1；登记服务端许可证 | Added: DEC-022、§13.2.4 三项服务端组件；Changed: NFR-130、§10.10 技术基础表、§12 第 1、10 项 | §7.15、§10.6、§10.10、§11、§12、§13.2.4 |
 
 ---
 
@@ -1946,7 +1947,7 @@ graph TD
 
 | NFR编号 | 要求 | 说明 |
 |---|---|---|
-| NFR-130 | 技术栈：.NET 10（LTS）、ASP.NET Core MVC、EF Core 10 + Npgsql、PostgreSQL、Hangfire（PostgreSQL 存储，Server 只在 Job 中运行）、Redis（缓存与分布式锁）、RabbitMQ（跨进程事件）。单体解决方案，包含 Collector、Job、Crm、Portal 四个可独立部署的程序 | DEC-001、DEC-009、DEC-016、DEC-019 |
+| NFR-130 | 技术栈：.NET 10（LTS）、ASP.NET Core MVC、EF Core 10 + Npgsql、PostgreSQL 17、Hangfire（PostgreSQL 存储，Server 只在 Job 中运行）、Redis 协议的缓存与分布式锁（服务端用 Valkey 8.1）、RabbitMQ 4.1（跨进程事件）。单体解决方案，包含 Collector、Job、Crm、Portal 四个可独立部署的程序 | DEC-001、DEC-009、DEC-016、DEC-019、DEC-022 |
 | NFR-131 | 后台（Crm）前端：服务端渲染（Razor + Areas），UI 用 Tabler 1.4 和 Tabler Icons；表单客户端校验用 jQuery + jquery-validation-unobtrusive，且必须在页面上实际生效；HTMX 只用于 §10.10 列出的几类页面，其余页面整页刷新；后台不用 Alpine.js；不使用 React、Vue 和前端构建工具；全部静态资源自托管，不依赖 CDN | DEC-014，沿用 VVPay `doc/frontend.md` 的规范 |
 | NFR-132 | 表结构用 EF Core Migrations 管理；上线前导出可重复执行的 SQL 脚本，经人工审核后执行 | DEC-015 |
 | NFR-133 | 自动化测试：核心规则（BR-074 利多利空判定、BR-037 时区与夏令时换算、BR-133 质量校验）和每个解析器都有自动化测试；解析器测试用保存下来的官方页面快照作为样例 | 每次构建运行 |
@@ -2340,6 +2341,7 @@ stateDiagram-v2
 | DEC-019 | 单体解决方案：一个仓库、一个解决方案，Collector、Job、Crm、Portal 四个程序共享类库，可分开部署 | 拆成多个仓库或微服务 | 快速上线；共享代码，一次构建 | 四个程序需同版本发布 | 已确认（2026-10-17） |
 | DEC-020 | Collector 是独立程序，负责盯盘、采集执行和重新解析；Job 只运行 Hangfire 定时任务、快讯生成和告警；两者通过 RabbitMQ 通信 | Collector 做成类库，由 Job 执行 | 采集和盯盘与其他定时任务隔离，互不影响 | 多部署一个进程；定时采集由 Job 通过消息下发给 Collector | 已确认（2026-10-17） |
 | DEC-021 | 前台（Portal）用只读数据库账号直接查询对外视图 | 前台只读取 data-hub 发布的数据文件 | 开发最省事，便于快速上线 | FR-023 改为"前台数据可见性与缓存刷新"；前台迁回大陆时需部署只读副本（BR-119、RISK-013）；需防止前台拖累后台（NFR-014） | 已确认（2026-10-17） |
+| DEC-022 | 依赖服务版本：PostgreSQL 17；缓存服务端用 Valkey 8.1（Redis 协议兼容，代码仍按 Redis 编写）；RabbitMQ 4.1 | PostgreSQL 18；Redis 8（RSALv2 / SSPLv1 / AGPLv3）或 Redis 7.4（RSALv2 / SSPLv1） | PostgreSQL 17 成熟，前台迁回大陆时云厂商的托管数据库普遍支持；Valkey 为 BSD-3 许可证，避开 Redis 新许可证的法务问题 | 迁回大陆时，托管缓存服务需兼容 Redis 7.2 协议；开发机上可复用已有的 Redis 和 RabbitMQ（后端约定 §14） | 已确认（2026-10-17） |
 
 ### 10.7 假设日志
 
@@ -2443,12 +2445,12 @@ stateDiagram-v2
 | 运行时 | .NET 10（LTS） | 沿用 |
 | Web 框架 | ASP.NET Core MVC + Areas | 沿用 |
 | ORM | EF Core 10 + Npgsql | 改动（VVPay 为 Pomelo + MySQL） |
-| 数据库 | PostgreSQL | 改动（DEC-009） |
+| 数据库 | PostgreSQL 17 | 改动（DEC-009、DEC-022） |
 | 表结构管理 | EF Core Migrations + 导出幂等 SQL 审核 | 改动（VVPay 为 SQL-first，DEC-015） |
 | 定时任务 | Hangfire（PostgreSQL 存储），Server 只在 Job 中运行，面板挂在 Crm 并受权限保护 | 沿用接入方式，存储改为 PostgreSQL |
 | 秒级盯盘 | Collector 程序中的常驻后台服务 | 新增（DEC-017、DEC-020） |
-| 缓存与分布式锁 | Redis | 沿用 |
-| 跨进程事件 | RabbitMQ（延时重试、死信队列） | 沿用（DEC-016） |
+| 缓存与分布式锁 | Redis 协议（服务端用 Valkey 8.1） | 沿用接入方式，服务端改为 Valkey（DEC-022） |
+| 跨进程事件 | RabbitMQ 4.1（延时重试、死信队列） | 沿用（DEC-016） |
 | 后台前端（Crm） | Razor + Tabler 1.4 + Tabler Icons；jQuery + jquery-validation-unobtrusive 做表单校验；HTMX 按需引入（见下文"后台前端约定"）；不用 React、Vue 和前端构建工具；静态资源全部自托管 | 沿用规范（DEC-014）；HTMX 为新增 |
 | 前台（Portal） | ASP.NET Core MVC + Razor 服务端渲染；只读数据库账号查询对外视图；输出缓存 + CDN 缓存；交互另行约定（见 web-portal PRD） | 新增（DEC-021） |
 | 部署 | Docker + docker-compose | 新增（VVPay 没有） |
@@ -2523,9 +2525,28 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 ## 11. 变更影响分析
 
-> 11.1 为最新一次变更；之前的变更按时间倒序列在 11.2 ~ 11.4。
+> 11.1 为最新一次变更；之前的变更按时间倒序列在 11.2 ~ 11.5。
 
-### 11.1 最新变更：CHG-004（v1.0.0.4）
+### 11.1 最新变更：CHG-005（v1.0.0.5）
+
+| 项目 | 内容 |
+|---|---|
+| 变更编号 | CHG-005 |
+| 变更类型 | 修订（v1.0.0.4 → v1.0.0.5，初稿阶段只动第 4 位） |
+| 变更描述 | 实施 ENG-006.1（JAN-45）时确定依赖服务版本：PostgreSQL 17、Valkey 8.1（代替 Redis 服务端）、RabbitMQ 4.1，并登记服务端许可证 |
+| 变更原因 | 搭建 docker-compose 需要确定镜像版本；§13.2.4 原先只登记了客户端库，没有登记服务端 |
+| 提出人 | vivo.li |
+| 提出日期 | 2026-10-17 |
+
+**Diff 记录**
+
+- **Added**：DEC-022；§13.2.4 新增 PostgreSQL 17、Valkey 8.1、RabbitMQ 4.1 三项服务端组件。
+- **Changed**：NFR-130（写明版本，缓存服务端改为 Valkey）；§10.10 技术基础表的数据库、缓存、跨进程事件三行；§12 第 1、10 项的编号范围。
+- **Deprecated / Removed**：无。
+
+**影响分析**：没有改动任何 FR、BR、验收标准或数据模型。代码仍按 Redis 协议编写（StackExchange.Redis），不受服务端更换影响；中期前台迁回大陆时，托管缓存服务需兼容 Redis 7.2 协议（DEC-022）。受影响的工单只有 JAN-45（ENG-006.1），已按本版本实施。
+
+### 11.2 历史变更：CHG-004（v1.0.0.4）
 
 | 项目 | 内容 |
 |---|---|
@@ -2543,7 +2564,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型。今后 PRD 中 FR / ENG 的验收标准变化时，按 skr-prd 的级联规则，通过追踪表找到对应的 JAN 工单并同步其验收清单。
 
-### 11.2 历史变更：CHG-003（v1.0.0.3）
+### 11.3 历史变更：CHG-003（v1.0.0.3）
 
 | 项目 | 内容 |
 |---|---|
@@ -2562,7 +2583,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型。只影响 Linear 拆单（新增 10 张工程任务单，FR-028、FR-029 的实现指向 ENG-002、ENG-004、ENG-005）和测试计划（各工程任务的完成标准）。
 
-### 11.3 历史变更：CHG-002（v1.0.0.2）
+### 11.4 历史变更：CHG-002（v1.0.0.2）
 
 **变更摘要**
 
@@ -2614,7 +2635,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 | 技术方案 | Yes | 盯盘执行器、对外视图与缓存刷新、解析器框架、程序间消息；以 §10.10 为基础 | 技术负责人 | 待编写 |
 | web-portal PRD | Yes | 前台技术栈改为 ASP.NET Core MVC，数据改为直接查询对外视图 | vivo.li | 本次同步修订 |
 
-### 11.4 历史变更：CHG-001（v1.0.0.1）
+### 11.5 历史变更：CHG-001（v1.0.0.1）
 
 **变更摘要**
 
@@ -2671,7 +2692,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 | # | 检查项 | 严重程度 | 状态 | 详情 |
 |---|---|---|---|---|
-| 1 | 无重复 Requirement ID | Error | PASS | FR-001 ~ FR-029、BR-001 ~ BR-152、US-001 ~ US-024、NFR、EV-001 ~ EV-016、DEC-001 ~ DEC-021、RISK-001 ~ RISK-016、ENG-001 ~ ENG-010 均无重复（脚本校验，v1.0.0.3 重新检查） |
+| 1 | 无重复 Requirement ID | Error | PASS | FR-001 ~ FR-029、BR-001 ~ BR-152、US-001 ~ US-024、NFR、EV-001 ~ EV-016、DEC-001 ~ DEC-022、RISK-001 ~ RISK-016、ENG-001 ~ ENG-010 均无重复（脚本校验，v1.0.0.5 重新检查） |
 | 2 | 无失效引用 | Error | PASS | 文中引用的 FR / US / BR / EV / Q / ASS / DEC 编号均存在（脚本校验） |
 | 3 | 无冲突的业务规则 | Error | PASS | 已核对易冲突的组合：BR-008 与 BR-014（分钟级任务与秒级盯盘分工明确）；BR-039 与 BR-062（排期冲突告警，其他字段冲突只记录）；BR-057 与 BR-053；BR-077 与 BR-134；BR-125 与 BR-118（冻结期间缓存刷新不放出冻结后的内容）；BR-148 与 BR-151（只追加与失败不回滚不矛盾） |
 | 4 | 无缺失的验收标准 | Error | PASS | 29 个 FR 都有验收标准 |
@@ -2680,7 +2701,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 | 7 | 无缺失的异常流程 | Warning | PASS | 22 个 P0 FR 都有异常流程和错误码 |
 | 8 | 无缺失的状态机 | Warning | PASS | 日历事件、快讯、新闻的状态机见 §8.1.3；数据源、采集运行、账号、告警的状态在对应 FR 中定义 |
 | 9 | RTM 覆盖完整 | Error | PASS | §10.5 覆盖全部 29 个 FR 和 10 个工程任务（ENG-001 ~ ENG-010），Linear 工单编号均已回填 |
-| 10 | 决策日志的备选方案完整 | Warning | PASS | DEC-001 ~ DEC-021 都有备选方案 |
+| 10 | 决策日志的备选方案完整 | Warning | PASS | DEC-001 ~ DEC-022 都有备选方案 |
 | 11 | 假设日志的确认状态完整 | Warning | PASS | ASS-001 ~ ASS-010 都标注了确认状态 |
 | 12 | 非功能需求覆盖完整 | Warning | PASS | 覆盖性能、可用性、扩展性、安全、审计、日志、合规、本地化、备份、可观测、监控、兼容、部署、技术约束 |
 | 13 | §13.0 筛查表已完整填写 | Error | PASS | 13 个问题全部回答 |
@@ -2886,6 +2907,9 @@ suanpan-forex/                    一个仓库、一个解决方案
 | Hangfire（Core） | LGPL-3.0（另有商业许可） | 中 | 以 NuGet 包引用、不修改源码，一般可用于闭源产品；如需 Pro 功能则购买商业许可。由法务确认 |
 | Hangfire.PostgreSql（Hangfire 的 PostgreSQL 存储） | 待确认 | 待确认 | 社区维护的扩展，技术方案阶段确认许可证 |
 | Npgsql / Npgsql.EntityFrameworkCore.PostgreSQL | PostgreSQL License | 低 | |
+| PostgreSQL 17（服务端） | PostgreSQL License | 低 | DEC-022 |
+| Valkey 8.1（缓存服务端，Redis 协议兼容） | BSD-3-Clause | 低 | DEC-022；不使用 Redis 7.4 及以后版本的服务端 |
+| RabbitMQ 4.1（服务端，含管理插件） | MPL-2.0 | 低 | DEC-022 |
 | StackExchange.Redis | MIT | 低 | 沿用 VVPay |
 | RabbitMQ.Client | Apache-2.0 / MPL-2.0 双许可 | 低 | 沿用 VVPay |
 | Tabler、Tabler Icons、Bootstrap | MIT | 低 | 后台 UI，沿用 VVPay |

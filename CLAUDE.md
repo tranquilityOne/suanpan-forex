@@ -44,7 +44,9 @@ deploy/                     Dockerfile、docker-compose
 > 以下命令在 ENG-001（项目骨架）和 ENG-006（本地开发环境）完成后生效；与实际不符时以项目为准，并更新本节。
 
 ```bash
-docker compose -f deploy/docker-compose.yml up -d     # 启动 PostgreSQL、Redis、RabbitMQ
+cp deploy/.env.example deploy/.env                    # 首次使用：复制后填写密码（.env 不提交）
+docker compose -f deploy/docker-compose.yml up -d     # 启动 PostgreSQL、Redis（Valkey）、RabbitMQ
+docker compose -f deploy/docker-compose.yml up -d postgres   # 本机已有 Redis、RabbitMQ 时只启动 PostgreSQL
 dotnet build                                          # 编译整个解决方案
 dotnet test                                           # 运行全部测试
 dotnet run --project src/Suanpan.Crm                  # 运行后台（其他程序同理）

@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.0 |
+| 版本 | v1.1 |
 | 日期 | 2026-10-17 |
 | 适用范围 | PostgreSQL 中表结构、视图、索引、授权、预置数据的编写、校验与上线 |
 | 依据 | data-hub PRD：DEC-009（PostgreSQL）、DEC-015（EF Core Migrations）、NFR-132、NFR-090、BR-119、BR-121、BR-148 |
@@ -44,6 +44,7 @@
 | `suanpan_portal` | Portal | 只能 SELECT `v_pub_*` 视图（BR-121） |
 
 - **账号本身（包括密码）由运维在建库时创建，不写进迁移，也不进代码仓库。** 迁移只负责授权。
+- 本地开发环境的业务库和三个账号由 `deploy/postgres/init/` 中的脚本在 PostgreSQL 首次启动时创建，密码来自 `deploy/.env`（后端约定 §14）。本地业务库的所有者是 `suanpan_migrator`，只有这三个账号能连接业务库。
 - 业务表放在 `public` schema；Hangfire 的表放在独立的 `hangfire` schema。
 
 ### 2.3 默认授权
@@ -239,3 +240,4 @@ deploy/sql/
 | 版本 | 日期 | 修改人 | 内容 |
 |---|---|---|---|
 | v1.0 | 2026-10-17 | vivo.li / Claude | 初版 |
+| v1.1 | 2026-10-17 | vivo.li / Claude | §2.2 补充本地开发环境的建库和建账号方式 |

@@ -1,0 +1,65 @@
+# 依赖服务：PostgreSQL、Redis（Valkey）、RabbitMQ，见 docs/conventions/backend.md §14
+# 首次使用：把 .env.example 复制为 .env 并填写密码
+# 本机已有 Redis、RabbitMQ 时，只启动 PostgreSQL：docker compose -f deploy/docker-compose.yml up -d postgres
+name: suanpan
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 deploy/.env 中设置 POSTGRES_PASSWORD}
+      SUANPAN_DB: ${SUANPAN_DB:-suanpan}
+      SUANPAN_MIGRATOR_PASSWORD: ${SUANPAN_MIGRATOR_PASSWORD:?请在 deploy/.env 中设置 SUANPAN_MIGRATOR_PASSWORD}
+      SUANPAN_APP_PASSWORD: ${SUANPAN_APP_PASSWORD:?请在 deploy/.env 中设置 SUANPAN_APP_PASSWORD}
+      SUANPAN_PORTAL_PASSWORD: ${SUANPAN_PORTAL_PASSWORD:?请在 deploy/.env 中设置 SUANPAN_PORTAL_PASSWORD}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # 只在数据目录为空（首次启动）时执行
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d \"$${SUANPAN_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: valkey/valkey:8.1-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 deploy/.env 中设置 REDIS_PASSWORD}
+    command: ["sh", "-c", "exec valkey-server --requirepass \"$$REDIS_PASSWORD\""]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    restart: unless-stopped
+    # 节点名取决于主机名，固定下来，重建容器后才能继续使用原来的数据卷
+    hostname: suanpan-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-suanpan}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?请在 deploy/.env 中设置 RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_VHOST: suanpan
+    ports:
+      - "127.0.0.1:${RABBITMQ_PORT:-5672}:5672"
+      - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
