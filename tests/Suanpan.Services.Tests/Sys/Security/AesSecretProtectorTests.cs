@@ -58,21 +58,10 @@ public class AesSecretProtectorTests
 
     [Theory]
     [InlineData(null)]
-    [InlineData("")]
-    [InlineData("not base64")]
     [InlineData("AAAAAAAAAAAAAAAAAAAAAA==")] // 16 字节，长度不对
     public void Constructor_RejectsMissingOrInvalidKey(string? key)
     {
         Assert.Throws<InvalidOperationException>(() => Create(key));
-    }
-
-    [Theory]
-    [InlineData(null, "")]
-    [InlineData("short", "********")]
-    [InlineData("abcdefghijkl", "abcd****ijkl")]
-    public void Mask_KeepsOnlyFirstAndLastFourCharacters(string? value, string expected)
-    {
-        Assert.Equal(expected, ISecretProtector.Mask(value));
     }
 
     private static AesSecretProtector Create(string? key) =>

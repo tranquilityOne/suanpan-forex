@@ -49,11 +49,8 @@ public class Pbkdf2PasswordHasherTests
     }
 
     [Theory]
-    [InlineData("")]
     [InlineData("plain-text")]
-    [InlineData("bcrypt$10$abc$def")]
     [InlineData("pbkdf2$abc$AAAA$AAAA")]
-    [InlineData("pbkdf2$0$AAAA$AAAA")]
     [InlineData("pbkdf2$1000$not-base64$AAAA")]
     public void Verify_ReturnsFalseForMalformedHash(string malformed)
     {

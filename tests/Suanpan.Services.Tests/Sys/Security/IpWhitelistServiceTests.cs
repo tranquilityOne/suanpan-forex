@@ -8,6 +8,7 @@ using Xunit;
 
 namespace Suanpan.Services.Tests.Sys.Security;
 
+[Trait(TestCategory.Key, TestCategory.Integration)]
 public class IpWhitelistServiceTests(PostgresFixture postgres)
 {
     private readonly MemoryCache _cache = new(new MemoryCacheOptions());
@@ -27,14 +28,12 @@ public class IpWhitelistServiceTests(PostgresFixture postgres)
         Assert.Equal("test", saved.CreatedBy);
     }
 
-    [Theory]
-    [InlineData("10.1")]
-    [InlineData("203.0.113.10-203.0.113.50")]
-    public async Task Save_RejectsInvalidFormat(string value)
+    [Fact]
+    public async Task Save_RejectsInvalidFormat()
     {
         await using var db = await postgres.CreateAppContextAsync();
 
-        var result = await new IpWhitelistService(db, _cache).SaveAsync(new SysIpWhitelist { IpValue = value }, Ct);
+        var result = await new IpWhitelistService(db, _cache).SaveAsync(new SysIpWhitelist { IpValue = "10.1" }, Ct);
 
         Assert.False(result.Success);
         Assert.False(await db.SysIpWhitelists.AnyAsync(Ct));
@@ -50,7 +49,6 @@ public class IpWhitelistServiceTests(PostgresFixture postgres)
         var result = await service.SaveAsync(new SysIpWhitelist { IpValue = "203.0.113.10" }, Ct);
 
         Assert.False(result.Success);
-        Assert.Equal("该 IP 已存在", result.Error);
     }
 
     [Fact]

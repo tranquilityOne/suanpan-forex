@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.9 |
+| 版本 | v1.11 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -296,6 +296,8 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 - 需要防止并发覆盖的编辑（如日历事件）用乐观锁。
 - 写入的幂等靠唯一键兜底，用 PostgreSQL 的 `INSERT ... ON CONFLICT`。**【与 VVPay 不同】** VVPay 用 MySQL 的 `INSERT IGNORE` / `ON DUPLICATE KEY`。
 - 批量重算用 `Database.ExecuteSqlAsync`（插值自动参数化），按"先删后插"保证可重复执行。
+- 一个操作要多次保存（如先保存主表取得 id，再写关联表），或混用 `ExecuteDeleteAsync` 和 `SaveChangesAsync` 时，放进 `SuanpanDbContext.InTransactionAsync`：全部成功才提交，外层已有事务时直接加入。
+- PostgreSQL 的 `LIKE` / `ILIKE` 查询：用户输入先转义 `%`、`_`、`\`，并在 `EF.Functions.ILike` 中显式传入转义字符 `\`（不传时 Npgsql 会生成 `ESCAPE ''`，转义不起作用）。
 
 ### 6.5 EF Core 表达式的坑（沿用 VVPay 的教训）
 
@@ -451,15 +453,43 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 
 ## 13. 测试与持续集成
 
-- `Suanpan.Core.Tests`：利多利空判定的全部分支、夏令时切换周的时区换算、数据质量校验规则（PRD NFR-133）。
+### 13.1 测试项目
+
+- `Suanpan.Core.Tests`：领域规则。Sys 的密码、停用、通配规则；利多利空判定的全部分支、夏令时切换周的时区换算、数据质量校验规则（PRD NFR-133）。
+- `Suanpan.Shared.Tests`：权限码生成、动态 Policy 等 Shared 中的组件。
+- `Suanpan.Data.Tests`：审计拦截器（用 EF Core InMemory）、实体配置约定（命名、外键、类型）。不连接真实数据库。
+- `Suanpan.Services.Tests`：业务服务。用到数据库的测试连真实的 PostgreSQL 17：Testcontainers 启动临时容器，按生产方式建好三个账号，用迁移账号执行全部迁移，测试用应用账号连接（权限与线上一致）；整个程序集共用一个容器。**运行这些测试需要 Docker**（本地 Docker Desktop，CI 用 GitHub Actions 自带的 Docker）。
 - `Suanpan.Collector.Tests`：每个解析器至少有一组基于真实快照的测试样例；官方页面改版后，把新快照补进样例。
-- `Suanpan.Shared.Tests`：权限码生成、动态 Policy、分页等 Shared 中的组件。
-- `Suanpan.Services.Tests`：业务服务。用到数据库的测试连真实的 PostgreSQL 17：Testcontainers 启动临时容器，按生产方式建好三个账号，用迁移账号执行全部迁移，测试用应用账号连接（权限与线上一致）；整个程序集共用一个容器，每个测试在自己的事务里执行、结束时回滚。**运行这个项目需要 Docker**（本地 Docker Desktop，CI 用 GitHub Actions 自带的 Docker）。
-- `Suanpan.Data.Tests`：审计拦截器（用 EF Core InMemory）、实体配置约定（表名、列名、导航属性、外键）。不连接真实数据库。
 - 每个类库对应一个测试项目（`Suanpan.{类库}.Tests`），需要测试的类库还没有测试项目时，先新建再写测试。
 - 测试框架为 xUnit v3，通过 Microsoft.Testing.Platform 运行（`global.json` 中设置），测试项目的 `OutputType` 为 `Exe`。
-- 测试数据要带独立标记，测试结束后清理恢复原状（沿用 VVPay 的做法）。
-- GitHub Actions：构建、运行测试、迁移校验（数据库变更约定 §6）、依赖漏洞扫描、密钥扫描，任一项不通过都不能合并（PRD NFR-134）。
+
+### 13.2 测什么、不测什么
+
+按风险决定测试的多少，不追求用例数量和覆盖率数字。
+
+| 要测 | 不测 |
+|---|---|
+| 领域规则的每个分支，在 Core 的单元测试里测全 | 在服务层把规则的各个分支再测一遍 |
+| 安全相关的算法：用标准测试向量或已知的攻击样例（如 TOTP 用 RFC 6238 向量、密文被篡改、CIDR 主机位） | 框架和第三方库本身的行为（如 QRCoder 能否生成 PNG） |
+| 服务层：每条规则一正一反，证明规则"接上了"；以及依赖数据库的行为：唯一约束、事务、缓存失效时机、授权 | 纯数据类：record、DTO、分页结果这类没有逻辑的类型 |
+| 解析器：基于真实快照 | 依赖注入逐个服务：只保留一个冒烟测试（`ValidateOnBuild` 加几个关键服务） |
+| 数据层约定：命名、外键、类型（约定测试自动覆盖新加入的实体） | 私有方法和内部实现细节 |
+
+### 13.3 写法
+
+- **Theory 只放有代表性的输入**：每个分支或边界一个样例，不罗列同类输入。
+- **断言行为，不断言措辞**：服务层只断言成功或失败，以及数据最终的状态；面向用户的提示文案只在规则的单元测试里核对一次，改文案不用改一批测试。
+- 不断言实现细节带来的副作用（如重建权限树时"更新了几行"会随排序规则变化），改为检查数据的最终状态。
+- 测试之间互不依赖：数据库测试在各自的事务里执行、结束时回滚；名称带随机后缀，避免并行执行时在唯一索引上互相等待。
+- 异步调用传入 `TestContext.Current.CancellationToken`。
+
+### 13.4 分组与运行
+
+- 连数据库的测试类标 `[Trait(TestCategory.Key, TestCategory.Integration)]`（即 `Category=Integration`），其余为单元测试。
+- `dotnet test`：全部测试，需要 Docker；提交前和 CI 中运行。
+- `dotnet test --filter-not-trait "Category=Integration"`：只跑单元测试，不需要 Docker、不启动容器；本地改代码时用。目前两种跑法用时都在 15 ~ 25 秒（主要花在启动各个测试程序上），集成测试变多后差别才会明显。
+- HTTP 层的集成测试（启动 Crm，覆盖 Cookie、授权、IP 白名单等，sys 设计 §12）从 ENG-004 开始加入，同样标 Integration。
+- GitHub Actions：构建、运行全部测试、迁移校验（数据库变更约定 §6）、依赖漏洞扫描、密钥扫描，任一项不通过都不能合并（PRD NFR-134）。
 
 ---
 
@@ -491,3 +521,5 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | v1.7 | 2026-10-17 | vivo.li / Claude | §6.2 补充主键和索引的命名方式、63 字符上限、自增主键与预置数据；§6.1 约定测试的检查范围 |
 | v1.8 | 2026-10-18 | vivo.li / Claude | §1.2 Data 目录加入 `DesignTime/`；§12 新增配置键 `ConnectionStrings:Migrator` |
 | v1.9 | 2026-10-18 | vivo.li / Claude | 新增测试项目 `Suanpan.Services.Tests`（§1、§1.2、§13），服务测试连 Testcontainers 启动的 PostgreSQL；§12 写明 `Security:EncryptionKey` 的格式 |
+| v1.10 | 2026-10-18 | vivo.li / Claude | §6.4 补充多次保存用 `InTransactionAsync`、`ILIKE` 的转义写法 |
+| v1.11 | 2026-10-18 | vivo.li / Claude | §13 重写：拆为测试项目、测什么与不测什么、写法、分组与运行；连数据库的测试标 Integration，本地可只跑单元测试 |

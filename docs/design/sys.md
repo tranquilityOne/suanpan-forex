@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.5（草稿） |
+| 版本 | v0.6（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -219,7 +219,8 @@ stateDiagram-v2
 
 - **锁定**不是单独的状态，而是叠加在"启用"上的时间条件：`locked_until` 晚于当前时间即为锁定。账号列表中显示为"锁定（剩余 N 分钟）"。
 - 停用、启用、重置密码、重置 TOTP 都会刷新安全戳，让该账号已登录的会话立即失效（§5.3）。
-- 不能停用自己；不能停用最后一个启用的管理员（BR-144，ERR-AUTH-004）。
+- 不能停用自己；不能停用最后一个未停用的管理员，也不能去掉他的管理员角色（BR-144，ERR-AUTH-004）。"未停用"包括待激活：初始管理员在激活前也受保护。规则在 `Suanpan.Core/Sys/Rules/UserStatusRule`。
+- 后台只能把账号停用，或把停用的账号恢复为启用；不能手工设为待激活，待激活的账号只能由本人首次登录完成激活。
 - 账号没有删除功能（BR-143）。
 
 ### 4.2 密码规则
@@ -377,7 +378,7 @@ sequenceDiagram
 
 | 缓存 | 键 | 有效期 | 主动失效时机 |
 |---|---|---|---|
-| 权限快照 | `perms:{userId}` | 5 分钟 | 账号的角色变更、停用（按账号）；角色授权变更、角色启停（找出持有该角色的所有账号逐个失效）；权限树重建（全部） |
+| 权限快照 | `perms:{版本号}:{userId}`（全部失效时版本号加 1，旧条目到期淘汰） | 5 分钟 | 账号的角色变更、停用（按账号）；角色授权变更、角色启停（找出持有该角色的所有账号逐个失效）；权限树重建（全部） |
 | 菜单源数据 | `menusrc` | 5 分钟 | 权限点修改、重建 |
 | 安全戳 | `stamp:{userId}` | 60 秒 | 见 §5.3 |
 | 系统配置 | `config:{key}` | 60 秒 | 配置保存 |
@@ -431,7 +432,8 @@ Suanpan.Core/Sys/
 ├─ Entities/      SysUser、SysRole、SysUserRole、SysPermission、SysRolePermission、
 │                 SysConfig、SysIpWhitelist、SysOpLog、SysLoginLog
 ├─ Enums/         UserStatus、PermType、ConfigValueType、LoginStage
-└─ Rules/         PasswordPolicy、LockoutRule、UserStatusRule
+├─ Constants/     RoleCodes
+└─ Rules/         PasswordPolicy、LockoutRule、UserStatusRule、PermCodePattern
 
 Suanpan.Shared/Auth/      AuthSchemes、SuanpanClaimTypes、ICurrentUser、HttpContextCurrentUser、
                           HasPermission 三件套、PermMenu / PermName 特性、PermCodeHelper
@@ -445,8 +447,8 @@ Suanpan.Data/
 Suanpan.Services/Sys/
 ├─ Auth/          AuthService、SecurityStampValidator、AdminSeeder
 ├─ Rbac/          PermissionService、PermissionAuthorizationHandler、PermissionRebuildService、
-│                 PresetRoleGrantService、MenuService、UserManageService、RoleManageService、
-│                 PermissionManageService
+│  │              PresetRoleGrantService、PresetRoleGrants、MenuService
+│  └─ Manage/     UserManageService、RoleManageService、PermissionManageService
 ├─ Logging/       OpLogActionFilter、SensitiveDataMasker、OpLogService、LoginLogService
 ├─ Configs/       ConfigService
 └─ Security/      Pbkdf2PasswordHasher、TotpService、AesSecretProtector、IpWhitelistService、
@@ -483,19 +485,23 @@ public interface IPermissionService
 {
     Task<PermissionSnapshot> GetSnapshotAsync(long userId, CancellationToken ct);
     void Invalidate(long userId);
+    Task InvalidateRoleHoldersAsync(long roleId, CancellationToken ct);  // 持有该角色的全部账号
     void InvalidateAll();
 }
 public sealed record PermissionSnapshot(bool IsSuperAdmin, IReadOnlyList<string> RoleCodes, IReadOnlySet<string> Codes);
 
+// Services/Sys/Rbac/Manage
+
 public interface IUserManageService
 {
     Task<PagedResult<UserRow>> QueryAsync(UserQuery query, CancellationToken ct);
+    Task<UserDetail?> GetAsync(long userId, CancellationToken ct);
     Task<ManageResult> CreateAsync(UserCreateInput input, CancellationToken ct);       // 状态为待激活
     Task<ManageResult> UpdateAsync(UserUpdateInput input, CancellationToken ct);       // 姓名、邮箱、角色
     Task<ManageResult> SetStatusAsync(long userId, UserStatus status, CancellationToken ct);
     Task<ManageResult> ResetPasswordAsync(long userId, string newPassword, CancellationToken ct);
     Task<ManageResult> ResetTotpAsync(long userId, CancellationToken ct);
-    Task<ManageResult> UnlockAsync(long userId, CancellationToken ct);
+    Task<ManageResult> UnlockAsync(long userId, CancellationToken ct);                 // ENG-005.2 加入
 }
 
 public interface IPresetRoleGrantService
@@ -659,3 +665,4 @@ public interface IConfigService
 | v0.3 | 2026-10-17 | vivo.li / Claude | ENG-002.2 实施：§3.1 写明两张日志表哪些列可空（`roles` 不可空，没有角色时为空串）；§3 补充主键、索引的命名方式 |
 | v0.4 | 2026-10-18 | vivo.li / Claude | ENG-003.2 实施：§3.4 写明预置角色的 id、`created_by` 和 `sys_role` 自增起点 |
 | v0.5 | 2026-10-18 | vivo.li / Claude | ENG-002.3 实施：§5.4 写明加密密钥格式、解密不兼容明文、TOTP 用 `TimeProvider`；§5.5 写明 IP 白名单条目的格式要求 |
+| v0.6 | 2026-10-18 | vivo.li / Claude | ENG-002.4 实施：§4.1 明确"最后一个管理员"按未停用（含待激活）计数，启用只能从停用恢复；§6.5 权限快照的缓存键带版本号；§8.1 Rbac 拆出 Manage 子目录，Core 增加 Constants 和 PermCodePattern；§8.2 补充接口 |

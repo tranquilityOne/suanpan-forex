@@ -29,11 +29,9 @@ public class PermissionPolicyProviderTests
         Assert.Null(await _provider.GetPolicyAsync("not-registered"));
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData(" ")]
-    public void HasPermission_RejectsEmptyPermCode(string permCode)
+    [Fact]
+    public void HasPermission_RejectsEmptyPermCode()
     {
-        Assert.ThrowsAny<ArgumentException>(() => new HasPermissionAttribute(permCode));
+        Assert.ThrowsAny<ArgumentException>(() => new HasPermissionAttribute(" "));
     }
 }

@@ -22,6 +22,22 @@ public partial class SuanpanDbContext(DbContextOptions<SuanpanDbContext> options
     }
 
     /// <summary>
+    /// 把多次保存放进同一个事务：全部成功才提交。外层已经开启事务时直接加入外层事务（如测试中每个用例的事务）。
+    /// </summary>
+    public async Task InTransactionAsync(Func<Task> action, CancellationToken ct = default)
+    {
+        if (Database.CurrentTransaction is not null)
+        {
+            await action();
+            return;
+        }
+
+        await using var transaction = await Database.BeginTransactionAsync(ct);
+        await action();
+        await transaction.CommitAsync(ct);
+    }
+
+    /// <summary>
     /// 主键命名为 pk_{表}，唯一索引为 ux_{表}_{列}，普通索引为 ix_{表}_{列}，全部小写，
     /// 在 PostgreSQL 中引用时不用加引号（docs/conventions/backend.md §6.2）。实体配置中显式指定的名字保持不变。
     /// </summary>

@@ -50,7 +50,8 @@ docker compose -f deploy/docker-compose.yml up -d     # 启动 PostgreSQL、Redi
 docker compose -f deploy/docker-compose.yml up -d postgres   # 本机已有 Redis、RabbitMQ 时只启动 PostgreSQL
 dotnet user-secrets list --project src/Suanpan.Crm   # 查看本地配置了哪些键（四个程序共用一份 user-secrets）
 dotnet build                                          # 编译整个解决方案
-dotnet test                                           # 运行全部测试（Suanpan.Services.Tests 需要 Docker）
+dotnet test                                           # 运行全部测试（连数据库的测试需要 Docker）
+dotnet test --filter-not-trait "Category=Integration"   # 只跑单元测试，不需要 Docker
 dotnet run --project src/Suanpan.Crm                  # 运行后台（其他程序同理）
 dotnet tool restore                                   # 安装仓库固定版本的 dotnet-ef（.config/dotnet-tools.json）
 dotnet ef migrations add <PascalCase描述> --context SuanpanDbContext --project src/Suanpan.Data --startup-project src/Suanpan.Data
@@ -101,7 +102,7 @@ node --test src/Suanpan.Portal/wwwroot/js/calc        # 前台计算器公式测
 
 ## 完成标准
 
-- 编译通过，全部测试通过；新增的业务逻辑有测试，新增的解析器有快照测试。
+- 编译通过，全部测试通过；新增的业务逻辑有测试，新增的解析器有快照测试。测试按后端约定 §13 写：规则分支在 Core 测全，服务层只测"接上了"和数据库行为，不测框架、第三方库和纯数据类。
 - 满足工单的验收标准；提交说明和 PR 描述引用对应的 FR / ENG 编号。
 - 有表结构变更时，迁移文件和模型快照一起提交，CI 的迁移校验通过。
 - 实现偏离模块设计时，在同一个 PR 里更新 `docs/design/` 下的文档；改动了全局写法时，更新 `docs/conventions/`。
