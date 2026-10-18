@@ -16,6 +16,19 @@
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
   </ItemGroup>
 
+  <!-- 基础设施 -->
+  <ItemGroup>
+    <PackageVersion Include="Hangfire.AspNetCore" Version="1.8.25" />
+    <PackageVersion Include="Hangfire.Core" Version="1.8.25" />
+    <PackageVersion Include="Hangfire.PostgreSql" Version="1.21.1" />
+    <!-- Hangfire.Core 传递引用的 Newtonsoft.Json 11.0.1 有已知漏洞（NU1903），显式提升；项目代码不直接使用 -->
+    <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
+    <!-- Hangfire.PostgreSql 只要求 Npgsql 6.0.11 以上；固定为 EF Core 提供程序使用的版本，各项目一致 -->
+    <PackageVersion Include="Npgsql" Version="10.0.3" />
+    <PackageVersion Include="RabbitMQ.Client" Version="7.2.2" />
+    <PackageVersion Include="StackExchange.Redis" Version="3.4.5" />
+  </ItemGroup>
+
   <!-- 业务服务 -->
   <ItemGroup>
     <PackageVersion Include="QRCoder" Version="1.8.1" />
@@ -25,6 +38,8 @@
   <ItemGroup>
     <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.13" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
+    <PackageVersion Include="Testcontainers.RabbitMq" Version="4.16.0" />
+    <PackageVersion Include="Testcontainers.Redis" Version="4.16.0" />
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
   </ItemGroup>
 

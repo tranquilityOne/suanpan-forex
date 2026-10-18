@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.13 |
+| 版本 | v1.14 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -40,6 +40,7 @@ suanpan-forex/
 │  ├─ Suanpan.Core.Tests           领域规则测试
 │  ├─ Suanpan.Shared.Tests         鉴权基础组件测试（权限码生成、动态 Policy）
 │  ├─ Suanpan.Services.Tests       业务服务测试（连 Testcontainers 启动的 PostgreSQL）
+│  ├─ Suanpan.Infrastructure.Tests 基础设施测试（连 Testcontainers 启动的 Valkey、RabbitMQ）
 │  ├─ Suanpan.Data.Tests           数据层测试（审计拦截器、实体配置约定）
 │  └─ Suanpan.Collector.Tests      解析器测试（用保存的官方页面快照当样例）
 └─ deploy/                         Dockerfile、docker-compose
@@ -73,6 +74,8 @@ suanpan-forex/
 新增模块前先补充本表。
 
 **模块名不能与 .NET 的根命名空间（`System`、`Microsoft`）同名。** 否则命名空间中会出现 `.System` 这样的段（如 `Suanpan.Services.System`），在这些命名空间内写以 `System.` 开头的完整类型名时会解析到本项目的命名空间，导致编译失败。所以系统模块用 `Sys`（与表名前缀 `sys_` 一致），后台栏目的显示名仍为"系统管理"。
+
+同理，Infrastructure 的 `Hangfire/` 目录对应命名空间 `Suanpan.Infrastructure.Hangfire`，会遮蔽 Hangfire 包的根命名空间：在 `Suanpan.Infrastructure` 及其下级命名空间中，Hangfire 的类型一律用 `using` 引入，不写以 `Hangfire.` 开头的完整类型名。
 
 ### 1.2 项目内目录组织
 
@@ -127,7 +130,8 @@ Suanpan.Portal/                    目录组织见前端约定 §9.2
 tests/
 ├─ Suanpan.Core.Tests/{模块}/                       与源码目录一一对应
 ├─ Suanpan.Shared.Tests/                           与 Suanpan.Shared 的目录一一对应
-├─ Suanpan.Services.Tests/{模块}/                  与 Suanpan.Services 的目录一一对应；Fixtures/ 放测试数据库
+├─ Suanpan.Services.Tests/{模块}/                  与 Suanpan.Services 的目录一一对应；Fixtures/ 放测试数据库，Database/ 放数据库授权的测试
+├─ Suanpan.Infrastructure.Tests/                   与 Suanpan.Infrastructure 的目录一一对应；Fixtures/ 放测试容器
 ├─ Suanpan.Data.Tests/                             与 Suanpan.Data 的目录一一对应
 └─ Suanpan.Collector.Tests/Sources/{经济体}/{机构}/  测试代码 + Snapshots/ 快照样例
 ```
@@ -203,6 +207,7 @@ Portal                 ──►  Data（只用对外视图的只读上下文）
 
 - 每个模块提供一个注册扩展方法，内聚该模块的全部注册，程序按需拼装：
   `AddSuanpanData`、`AddSuanpanServices`、`AddSuanpanRedis`、`AddSuanpanEventBus`、`AddSuanpanHangfire`、`AddSuanpanCollectors`、`AddSuanpanPortalRead`。
+- `AddSuanpanEventBus(configuration, "job")` 的第二个参数是程序名（crm、job、collector、portal），用作接收队列名；`AddSuanpanHangfire(configuration, runServer)` 只有 Job 传 `true`。
 - **调用 `AddSuanpanServices` 的程序必须同时注册 Redis**（部分服务依赖 `IRedisCache`，漏注册会在启动时崩溃，VVPay 踩过）。
 
 各程序的注册组合：
@@ -353,7 +358,10 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 - `IDistributedLock`：`await using` 获取锁句柄；过期时间必须大于临界区耗时；拿不到锁时返回 null，调用方直接跳过本轮。
 - `IRateLimiter`：秒级固定窗口；Redis 异常时放行并告警。本项目用它控制每个数据源的请求频率（PRD BR-003）。
 
-缓存的约定：key 用常量前缀，必须设置明确的 TTL，**由写数据的一方负责让缓存失效**。
+缓存的约定：key 用常量前缀，必须设置明确的 TTL（`IRedisCache` 的写入方法都要求传过期时间），**由写数据的一方负责让缓存失效**。
+
+- 连接时设置 `AbortOnConnectFail = false`：Redis 暂时不可用不阻断程序启动，连上后自动恢复。
+- 分布式锁、限流器通过 `TimeProvider` 取时间，测试中可以固定时间。
 
 ### 8.2 RabbitMQ
 
@@ -361,13 +369,16 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 
 - 发布：`IEventBus.PublishAsync(message, delay?)`。延时投递用 TTL + 死信分桶实现，不依赖插件。
 - 消费：继承 `IntegrationEventHandler<T>`，用 `AddIntegrationEventHandler<,>()` 注册。
-- **消费端必须幂等**（重试必然导致重复投递）。失败自动延迟重试 3 次，之后进入 `.failed` 死信队列。
+- **消费端必须幂等**（重试必然导致重复投递）。失败后延迟重试 3 次（共处理 4 次，间隔 `RabbitMq:RetryDelaySeconds`，默认 10 秒），之后转入 `.failed` 队列等待人工处理。
 - 不做 Outbox，靠消费端幂等和对账兜底。
 
 本项目新增：
 
 - 消息契约放在 `Suanpan.Shared/Messages/{模块}/`，这样 Portal 不引用 Services 也能消费。
 - 命名：事件用过去式并以 `Event` 结尾，指令以 `Command` 结尾。
+- 消息基类 `IntegrationMessage`（`Suanpan.Shared/Messages/`，含 `MessageId`、`OccurredAt`），事件和指令都继承它。**【与 VVPay 不同】** VVPay 的基类叫 `IntegrationEvent`，放在 Infrastructure。
+- 交换机 `suanpan.messages`（direct），路由键为消息类型名。**每个接收程序一个队列** `suanpan.{程序}.{消息名}`：不同程序各收一份，同一程序的多个实例分摊处理；重试只回到本程序的队列。**【与 VVPay 不同】** VVPay 一种消息一个队列，所有订阅方抢同一个队列。
+- 队列由接收端启动时声明。接收端从未启动过时，发给它的消息没有队列接收，会被丢弃；所以首次部署要先启动接收方（Collector、Job、Portal），再启动发送方。
 
 当前的消息清单：
 
@@ -383,9 +394,10 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 ### 8.3 Hangfire
 
 - Server 只在 Job 中运行；Crm 只挂面板，路径 `/Sys/hangfire`，受权限码保护。
+- 存储在业务库的 `hangfire` schema（连接串 `ConnectionStrings:Main`，即应用账号），表由 Hangfire 启动时自动建立和升级（数据库变更约定 §2.4）。
 - 用依赖注入的 `IRecurringJobManager` 注册任务，所有周期任务集中在 Job 的任务注册表中。
 - 任务模板：`[AutomaticRetry(Attempts = 0)]`（周期任务自带下一轮）+ 分布式锁防止多实例重入 + 业务幂等（重跑安全）。
-- **cron 一律按 UTC 配置。** **【与 VVPay 不同】** VVPay 使用 `TimeZoneInfo.Local`。
+- **cron 一律按 UTC 配置。** **【与 VVPay 不同】** VVPay 使用 `TimeZoneInfo.Local`。周期任务只通过 `AddOrUpdateUtc`（`Suanpan.Infrastructure.Hangfire`）注册，不直接调用 Hangfire 的 `AddOrUpdate`。
 - 周期任务最小粒度为 1 分钟。秒级需求（盯盘）不走 Hangfire，见 §9。
 
 ---
@@ -445,6 +457,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | `Redis:Configuration` | StackExchange.Redis 连接串（含密码） | ✓ | ✓ | ✓ | 可选 |
 | `Redis:InstanceName` | 键前缀，默认 `suanpan:`；与其他项目共用 Redis 时靠它隔离 | ✓ | ✓ | ✓ | 可选 |
 | `RabbitMq:Uri` | AMQP URI，虚拟主机为 `suanpan`，如 `amqp://用户:密码@主机:5672/suanpan` | ✓ | ✓ | ✓ | ✓ |
+| `RabbitMq:MaxRetryCount`、`RabbitMq:RetryDelaySeconds` | 可选：处理失败后的重试次数和间隔秒数，默认 3 次、10 秒 | ✓ | ✓ | ✓ | ✓ |
 | `Security:EncryptionKey` | AES-256 加密密钥，TOTP 密钥和数据源凭据共用；32 字节随机数的 Base64（如 `openssl rand -base64 32`），格式不对时启动即报错 | ✓ | | ✓ | |
 | `Security:BootstrapAllowedIps` | 后台 IP 白名单的应急放行 IP，逗号分隔 | ✓ | | | |
 | `Seed:AdminUsername`、`Seed:AdminPassword` | 初始管理员（sys 设计 §3.4） | ✓ | | | |
@@ -459,7 +472,9 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 - `Suanpan.Core.Tests`：领域规则。Sys 的密码、停用、通配规则；利多利空判定的全部分支、夏令时切换周的时区换算、数据质量校验规则（PRD NFR-133）。
 - `Suanpan.Shared.Tests`：权限码生成、动态 Policy 等 Shared 中的组件。
 - `Suanpan.Data.Tests`：审计拦截器（用 EF Core InMemory）、实体配置约定（命名、外键、类型）。不连接真实数据库。
-- `Suanpan.Services.Tests`：业务服务。用到数据库的测试连真实的 PostgreSQL 17：Testcontainers 启动临时容器，按生产方式建好三个账号，用迁移账号执行全部迁移，测试用应用账号连接（权限与线上一致）；整个程序集共用一个容器。**运行这些测试需要 Docker**（本地 Docker Desktop，CI 用 GitHub Actions 自带的 Docker）。
+- `Suanpan.Services.Tests`：业务服务。用到数据库的测试连真实的 PostgreSQL 17：Testcontainers 启动临时容器，按生产方式建好三个账号，用迁移账号执行全部迁移，测试用应用账号连接（权限与线上一致）；整个程序集共用一个容器。**运行这些测试需要 Docker**（本地 Docker Desktop，CI 用 GitHub Actions 自带的 Docker）。数据库授权的测试（如 Hangfire 用应用账号建表）放在 `Database/`。
+- `Suanpan.Infrastructure.Tests`：Redis 组件（分布式锁、限流器）和事件总线（收发、重试后转入 `.failed`、延时投递）。Testcontainers 启动 Valkey 8.1 和 RabbitMQ 4.1，与线上服务端版本一致，同样需要 Docker。
+- 容器夹具在第一个用到它的测试中才启动容器。xUnit 不论筛选条件都会创建程序集夹具，在 `InitializeAsync` 中启动会让只跑单元测试时也启动容器。
 - `Suanpan.Collector.Tests`：每个解析器至少有一组基于真实快照的测试样例；官方页面改版后，把新快照补进样例。
 - 每个类库对应一个测试项目（`Suanpan.{类库}.Tests`），需要测试的类库还没有测试项目时，先新建再写测试。
 - 测试框架为 xUnit v3，通过 Microsoft.Testing.Platform 运行（`global.json` 中设置），测试项目的 `OutputType` 为 `Exe`。
@@ -531,7 +546,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 |---|---|
 | 测试中不直接取当前时间（`DateTime.Now`、`DateTime.UtcNow`、`DateTimeOffset.Now`、`DateTimeOffset.UtcNow`），不用 `Thread.Sleep`、`Task.Delay` 等待；需要时间的地方注入 `TimeProvider` | CI 脚本搜索 |
 | 服务层和集成测试不比对提示文案原文，只断言成功或失败以及数据的最终状态（文案在规则的单元测试里核对一次） | CI 脚本搜索 `Assert.Equal("…", ….Error)` |
-| 连数据库的测试类必须标 `[Trait(TestCategory.Key, TestCategory.Integration)]`，在各自的事务里执行、结束时回滚；名称带随机后缀；查询带条件，不依赖整表的行数或内容 | 架构测试：构造函数需要 `PostgresFixture` 的类必须带这个标签；其余靠评审 |
+| 要启动容器的测试类（连数据库、Valkey、RabbitMQ）必须标 `[Trait(TestCategory.Key, TestCategory.Integration)]`；连数据库的在各自的事务里执行、结束时回滚；名称带随机后缀；查询带条件，不依赖整表的行数或内容 | 架构测试：构造函数需要容器夹具（`PostgresFixture`、`ValkeyFixture`、`RabbitMqFixture`）的类必须带这个标签；其余靠评审 |
 | 不为纯数据类、第三方库写测试；依赖注入只保留一个冒烟测试 | 评审 |
 | Theory 只放有代表性的输入：每个分支或边界一个样例 | 评审 |
 | 不断言没有 ORDER BY 的集合顺序 | 评审 |
@@ -550,9 +565,9 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 
 ### 13.6 分组与运行
 
-- 连数据库的测试标 `Category=Integration`，其余为单元测试。
+- 要启动容器的测试（数据库、Valkey、RabbitMQ）标 `Category=Integration`，其余为单元测试。
 - `dotnet test`：全部测试，需要 Docker；提交前和 CI 中运行。
-- `dotnet test --filter-not-trait "Category=Integration"`：只跑单元测试，不需要 Docker、不启动容器；本地改代码时用。目前两种跑法用时都在 15 ~ 25 秒（主要花在启动各个测试程序上），集成测试变多后差别才会明显。
+- `dotnet test --filter-not-trait "Category=Integration"`：只跑单元测试，不需要 Docker、不启动容器；本地改代码时用。只跑单元测试时每个测试项目约 2 秒；全部测试约 30 秒，主要花在启动容器上。
 - HTTP 层的集成测试（启动 Crm，覆盖 Cookie、授权、IP 白名单等，sys 设计 §12）从 ENG-004 开始加入，同样标 Integration。
 - GitHub Actions：构建、运行全部测试、测试规则检查（§13.4）、迁移校验（数据库变更约定 §6）、依赖漏洞扫描、密钥扫描，任一项不通过都不能合并（PRD NFR-134）。
 
@@ -590,3 +605,4 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | v1.11 | 2026-10-18 | vivo.li / Claude | §13 重写：拆为测试项目、测什么与不测什么、写法、分组与运行；连数据库的测试标 Integration，本地可只跑单元测试 |
 | v1.12 | 2026-10-18 | vivo.li / Claude | §13 新增 13.3 要避免的三类测试（低价值、重复、脆弱：判断问题、常见情形、例外）、13.4 硬性规则、13.5 评审清单；原 13.4 改为 13.6 |
 | v1.13 | 2026-10-18 | vivo.li / Claude | §7 配置项登记到 `Definitions`；§10 小数不允许千分位；§11 日志用 INSERT 直接写入 |
+| v1.14 | 2026-10-18 | vivo.li / Claude | ENG-002.6 实施：§8.2 消息基类 `IntegrationMessage`、每个接收程序一个队列、重试次数的含义、首次部署顺序；§8.1 写入必须带过期时间；§8.3 Hangfire 存储位置、只用 `AddOrUpdateUtc` 注册；§12 新增 RabbitMQ 重试配置；新增测试项目 `Suanpan.Infrastructure.Tests`（§1、§1.2、§13）；§13 容器夹具延迟启动，修正"只跑单元测试不启动容器"与实际不符的问题 |

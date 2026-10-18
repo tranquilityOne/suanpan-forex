@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.2 |
+| 版本 | v1.3 |
 | 日期 | 2026-10-17 |
 | 适用范围 | PostgreSQL 中表结构、视图、索引、授权、预置数据的编写、校验与上线 |
 | 依据 | data-hub PRD：DEC-009（PostgreSQL）、DEC-015（EF Core Migrations）、NFR-132、NFR-090、BR-119、BR-121、BR-148 |
@@ -70,6 +70,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE suanpan_migrator IN SCHEMA public
 - `hangfire` schema 由迁移创建（空 schema），并授予 `suanpan_app` 在该 schema 内的 `CREATE`、`USAGE` 权限。
 - Hangfire 启动时在自己的 schema 内建表和升级，不需要业务 schema 的建表权限。
 - Hangfire 的表不纳入 EF Core Migrations 管理。
+- Hangfire 用应用账号连接业务库（`ConnectionStrings:Main`）。授权是否够用由 `Suanpan.Services.Tests` 的 `Database/HangfireSchemaTests` 验证：用应用账号让 Hangfire 建表。
 
 ---
 
@@ -258,3 +259,4 @@ deploy/sql/
 | v1.0 | 2026-10-17 | vivo.li / Claude | 初版 |
 | v1.1 | 2026-10-17 | vivo.li / Claude | §2.2 补充本地开发环境的建库和建账号方式 |
 | v1.2 | 2026-10-18 | vivo.li / Claude | ENG-003.2 实施：`dotnet ef` 改用本地工具，Data 自己作为启动项目（设计时工厂），命令统一加 `--context SuanpanDbContext`；新增 §3.5 本地执行迁移（`ConnectionStrings:Migrator`）；§3.1 预置数据的审计字段；§2.1、§6 明确本地和 CI 都用 `suanpan_migrator` 执行 |
+| v1.3 | 2026-10-18 | vivo.li / Claude | ENG-002.6 实施：§2.4 写明 Hangfire 用应用账号连接，授权由测试验证 |

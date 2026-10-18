@@ -13,6 +13,8 @@ namespace Suanpan.Services.Tests.Fixtures;
 /// 测试用 PostgreSQL 17：用 Testcontainers 启动临时容器（需要 Docker），按生产方式建好三个账号，
 /// 用迁移账号执行全部迁移；测试用应用账号连接，权限与线上一致（docs/conventions/backend.md §13）。
 /// 整个测试程序集共用一个容器，每个测试在自己的事务里执行，结束时回滚。
+/// 容器在第一个用到数据库的测试中才启动：xUnit 不论筛选条件都会创建程序集夹具，
+/// 只跑单元测试（--filter-not-trait "Category=Integration"）时不应启动容器。
 /// </summary>
 public sealed class PostgresFixture : IAsyncLifetime
 {
@@ -23,9 +25,16 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine").Build();
 
-    private string _appConnectionString = string.Empty;
+    private readonly Lazy<Task<string>> _appConnectionString;
 
-    public async ValueTask InitializeAsync()
+    public PostgresFixture() => _appConnectionString = new Lazy<Task<string>>(StartAsync);
+
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
+
+    /// <summary>应用账号 suanpan_app 的连接串（第一次调用时启动容器并执行迁移）</summary>
+    public Task<string> GetAppConnectionStringAsync() => _appConnectionString.Value;
+
+    private async Task<string> StartAsync()
     {
         await _container.StartAsync();
 
@@ -47,7 +56,7 @@ public sealed class PostgresFixture : IAsyncLifetime
             await migrator.Database.MigrateAsync();
         }
 
-        _appConnectionString = ConnectionStringFor("suanpan_app");
+        return ConnectionStringFor("suanpan_app");
     }
 
     /// <summary>
@@ -57,14 +66,20 @@ public sealed class PostgresFixture : IAsyncLifetime
     public async Task<SuanpanDbContext> CreateAppContextAsync(TimeProvider? timeProvider = null)
     {
         var db = new SuanpanDbContext(new DbContextOptionsBuilder<SuanpanDbContext>()
-            .UseNpgsql(_appConnectionString)
+            .UseNpgsql(await GetAppConnectionStringAsync())
             .AddInterceptors(new AuditInterceptor(new FixedAuditActorProvider("test"), timeProvider ?? TimeProvider.System))
             .Options);
         await db.Database.BeginTransactionAsync();
         return db;
     }
 
-    public async ValueTask DisposeAsync() => await _container.DisposeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        if (_appConnectionString.IsValueCreated)
+        {
+            await _container.DisposeAsync();
+        }
+    }
 
     private string ConnectionStringFor(string username) =>
         new NpgsqlConnectionStringBuilder(_container.GetConnectionString())

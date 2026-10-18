@@ -106,7 +106,7 @@ dotnet run --project src/Suanpan.Crm
 | Job | http://127.0.0.1:5300 |
 | Collector | http://127.0.0.1:5400 |
 
-运行全部测试（连数据库的测试会用 Docker 启动临时的 PostgreSQL，需要 Docker 在运行）：
+运行全部测试（集成测试会用 Docker 启动临时的 PostgreSQL、Valkey、RabbitMQ，需要 Docker 在运行）：
 
 ```bash
 dotnet test
