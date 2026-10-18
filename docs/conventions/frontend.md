@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.1 |
+| 版本 | v1.2 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 后台 Suanpan.Crm 和前台 Suanpan.Portal 的页面、视图、静态资源 |
 | 依据 | data-hub PRD v1.0.0.2（DEC-014、NFR-131、§10.10）；web-portal PRD v1.0.0.2（DEC-005 ~ DEC-007、NFR-120 ~ NFR-124）；VVPay `doc/frontend.md` |
@@ -201,7 +201,7 @@ Suanpan.Crm/
 - **时间**：数据库存 UTC，页面一律通过 `<utc-time>` 按操作者时区显示（默认 Asia/Shanghai，data-hub BR-048）。需要录入当地时间的地方（如 CSV 导入），必须明确标出时区。
 - **数字**：解析和格式化用 `CultureInfo.InvariantCulture`；指标数值按指标字典的小数位和单位显示。
 - **外部内容**（快照、新闻标题和摘要）：一律按纯文本转义输出，**禁止使用 `Html.Raw`**；快照用 `<pre>` 显示源码，不渲染（data-hub BR-025）。
-- **CSV 导出**：UTF-8 带 BOM，保证 Excel 打开中文不乱码。
+- **CSV 导出**：UTF-8 带 BOM，保证 Excel 打开中文不乱码；时间按操作者时区，表头写明时区；以 `=`、`+`、`-`、`@` 开头的单元格前加单引号，防止在 Excel 中被当作公式执行（CSV 注入）。统一用 `Suanpan.Services.Common.Csv.CsvWriter` 写出。
 
 ## 8. 安全纪律
 
@@ -358,3 +358,4 @@ Suanpan.Portal/
 |---|---|---|---|
 | v1.0 | 2026-10-17 | vivo.li / Claude | 初版：基于 VVPay 前端框架、data-hub 与 web-portal PRD v1.0.0.2 的决策整理 |
 | v1.1 | 2026-10-17 | vivo.li / Claude | §3.2 新增 Publish Area，Area 名与模块名统一，系统管理的 Area 名为 `Sys`；§3.3 后台目录按模块分文件夹；新增 §9.2 前台目录组织；明确约定未覆盖的情况不参考 VVPay |
+| v1.2 | 2026-10-18 | vivo.li / Claude | §7.2 CSV 导出补充时区和 CSV 注入防护 |

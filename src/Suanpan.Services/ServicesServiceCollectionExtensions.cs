@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Suanpan.Services.Sys.Auth;
+using Suanpan.Services.Sys.Configs;
+using Suanpan.Services.Sys.Logging;
 using Suanpan.Services.Sys.Rbac;
 using Suanpan.Services.Sys.Rbac.Manage;
 using Suanpan.Services.Sys.Security;
@@ -41,6 +43,12 @@ public static class ServicesServiceCollectionExtensions
         services.AddScoped<IUserManageService, UserManageService>();
         services.AddScoped<IRoleManageService, RoleManageService>();
         services.AddScoped<IPermissionManageService, PermissionManageService>();
+
+        // Sys：日志与配置；OpLogActionFilter 由 Crm 注册为全局过滤器
+        services.AddScoped<IOpLogService, OpLogService>();
+        services.AddScoped<ILoginLogService, LoginLogService>();
+        services.AddScoped<OpLogActionFilter>();
+        services.AddScoped<IConfigService, ConfigService>();
 
         return services;
     }

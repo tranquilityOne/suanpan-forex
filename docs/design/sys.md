@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.6（草稿） |
+| 版本 | v0.7（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -406,6 +406,8 @@ Crm 将来部署多个实例时，以上缓存需要改为分布式失效（如 
 
 **脱敏**：参数名包含以下任一词（不区分大小写）的字段，值替换为 `***`：`password`、`pwd`、`secret`、`token`、`totp`、`apikey`、`api_key`、`privatekey`、`private_key`、`credential`、`encryptionkey`。不要加入单独的 `key`、`code`，否则会误伤 `config_key`、`perm_code` 这类正常字段（VVPay 的经验）。
 
+**写入方式**：操作日志和登录日志都用一条参数化的 `INSERT` 直接写入，不经过 EF 的变更跟踪。业务操作失败时上下文里可能留有未保存的改动，若用 `SaveChanges` 写日志，这些改动会随日志一起保存。超长字段截断到列的长度上限。
+
 **写入失败**（BR-151）：不影响业务请求的结果；记录 Error 级日志，并调用告警接口 `IAlertService`。告警接口由 Ops 模块（FR-025，M2）实现；M1 阶段先提供一个只写 Error 日志的空实现。
 
 **哪些 action 要标 `[OpLog]`**：所有写操作（新增、修改、删除、状态变更、授权、重置、解锁、重建、导出、手动触发）。查询类 action 不标。
@@ -418,7 +420,8 @@ Crm 将来部署多个实例时，以上缓存需要改为分布式失效（如 
 
 - 操作日志页：按操作人、模块、动作、结果、时间范围筛选，按时间倒序分页。
 - 登录日志页：按登录名、结果、时间范围筛选。
-- 导出 CSV（UTF-8 带 BOM）：按当前筛选条件导出，单次最多 10 万行；导出动作本身标 `[OpLog]`（BR-150）。
+- 导出 CSV（UTF-8 带 BOM）：按当前筛选条件导出，单次最多 10 万行，按时间倒序；时间按操作者时区显示，表头写明时区；导出动作本身标 `[OpLog]`（BR-150）。
+- 以 `=`、`+`、`-`、`@` 开头的单元格前加单引号，防止导出内容在 Excel 中被当作公式执行（CSV 注入）。
 - 两个日志都没有修改、删除入口；保留期限见 BR-149，第一阶段不做清理任务。
 
 ---
@@ -433,7 +436,7 @@ Suanpan.Core/Sys/
 │                 SysConfig、SysIpWhitelist、SysOpLog、SysLoginLog
 ├─ Enums/         UserStatus、PermType、ConfigValueType、LoginStage
 ├─ Constants/     RoleCodes
-└─ Rules/         PasswordPolicy、LockoutRule、UserStatusRule、PermCodePattern
+└─ Rules/         PasswordPolicy、LockoutRule、UserStatusRule、PermCodePattern、ConfigValueRule
 
 Suanpan.Shared/Auth/      AuthSchemes、SuanpanClaimTypes、ICurrentUser、HttpContextCurrentUser、
                           HasPermission 三件套、PermMenu / PermName 特性、PermCodeHelper
@@ -449,8 +452,8 @@ Suanpan.Services/Sys/
 ├─ Rbac/          PermissionService、PermissionAuthorizationHandler、PermissionRebuildService、
 │  │              PresetRoleGrantService、PresetRoleGrants、MenuService
 │  └─ Manage/     UserManageService、RoleManageService、PermissionManageService
-├─ Logging/       OpLogActionFilter、SensitiveDataMasker、OpLogService、LoginLogService
-├─ Configs/       ConfigService
+├─ Logging/       OpLogActionFilter、SensitiveDataMasker、OpLogService、LoginLogService、LogExport
+├─ Configs/       ConfigService、SysConfigKeys
 └─ Security/      Pbkdf2PasswordHasher、TotpService、AesSecretProtector、IpWhitelistService、
                   IpWhitelistMatcher、QrCodeHelper
 
@@ -513,9 +516,12 @@ public interface IPresetRoleGrantService
 public interface IConfigService
 {
     Task<int> GetIntAsync(string key, int defaultValue, CancellationToken ct = default);
+    Task<decimal> GetDecimalAsync(string key, decimal defaultValue, CancellationToken ct = default);
     Task<bool> GetBoolAsync(string key, bool defaultValue, CancellationToken ct = default);
     Task<string?> GetStringAsync(string key, string? defaultValue, CancellationToken ct = default);
-    Task<ManageResult> SaveAsync(string key, string value, CancellationToken ct);
+    Task<IReadOnlyList<ConfigRow>> GetListAsync(CancellationToken ct);         // 代码中定义的配置项合并库中的值
+    Task<ManageResult> SaveAsync(string key, string value, CancellationToken ct); // 按类型校验，库里没有就新建
+    Task<ManageResult> ResetAsync(string key, CancellationToken ct);              // 恢复默认值：删除库中的值
 }
 ```
 
@@ -545,8 +551,9 @@ public interface IConfigService
 | 权限点 | `/Sys/Permission` | `sys:permission:index` | 树形表格 |
 | 修改权限点 | `/Sys/Permission/Edit/{id}` | `sys:permission:edit` | 只允许改图标、排序、启停 |
 | 从代码重建 | POST | `sys:permission:rebuild` | 二次确认；完成后显示新增、更新、停用的数量 |
-| 系统配置 | `/Sys/Config` | `sys:config:index` | 按分组展示 |
-| 修改配置 | `/Sys/Config/Edit/{id}` | `sys:config:edit` | 按类型校验 |
+| 系统配置 | `/Sys/Config` | `sys:config:index` | 按分组展示代码中定义的全部配置项，标出哪些在用默认值 |
+| 修改配置 | `/Sys/Config/Edit?key=...` | `sys:config:edit` | 按类型校验；库里没有的配置项第一次保存时新建，所以按键而不是按 id 编辑 |
+| 恢复默认值 | POST | `sys:config:reset` | 删除库中的值；二次确认 |
 | IP 白名单 | `/Sys/IpWhitelist` | `sys:ip_whitelist:index` | |
 | 新增 / 编辑 / 删除白名单 | `/Sys/IpWhitelist/...` | `sys:ip_whitelist:create` / `edit` / `delete` | 删除需二次确认 |
 | 操作日志 | `/Sys/OpLog` | `sys:op_log:index` | §7.3 |
@@ -606,7 +613,7 @@ public interface IConfigService
 | `security:login_lock_minutes` | 整数 | 15 | 锁定时长 |
 | `security:admin_ip_whitelist_enabled` | 布尔 | false | 后台 IP 白名单总开关 |
 
-配置键用常量类 `SysConfigKeys` 集中定义，读取时代码中的默认值兜底（后端约定 §7）。
+配置键和默认值用常量类 `SysConfigKeys` 集中定义（如 `LoginMaxFailures`、`LoginMaxFailuresDefault`），读取时把默认值传给 `IConfigService`（后端约定 §7）。每个配置项同时登记到 `SysConfigKeys.Definitions`（类型、默认值、分组、说明），系统配置页面据此显示和校验。库里没有的配置项在页面上第一次保存时新建。
 
 ---
 
@@ -666,3 +673,4 @@ public interface IConfigService
 | v0.4 | 2026-10-18 | vivo.li / Claude | ENG-003.2 实施：§3.4 写明预置角色的 id、`created_by` 和 `sys_role` 自增起点 |
 | v0.5 | 2026-10-18 | vivo.li / Claude | ENG-002.3 实施：§5.4 写明加密密钥格式、解密不兼容明文、TOTP 用 `TimeProvider`；§5.5 写明 IP 白名单条目的格式要求 |
 | v0.6 | 2026-10-18 | vivo.li / Claude | ENG-002.4 实施：§4.1 明确"最后一个管理员"按未停用（含待激活）计数，启用只能从停用恢复；§6.5 权限快照的缓存键带版本号；§8.1 Rbac 拆出 Manage 子目录，Core 增加 Constants 和 PermCodePattern；§8.2 补充接口 |
+| v0.7 | 2026-10-18 | vivo.li / Claude | ENG-002.5 实施：§7.1 日志用 INSERT 直接写入；§7.3 导出的时区和 CSV 注入防护；§8.2 配置服务接口；§9.1 配置按键编辑、新增"恢复默认值"；§10.2 配置项登记到 `SysConfigKeys.Definitions` |

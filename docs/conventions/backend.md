@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.12 |
+| 版本 | v1.13 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -339,7 +339,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 - Controller 保持精简，业务逻辑一律放进 Service。
 - 管理操作返回 `ManageResult`（成功或错误，Controller 转成 ModelState 或 TempData）；分页查询返回 `PagedResult<T>`。
 - 查询条件用 `record XxxQuery(...)`，列表行投影用 `record XxxRow(...)`。
-- 配置键用 static class 集中定义常量，通过 `IConfigService.GetXxxAsync(key, 默认值)` 读取：键不存在时用代码默认值，`sys_config` 中有值时覆盖。
+- 配置键用 static class 集中定义常量，通过 `IConfigService.GetXxxAsync(key, 默认值)` 读取：键不存在时用代码默认值，`sys_config` 中有值时覆盖。默认值也定义为常量，并把配置项登记到该类的 `Definitions`（类型、默认值、分组、说明），系统配置页面才能显示和修改（参考 `SysConfigKeys`）。
 
 ---
 
@@ -408,7 +408,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 - 代码中一律使用 `DateTime.UtcNow`，**禁止使用 `DateTime.Now`**。需要在测试中控制时间的地方，注入 `TimeProvider`（`AddSuanpanData` 已注册 `TimeProvider.System`），取 `GetUtcNow().UtcDateTime`。
 - 官方发布排期按机构当地时间解析，用 IANA 时区（如 `America/New_York`）换算成 UTC，夏令时由时区库处理（PRD BR-037）。
 - 转换成用户时区只在展示层做（后台按操作者时区，前台按访客时区），见前端约定。
-- 解析和格式化数字一律使用 `CultureInfo.InvariantCulture`。
+- 解析和格式化数字一律使用 `CultureInfo.InvariantCulture`。解析用户输入的小数时不允许千分位（`NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint`），否则把小数点误写成逗号的 `0,25` 会被当成 25。
 
 ---
 
@@ -418,6 +418,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
   - 只记录请求参数；密码、密钥、API Key 等字段必须脱敏（PRD BR-147）。
   - 不记录字段修改前后的值；业务上需要的变更历史（改期、利率、模板版本）由各功能自己记录（PRD DEC-018）。
   - 操作日志写入失败时，不回滚业务操作，但要写错误日志并告警（PRD BR-151）。
+  - 操作日志、登录日志用一条参数化的 `INSERT` 直接写入，不经过 EF 的变更跟踪，避免把业务操作中未保存的改动一起保存。
 - **应用日志**：JSON 格式，带 traceId，贯穿采集 → 入库 → 快讯 → 前台缓存刷新（PRD NFR-050），保留 ≥ 180 天。
 - **日志级别**：需要人处理的问题打 Error（如解析失败、缓存刷新连续失败）；依赖抖动、限流等打 Warning。
 - **脱敏**：外部响应内容不整段打进日志；凭据在任何日志中都不出现明文。
@@ -588,3 +589,4 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | v1.10 | 2026-10-18 | vivo.li / Claude | §6.4 补充多次保存用 `InTransactionAsync`、`ILIKE` 的转义写法 |
 | v1.11 | 2026-10-18 | vivo.li / Claude | §13 重写：拆为测试项目、测什么与不测什么、写法、分组与运行；连数据库的测试标 Integration，本地可只跑单元测试 |
 | v1.12 | 2026-10-18 | vivo.li / Claude | §13 新增 13.3 要避免的三类测试（低价值、重复、脆弱：判断问题、常见情形、例外）、13.4 硬性规则、13.5 评审清单；原 13.4 改为 13.6 |
+| v1.13 | 2026-10-18 | vivo.li / Claude | §7 配置项登记到 `Definitions`；§10 小数不允许千分位；§11 日志用 INSERT 直接写入 |

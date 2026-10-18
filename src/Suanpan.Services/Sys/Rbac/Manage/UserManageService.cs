@@ -4,6 +4,7 @@ using Suanpan.Core.Sys.Entities;
 using Suanpan.Core.Sys.Enums;
 using Suanpan.Core.Sys.Rules;
 using Suanpan.Data;
+using Suanpan.Services.Common.Querying;
 using Suanpan.Services.Sys.Auth;
 using Suanpan.Services.Sys.Rbac.Manage.Models;
 using Suanpan.Services.Sys.Security;
@@ -25,9 +26,9 @@ public sealed class UserManageService(
         var users = db.SysUsers.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(query.Keyword))
         {
-            var pattern = $"%{EscapeLike(query.Keyword.Trim())}%";
-            // 显式指定转义字符：不指定时 Npgsql 会生成 ESCAPE ''，反斜杠不起作用
-            users = users.Where(u => EF.Functions.ILike(u.Username, pattern, LikeEscape) || EF.Functions.ILike(u.RealName, pattern, LikeEscape));
+            var pattern = LikePattern.Contains(query.Keyword);
+            users = users.Where(u => EF.Functions.ILike(u.Username, pattern, LikePattern.Escape)
+                                     || EF.Functions.ILike(u.RealName, pattern, LikePattern.Escape));
         }
 
         if (query.Status is { } status)
@@ -263,10 +264,4 @@ public sealed class UserManageService(
     private static string NewSecurityStamp() => Guid.NewGuid().ToString("N");
 
     private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-
-    private const string LikeEscape = @"\";
-
-    /// <summary>转义 LIKE 中的通配符，按普通字符匹配</summary>
-    private static string EscapeLike(string value)
-        => value.Replace(LikeEscape, LikeEscape + LikeEscape).Replace("%", LikeEscape + "%").Replace("_", LikeEscape + "_");
 }
