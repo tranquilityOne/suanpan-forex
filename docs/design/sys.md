@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.4（草稿） |
+| 版本 | v0.5（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -307,7 +307,8 @@ sequenceDiagram
 沿用 VVPay 的实现：
 
 - RFC 6238：HMAC-SHA1，30 秒一个时间步，6 位验证码，允许前后各 1 个时间步的误差。
-- 密钥为 20 字节，Base32 编码；保存前用 AES 加密（`ISecretProtector`），加密密钥来自环境变量 `SUANPAN__Security__EncryptionKey`。
+- 密钥为 20 字节，Base32 编码；保存前用 AES-256-GCM 加密（`ISecretProtector`），加密密钥来自环境变量 `SUANPAN__Security__EncryptionKey`，格式为 32 字节随机数的 Base64。解密时不是 `enc:` 开头的值直接报错，不按明文兼容。
+- `TotpService` 通过注入的 `TimeProvider` 取时间，用 RFC 6238 附录 B 的测试向量验证。
 - 绑定时，待绑定的密钥加密后放在页面隐藏域里，验证通过才保存。
 - **防重放**：Redis 键 `suanpan:totp:used:{userId}:{时间步}` 用 SETNX 写入，同一个时间步的验证码只能用一次。
 - **限流**：TOTP 失败计入 §4.3 的统一失败次数，不再单独设 Redis 计数（与 VVPay 不同）。
@@ -317,6 +318,7 @@ sequenceDiagram
 
 - 在 Crm 的请求管道中，紧跟 `UseForwardedHeaders` 之后、认证之前执行，拦截所有请求（包括登录页）。
 - 判断数据来自 `sys_ip_whitelist` 中启用的条目，30 秒内存缓存；后台增删改后本实例立即生效。
+- 条目只接受单个 IP 或 CIDR 网段：IPv4 必须是完整的四段写法；CIDR 网段地址的主机位必须为 0（`203.0.113.10/24` 会被拒绝，避免误以为只放行了单个 IP）。不支持 VVPay 的起止段写法。
 - **总开关**：配置 `security:admin_ip_whitelist_enabled`，默认关闭（访问方式是 IP 白名单还是 VPN 还没定，见 PRD Q-003）。
 - **应急放行**：环境变量 `SUANPAN__Security__BootstrapAllowedIps`（逗号分隔）中的 IP 总是放行，防止把所有人都挡在外面。
 - 客户端 IP 取自 ForwardedHeaders 处理后的地址；部署时必须正确配置可信代理，否则所有请求都会显示为代理的 IP。
@@ -656,3 +658,4 @@ public interface IConfigService
 | v0.2 | 2026-10-17 | vivo.li / Claude | ENG-002.1 实施：§8.1 补充 `HttpContextCurrentUser`、`PagedResult` 的位置。`ICurrentUser` 只有 `UserId`、`UserName`，未登录时为空，不再回落为 "system"（审计字段的程序名由数据层的 `IAuditActorProvider` 提供） |
 | v0.3 | 2026-10-17 | vivo.li / Claude | ENG-002.2 实施：§3.1 写明两张日志表哪些列可空（`roles` 不可空，没有角色时为空串）；§3 补充主键、索引的命名方式 |
 | v0.4 | 2026-10-18 | vivo.li / Claude | ENG-003.2 实施：§3.4 写明预置角色的 id、`created_by` 和 `sys_role` 自增起点 |
+| v0.5 | 2026-10-18 | vivo.li / Claude | ENG-002.3 实施：§5.4 写明加密密钥格式、解密不兼容明文、TOTP 用 `TimeProvider`；§5.5 写明 IP 白名单条目的格式要求 |

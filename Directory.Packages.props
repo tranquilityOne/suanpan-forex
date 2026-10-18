@@ -16,9 +16,15 @@
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
   </ItemGroup>
 
+  <!-- 业务服务 -->
+  <ItemGroup>
+    <PackageVersion Include="QRCoder" Version="1.8.1" />
+  </ItemGroup>
+
   <!-- 测试 -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.13" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
   </ItemGroup>
 

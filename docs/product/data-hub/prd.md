@@ -10,7 +10,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 文档版本 | v1.0.0.8 |
+| 文档版本 | v1.0.0.9 |
 | 状态 | 草稿 |
 | 产品类型 | 金融（财经资讯与工具，不涉及交易与资金） |
 | 创建日期 | 2026-10-17 |
@@ -36,6 +36,7 @@
 | v1.0.0.6 | 2026-10-17 | vivo.li / Claude | 修订 | 新增数据层测试项目 Suanpan.Data.Tests；登记数据访问和测试用的第三方包 | Added: §13.2.4 四项组件；Changed: §10.10 解决方案结构 | §10.10、§11、§13.2.4 |
 | v1.0.0.7 | 2026-10-17 | vivo.li / Claude | 修订 | 新增测试项目 Suanpan.Shared.Tests | Changed: §10.10 解决方案结构 | §10.10、§11 |
 | v1.0.0.8 | 2026-10-18 | vivo.li / Claude | 修订 | 登记迁移工具和设计时依赖的许可证 | Added: §13.2.4 EF Core Design 与 dotnet-ef；Changed: §13.2.4 配置包一行 | §11、§13.2.4 |
+| v1.0.0.9 | 2026-10-18 | vivo.li / Claude | 修订 | 新增测试项目 Suanpan.Services.Tests；登记 QRCoder、Testcontainers 的许可证 | Added: §13.2.4 两项组件；Changed: §10.10 解决方案结构 | §10.10、§11、§13.2.4 |
 
 ---
 
@@ -2477,6 +2478,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 ├─ tests/
 │  ├─ Suanpan.Core.Tests          利多利空判定、时区和夏令时换算
 │  ├─ Suanpan.Shared.Tests        权限码生成、动态 Policy
+│  ├─ Suanpan.Services.Tests      业务服务（连 Testcontainers 启动的 PostgreSQL）
 │  ├─ Suanpan.Data.Tests          审计拦截器、实体配置约定
 │  └─ Suanpan.Collector.Tests     解析器测试，用保存下来的官方页面快照当样例
 └─ deploy/                        Dockerfile、docker-compose
@@ -2530,9 +2532,28 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 ## 11. 变更影响分析
 
-> 11.1 为最新一次变更；之前的变更按时间倒序列在 11.2 ~ 11.8。
+> 11.1 为最新一次变更；之前的变更按时间倒序列在 11.2 ~ 11.9。
 
-### 11.1 最新变更：CHG-008（v1.0.0.8）
+### 11.1 最新变更：CHG-009（v1.0.0.9）
+
+| 项目 | 内容 |
+|---|---|
+| 变更编号 | CHG-009 |
+| 变更类型 | 修订（v1.0.0.8 → v1.0.0.9，初稿阶段只动第 4 位） |
+| 变更描述 | 实施 ENG-002.3（JAN-48）时新增测试项目 Suanpan.Services.Tests（用 Testcontainers 连真实的 PostgreSQL），引入 QRCoder |
+| 变更原因 | 安全组件需要单元测试，IP 白名单服务要连数据库；服务里用到 ExecuteDelete、ExecuteUpdate，EF InMemory 不支持 |
+| 提出人 | vivo.li |
+| 提出日期 | 2026-10-18 |
+
+**Diff 记录**
+
+- **Added**：§13.2.4 新增 Testcontainers、QRCoder。
+- **Changed**：§10.10 解决方案结构加入 Suanpan.Services.Tests。
+- **Deprecated / Removed**：无。
+
+**影响分析**：没有改动任何 FR、BR、验收标准或数据模型。CI 运行 Suanpan.Services.Tests 需要 Docker（ENG-007）。
+
+### 11.2 历史变更：CHG-008（v1.0.0.8）
 
 | 项目 | 内容 |
 |---|---|
@@ -2551,7 +2572,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型。迁移命令改为以 Data 为启动项目，见数据库变更约定 v1.2。
 
-### 11.2 历史变更：CHG-007（v1.0.0.7）
+### 11.3 历史变更：CHG-007（v1.0.0.7）
 
 | 项目 | 内容 |
 |---|---|
@@ -2569,7 +2590,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型；没有新增第三方包。ENG-008（测试项目骨架）的 CI 需要同时运行 Suanpan.Shared.Tests。
 
-### 11.3 历史变更：CHG-006（v1.0.0.6）
+### 11.4 历史变更：CHG-006（v1.0.0.6）
 
 | 项目 | 内容 |
 |---|---|
@@ -2588,7 +2609,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型。ENG-008（测试项目骨架）的架构测试和 CI 需要同时覆盖 Suanpan.Data.Tests。
 
-### 11.4 历史变更：CHG-005（v1.0.0.5）
+### 11.5 历史变更：CHG-005（v1.0.0.5）
 
 | 项目 | 内容 |
 |---|---|
@@ -2607,7 +2628,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型。代码仍按 Redis 协议编写（StackExchange.Redis），不受服务端更换影响；中期前台迁回大陆时，托管缓存服务需兼容 Redis 7.2 协议（DEC-022）。受影响的工单只有 JAN-45（ENG-006.1），已按本版本实施。
 
-### 11.5 历史变更：CHG-004（v1.0.0.4）
+### 11.6 历史变更：CHG-004（v1.0.0.4）
 
 | 项目 | 内容 |
 |---|---|
@@ -2625,7 +2646,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型。今后 PRD 中 FR / ENG 的验收标准变化时，按 skr-prd 的级联规则，通过追踪表找到对应的 JAN 工单并同步其验收清单。
 
-### 11.6 历史变更：CHG-003（v1.0.0.3）
+### 11.7 历史变更：CHG-003（v1.0.0.3）
 
 | 项目 | 内容 |
 |---|---|
@@ -2644,7 +2665,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型。只影响 Linear 拆单（新增 10 张工程任务单，FR-028、FR-029 的实现指向 ENG-002、ENG-004、ENG-005）和测试计划（各工程任务的完成标准）。
 
-### 11.7 历史变更：CHG-002（v1.0.0.2）
+### 11.8 历史变更：CHG-002（v1.0.0.2）
 
 **变更摘要**
 
@@ -2696,7 +2717,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 | 技术方案 | Yes | 盯盘执行器、对外视图与缓存刷新、解析器框架、程序间消息；以 §10.10 为基础 | 技术负责人 | 待编写 |
 | web-portal PRD | Yes | 前台技术栈改为 ASP.NET Core MVC，数据改为直接查询对外视图 | vivo.li | 本次同步修订 |
 
-### 11.8 历史变更：CHG-001（v1.0.0.1）
+### 11.9 历史变更：CHG-001（v1.0.0.1）
 
 **变更摘要**
 
@@ -2969,6 +2990,8 @@ suanpan-forex/                    一个仓库、一个解决方案
 | Microsoft.Extensions.Configuration.Abstractions、UserSecrets、EnvironmentVariables | MIT | 低 | Data 层读取连接串；后两个只用于 dotnet ef 的设计时工厂 |
 | EF Core Design、dotnet-ef 工具 | MIT | 低 | 开发依赖，只用于生成和执行迁移，不随程序发布 |
 | xUnit v3（xunit.v3） | Apache-2.0 | 低 | 只用于测试项目 |
+| Testcontainers（Testcontainers.PostgreSql） | MIT | 低 | 只用于测试项目，测试时启动临时 PostgreSQL 容器 |
+| QRCoder | MIT | 低 | TOTP 绑定页的二维码 |
 | Hangfire（Core） | LGPL-3.0（另有商业许可） | 中 | 以 NuGet 包引用、不修改源码，一般可用于闭源产品；如需 Pro 功能则购买商业许可。由法务确认 |
 | Hangfire.PostgreSql（Hangfire 的 PostgreSQL 存储） | 待确认 | 待确认 | 社区维护的扩展，技术方案阶段确认许可证 |
 | Npgsql / Npgsql.EntityFrameworkCore.PostgreSQL | PostgreSQL License | 低 | |

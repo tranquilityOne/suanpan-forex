@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.8 |
+| 版本 | v1.9 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -39,6 +39,7 @@ suanpan-forex/
 ├─ tests/
 │  ├─ Suanpan.Core.Tests           领域规则测试
 │  ├─ Suanpan.Shared.Tests         鉴权基础组件测试（权限码生成、动态 Policy）
+│  ├─ Suanpan.Services.Tests       业务服务测试（连 Testcontainers 启动的 PostgreSQL）
 │  ├─ Suanpan.Data.Tests           数据层测试（审计拦截器、实体配置约定）
 │  └─ Suanpan.Collector.Tests      解析器测试（用保存的官方页面快照当样例）
 └─ deploy/                         Dockerfile、docker-compose
@@ -126,6 +127,7 @@ Suanpan.Portal/                    目录组织见前端约定 §9.2
 tests/
 ├─ Suanpan.Core.Tests/{模块}/                       与源码目录一一对应
 ├─ Suanpan.Shared.Tests/                           与 Suanpan.Shared 的目录一一对应
+├─ Suanpan.Services.Tests/{模块}/                  与 Suanpan.Services 的目录一一对应；Fixtures/ 放测试数据库
 ├─ Suanpan.Data.Tests/                             与 Suanpan.Data 的目录一一对应
 └─ Suanpan.Collector.Tests/Sources/{经济体}/{机构}/  测试代码 + Snapshots/ 快照样例
 ```
@@ -440,7 +442,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | `Redis:Configuration` | StackExchange.Redis 连接串（含密码） | ✓ | ✓ | ✓ | 可选 |
 | `Redis:InstanceName` | 键前缀，默认 `suanpan:`；与其他项目共用 Redis 时靠它隔离 | ✓ | ✓ | ✓ | 可选 |
 | `RabbitMq:Uri` | AMQP URI，虚拟主机为 `suanpan`，如 `amqp://用户:密码@主机:5672/suanpan` | ✓ | ✓ | ✓ | ✓ |
-| `Security:EncryptionKey` | AES 加密密钥，TOTP 密钥和数据源凭据共用 | ✓ | | ✓ | |
+| `Security:EncryptionKey` | AES-256 加密密钥，TOTP 密钥和数据源凭据共用；32 字节随机数的 Base64（如 `openssl rand -base64 32`），格式不对时启动即报错 | ✓ | | ✓ | |
 | `Security:BootstrapAllowedIps` | 后台 IP 白名单的应急放行 IP，逗号分隔 | ✓ | | | |
 | `Seed:AdminUsername`、`Seed:AdminPassword` | 初始管理员（sys 设计 §3.4） | ✓ | | | |
 | `Auth:IdleTimeoutMinutes` | 后台会话空闲超时，默认 30 | ✓ | | | |
@@ -452,6 +454,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 - `Suanpan.Core.Tests`：利多利空判定的全部分支、夏令时切换周的时区换算、数据质量校验规则（PRD NFR-133）。
 - `Suanpan.Collector.Tests`：每个解析器至少有一组基于真实快照的测试样例；官方页面改版后，把新快照补进样例。
 - `Suanpan.Shared.Tests`：权限码生成、动态 Policy、分页等 Shared 中的组件。
+- `Suanpan.Services.Tests`：业务服务。用到数据库的测试连真实的 PostgreSQL 17：Testcontainers 启动临时容器，按生产方式建好三个账号，用迁移账号执行全部迁移，测试用应用账号连接（权限与线上一致）；整个程序集共用一个容器，每个测试在自己的事务里执行、结束时回滚。**运行这个项目需要 Docker**（本地 Docker Desktop，CI 用 GitHub Actions 自带的 Docker）。
 - `Suanpan.Data.Tests`：审计拦截器（用 EF Core InMemory）、实体配置约定（表名、列名、导航属性、外键）。不连接真实数据库。
 - 每个类库对应一个测试项目（`Suanpan.{类库}.Tests`），需要测试的类库还没有测试项目时，先新建再写测试。
 - 测试框架为 xUnit v3，通过 Microsoft.Testing.Platform 运行（`global.json` 中设置），测试项目的 `OutputType` 为 `Exe`。
@@ -487,3 +490,4 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | v1.6 | 2026-10-17 | vivo.li / Claude | 新增测试项目 `Suanpan.Shared.Tests`（§1、§1.2、§13）；§13 明确每个类库对应一个测试项目 |
 | v1.7 | 2026-10-17 | vivo.li / Claude | §6.2 补充主键和索引的命名方式、63 字符上限、自增主键与预置数据；§6.1 约定测试的检查范围 |
 | v1.8 | 2026-10-18 | vivo.li / Claude | §1.2 Data 目录加入 `DesignTime/`；§12 新增配置键 `ConnectionStrings:Migrator` |
+| v1.9 | 2026-10-18 | vivo.li / Claude | 新增测试项目 `Suanpan.Services.Tests`（§1、§1.2、§13），服务测试连 Testcontainers 启动的 PostgreSQL；§12 写明 `Security:EncryptionKey` 的格式 |

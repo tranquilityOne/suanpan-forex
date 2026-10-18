@@ -5,4 +5,9 @@
     <ProjectReference Include="..\Suanpan.Infrastructure\Suanpan.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- TOTP 绑定页的二维码 -->
+    <PackageReference Include="QRCoder" />
+  </ItemGroup>
+
 </Project>

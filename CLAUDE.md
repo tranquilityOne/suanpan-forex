@@ -36,7 +36,7 @@ src/Suanpan.Collector       程序：盯盘、采集、重新解析
 src/Suanpan.Job             程序：Hangfire 定时任务、快讯生成、告警
 src/Suanpan.Crm             程序：后台
 src/Suanpan.Portal          程序：前台（只读数据库）
-tests/                      Suanpan.Core.Tests、Suanpan.Shared.Tests、Suanpan.Data.Tests、Suanpan.Collector.Tests
+tests/                      Suanpan.Core.Tests、Suanpan.Shared.Tests、Suanpan.Data.Tests、Suanpan.Services.Tests、Suanpan.Collector.Tests
 deploy/                     Dockerfile、docker-compose
 ```
 
@@ -50,7 +50,7 @@ docker compose -f deploy/docker-compose.yml up -d     # 启动 PostgreSQL、Redi
 docker compose -f deploy/docker-compose.yml up -d postgres   # 本机已有 Redis、RabbitMQ 时只启动 PostgreSQL
 dotnet user-secrets list --project src/Suanpan.Crm   # 查看本地配置了哪些键（四个程序共用一份 user-secrets）
 dotnet build                                          # 编译整个解决方案
-dotnet test                                           # 运行全部测试
+dotnet test                                           # 运行全部测试（Suanpan.Services.Tests 需要 Docker）
 dotnet run --project src/Suanpan.Crm                  # 运行后台（其他程序同理）
 dotnet tool restore                                   # 安装仓库固定版本的 dotnet-ef（.config/dotnet-tools.json）
 dotnet ef migrations add <PascalCase描述> --context SuanpanDbContext --project src/Suanpan.Data --startup-project src/Suanpan.Data

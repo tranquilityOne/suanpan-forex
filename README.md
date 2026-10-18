@@ -83,7 +83,7 @@ dotnet user-secrets list --project src/Suanpan.Crm
 
 | 键 | 用途 | 何时需要 |
 |---|---|---|
-| `Security:EncryptionKey` | 加密 TOTP 密钥和数据源凭据 | 迁移 Security 组件后（ENG-002.3） |
+| `Security:EncryptionKey` | 加密 TOTP 密钥和数据源凭据；32 字节随机数的 Base64，用 `openssl rand -base64 32` 生成 | 绑定 TOTP 的页面完成后（ENG-004.3） |
 | `Seed:AdminUsername`、`Seed:AdminPassword` | 初始管理员的登录名和初始密码 | 实现初始管理员后（ENG-005.1） |
 | `Security:BootstrapAllowedIps` | 后台 IP 白名单的应急放行 IP，逗号分隔 | 可选 |
 
@@ -105,6 +105,12 @@ dotnet run --project src/Suanpan.Crm
 | Portal | http://127.0.0.1:5200 |
 | Job | http://127.0.0.1:5300 |
 | Collector | http://127.0.0.1:5400 |
+
+运行全部测试（`Suanpan.Services.Tests` 会用 Docker 启动临时的 PostgreSQL，需要 Docker 在运行）：
+
+```bash
+dotnet test
+```
 
 ### 4. 数据库迁移
 
