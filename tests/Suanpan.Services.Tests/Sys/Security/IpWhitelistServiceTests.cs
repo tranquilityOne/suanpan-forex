@@ -22,8 +22,7 @@ public class IpWhitelistServiceTests(PostgresFixture postgres)
         var result = await service.SaveAsync(new SysIpWhitelist { IpValue = " 203.0.113.0/24 ", Remark = "  办公室网络 " }, Ct);
 
         Assert.True(result.Success, result.Error);
-        var saved = await db.SysIpWhitelists.AsNoTracking().SingleAsync(Ct);
-        Assert.Equal("203.0.113.0/24", saved.IpValue);
+        var saved = await db.SysIpWhitelists.AsNoTracking().SingleAsync(x => x.IpValue == "203.0.113.0/24", Ct);
         Assert.Equal("办公室网络", saved.Remark);
         Assert.Equal("test", saved.CreatedBy);
     }
@@ -36,7 +35,7 @@ public class IpWhitelistServiceTests(PostgresFixture postgres)
         var result = await new IpWhitelistService(db, _cache).SaveAsync(new SysIpWhitelist { IpValue = "10.1" }, Ct);
 
         Assert.False(result.Success);
-        Assert.False(await db.SysIpWhitelists.AnyAsync(Ct));
+        Assert.False(await db.SysIpWhitelists.AnyAsync(x => x.IpValue == "10.1", Ct));
     }
 
     [Fact]
@@ -57,12 +56,12 @@ public class IpWhitelistServiceTests(PostgresFixture postgres)
         await using var db = await postgres.CreateAppContextAsync();
         var service = new IpWhitelistService(db, _cache);
         await service.SaveAsync(new SysIpWhitelist { IpValue = "203.0.113.10" }, Ct);
-        var id = (await db.SysIpWhitelists.AsNoTracking().SingleAsync(Ct)).Id;
+        var id = (await db.SysIpWhitelists.AsNoTracking().SingleAsync(x => x.IpValue == "203.0.113.10", Ct)).Id;
 
         var result = await service.SaveAsync(new SysIpWhitelist { Id = id, IpValue = "203.0.113.11", IsEnabled = false }, Ct);
 
         Assert.True(result.Success, result.Error);
-        var saved = await db.SysIpWhitelists.AsNoTracking().SingleAsync(Ct);
+        var saved = await db.SysIpWhitelists.AsNoTracking().SingleAsync(x => x.Id == id, Ct);
         Assert.Equal("203.0.113.11", saved.IpValue);
         Assert.False(saved.IsEnabled);
         Assert.Equal("test", saved.UpdatedBy);
@@ -93,7 +92,7 @@ public class IpWhitelistServiceTests(PostgresFixture postgres)
         await service.SaveAsync(new SysIpWhitelist { IpValue = "203.0.113.10" }, Ct);
         Assert.True(await service.IsAllowedAsync(client, Ct));
 
-        var id = (await db.SysIpWhitelists.AsNoTracking().SingleAsync(Ct)).Id;
+        var id = (await db.SysIpWhitelists.AsNoTracking().SingleAsync(x => x.IpValue == "203.0.113.10", Ct)).Id;
         Assert.True((await service.DeleteAsync(id, Ct)).Success);
         Assert.False(await service.IsAllowedAsync(client, Ct));
     }
