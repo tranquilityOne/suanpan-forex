@@ -1,0 +1,62 @@
+@model ConfigEditViewModel
+@using Suanpan.Core.Sys.Enums
+@{
+    ViewData["Title"] = "修改配置";
+    var typeText = Model.ValueType switch
+    {
+        ConfigValueType.Int => "整数",
+        ConfigValueType.Decimal => "小数",
+        ConfigValueType.Bool => "是 / 否",
+        ConfigValueType.Json => "JSON",
+        _ => "文本",
+    };
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">修改配置：@Model.Description</h2>
+    <div class="text-secondary">
+        <code>@Model.Key</code> · 类型：@typeText · 默认值：@Model.DefaultValue
+        @if (!Model.IsStored)
+        {
+            <span>· 当前使用默认值</span>
+        }
+    </div>
+</div>
+
+<div class="card" style="max-width: 40rem">
+    <form asp-action="Edit" method="post" class="card-body">
+        <input type="hidden" asp-for="Key" />
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        <div class="mb-3">
+            <label asp-for="Value" class="form-label"></label>
+            @switch (Model.ValueType)
+            {
+                case ConfigValueType.Bool:
+                    <select asp-for="Value" class="form-select">
+                        <option value="true">是</option>
+                        <option value="false">否</option>
+                    </select>
+                    break;
+                case ConfigValueType.Json:
+                    <textarea asp-for="Value" class="form-control font-monospace" rows="8"></textarea>
+                    break;
+                case ConfigValueType.Int:
+                case ConfigValueType.Decimal:
+                    <input asp-for="Value" class="form-control font-monospace" inputmode="decimal" autocomplete="off" />
+                    break;
+                default:
+                    <input asp-for="Value" class="form-control" autocomplete="off" />
+                    break;
+            }
+            <span asp-validation-for="Value"></span>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">保存</button>
+            <a asp-action="Index" class="btn">取消</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

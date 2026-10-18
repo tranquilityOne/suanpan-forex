@@ -1,0 +1,69 @@
+@model IReadOnlyList<Suanpan.Services.Sys.Configs.Models.ConfigRow>
+@{
+    ViewData["Title"] = "系统配置";
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">系统配置</h2>
+    <div class="text-secondary">业务开关和参数。保存后后台立即生效，采集、任务等其他程序在 1 分钟内生效。没有修改过的配置项使用代码中的默认值。</div>
+</div>
+
+@foreach (var group in Model.GroupBy(r => r.Group))
+{
+    <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title">@group.Key</h3></div>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle card-table">
+                <thead>
+                    <tr><th>配置项</th><th>当前值</th><th>默认值</th><th class="w-1"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in group)
+                    {
+                        <tr>
+                            <td>
+                                <div>@row.Description</div>
+                                <code class="small">@row.Key</code>
+                                @if (!row.IsDefined)
+                                {
+                                    <status-badge tone="Attention" text="代码中已不再使用" />
+                                }
+                            </td>
+                            <td>
+                                @if (row.Value is null)
+                                {
+                                    <span class="text-secondary">@row.DefaultValue</span>
+                                    <status-badge tone="Neutral" text="默认" />
+                                }
+                                else
+                                {
+                                    <span class="fw-bold font-monospace">@row.Value</span>
+                                }
+                            </td>
+                            <td class="font-monospace text-secondary">@row.DefaultValue</td>
+                            <td>
+                                <div class="btn-list flex-nowrap">
+                                    @if (row.IsDefined)
+                                    {
+                                        <a asp-action="Edit" asp-route-key="@row.Key" class="btn btn-sm">修改</a>
+                                    }
+                                    @if (!row.IsDefined)
+                                    {
+                                        <confirm-form asp-action="Reset" asp-route-key="@row.Key" button-text="删除"
+                                                      message="@($"删除代码中已不再使用的配置项 {row.Key}？")" />
+                                    }
+                                    else if (row.Value is not null)
+                                    {
+                                        <confirm-form asp-action="Reset" asp-route-key="@row.Key" button-text="恢复默认值"
+                                                      button-class="btn btn-sm btn-outline-warning"
+                                                      message="@($"把 {row.Key} 恢复为默认值 {row.DefaultValue}？")" />
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}

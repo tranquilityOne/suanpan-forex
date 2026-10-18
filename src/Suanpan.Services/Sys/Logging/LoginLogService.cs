@@ -74,7 +74,8 @@ public sealed class LoginLogService(SuanpanDbContext db, TimeProvider timeProvid
         return logs;
     }
 
-    private static string StageName(LoginStage stage) => stage switch
+    /// <summary>步骤的显示名，页面和导出共用</summary>
+    public static string StageName(LoginStage stage) => stage switch
     {
         LoginStage.Password => "密码",
         LoginStage.Totp => "TOTP",

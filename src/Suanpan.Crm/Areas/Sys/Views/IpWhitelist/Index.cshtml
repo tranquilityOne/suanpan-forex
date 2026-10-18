@@ -1,0 +1,58 @@
+@model IpWhitelistListViewModel
+@{
+    ViewData["Title"] = "IP 白名单";
+}
+
+<div class="page-header mb-3 d-flex align-items-center">
+    <h2 class="page-title">IP 白名单</h2>
+    <a asp-action="Create" class="btn btn-primary ms-auto"><i class="ti ti-plus me-1"></i>新增</a>
+</div>
+
+<div class="alert @(Model.SwitchEnabled ? "alert-success" : "alert-secondary")">
+    <div>
+        @if (Model.SwitchEnabled)
+        {
+            <span>白名单<strong>已开启</strong>：只有下列启用的地址可以访问后台。</span>
+        }
+        else
+        {
+            <span>白名单<strong>未开启</strong>：所有地址都可以访问后台，下列条目暂不生效。</span>
+        }
+        <span>开关在<a asp-controller="Config" asp-action="Index">系统配置</a>中修改。你当前的 IP：<code>@(Model.CurrentIp ?? "未知")</code>。改动 30 秒内生效。</span>
+    </div>
+</div>
+
+<div class="card">
+    @if (Model.Items.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("还没有白名单条目")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle card-table text-nowrap">
+                <thead>
+                    <tr><th>IP 或网段</th><th>备注</th><th>状态</th><th>修改时间</th><th class="w-1"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Model.Items)
+                    {
+                        <tr>
+                            <td><code>@item.IpValue</code></td>
+                            <td>@item.Remark</td>
+                            <td><status-badge tone="@(item.IsEnabled ? BadgeTone.Success : BadgeTone.Neutral)" text="@(item.IsEnabled ? "启用" : "停用")" /></td>
+                            <td><utc-time value="@(item.UpdatedAt ?? item.CreatedAt)" /></td>
+                            <td>
+                                <div class="btn-list flex-nowrap">
+                                    <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm">编辑</a>
+                                    <confirm-form asp-action="Delete" asp-route-id="@item.Id" button-text="删除"
+                                                  message="@($"删除 {item.IpValue}？白名单开启时，来自该地址的请求将不能访问后台。")" />
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

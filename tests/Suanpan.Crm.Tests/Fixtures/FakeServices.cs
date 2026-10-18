@@ -104,9 +104,14 @@ public sealed class FakeSecurityStampValidator : ISecurityStampValidator
     }
 }
 
+/// <summary>记录写入的操作日志和导出时收到的查询条件；导出写出一行固定内容</summary>
 public sealed class RecordingOpLogService : IOpLogService
 {
+    public const string ExportContent = "exported";
+
     public List<SysOpLog> Written { get; } = [];
+
+    public List<OpLogQuery> ExportQueries { get; } = [];
 
     public Task AddAsync(SysOpLog log, CancellationToken ct = default)
     {
@@ -120,6 +125,10 @@ public sealed class RecordingOpLogService : IOpLogService
 
     public Task<PagedResult<OpLogRow>> QueryAsync(OpLogQuery query, CancellationToken ct = default) => throw new NotSupportedException();
 
-    public Task<int> ExportAsync(OpLogQuery query, Stream output, TimeZoneInfo timeZone, CancellationToken ct = default)
-        => throw new NotSupportedException();
+    public async Task<int> ExportAsync(OpLogQuery query, Stream output, TimeZoneInfo timeZone, CancellationToken ct = default)
+    {
+        ExportQueries.Add(query);
+        await output.WriteAsync(System.Text.Encoding.UTF8.GetBytes(ExportContent), ct);
+        return 1;
+    }
 }

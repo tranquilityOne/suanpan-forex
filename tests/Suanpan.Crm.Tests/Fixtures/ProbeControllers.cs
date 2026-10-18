@@ -4,7 +4,7 @@ using Suanpan.Shared.Mvc;
 
 namespace Suanpan.Crm.Tests.Fixtures;
 
-// 只在测试中加载的页面，用来检验管道：Crm 现在还没有业务页面（ENG-004.2 起陆续加入）。
+// 只在测试中加载的页面，用来检验管道本身，不依赖业务页面的具体写法。写操作和导出的约定测试不检查这些页面。
 
 /// <summary>Area 内的页面：权限码由 AutoPermissionConvention 自动生成，如 sys:pipeline_probe:index</summary>
 [Area("Sys")]

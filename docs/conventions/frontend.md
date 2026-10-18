@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.5 |
+| 版本 | v1.6 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 后台 Suanpan.Crm 和前台 Suanpan.Portal 的页面、视图、静态资源 |
 | 依据 | data-hub PRD v1.0.0.2（DEC-014、NFR-131、§10.10）；web-portal PRD v1.0.0.2（DEC-005 ~ DEC-007、NFR-120 ~ NFR-124）；VVPay `doc/frontend.md` |
@@ -153,7 +153,7 @@ Suanpan.Crm/
 
 沿用 VVPay 的列表页模板：
 
-- **筛选区**：`<form method="get">`，布局用 `row g-2 align-items-end`，控件一律用 `-sm` 尺寸；提供查询、重置按钮，需要时加导出链接（带上全部筛选参数）。
+- **筛选区**：`<form method="get">`，布局用 `row g-2 align-items-end`，控件一律用 `-sm` 尺寸；提供查询、重置按钮；需要导出时加导出按钮，用 `formaction` 把同一个筛选表单提交到 `Export` action，导出内容与筛选条件一致。
 - **表格**：`.card` 包 `.table table-hover table-sm align-middle card-table`；宽表加 `.table-responsive` 和 `text-nowrap`；数值右对齐，用 `text-end font-monospace`；编码类内容用 `<code class="small">`。
 - **分页**：使用公共部件 `_Pager`（§6），自动保留筛选参数。
 - **空状态**：没有数据时显示提示，需要时附带新增入口（公共部件 `_EmptyState`）。
@@ -230,7 +230,7 @@ Suanpan.Crm/
 - **时间**：数据库存 UTC，页面一律通过 `<utc-time>` 按操作者时区显示（默认 Asia/Shanghai，data-hub BR-048）。需要录入当地时间的地方（如 CSV 导入），必须明确标出时区。
 - **数字**：解析和格式化用 `CultureInfo.InvariantCulture`；指标数值按指标字典的小数位和单位显示。
 - **外部内容**（快照、新闻标题和摘要）：一律按纯文本转义输出，**禁止使用 `Html.Raw`**；快照用 `<pre>` 显示源码，不渲染（data-hub BR-025）。
-- **CSV 导出**：UTF-8 带 BOM，保证 Excel 打开中文不乱码；时间按操作者时区，表头写明时区；以 `=`、`+`、`-`、`@` 开头的单元格前加单引号，防止在 Excel 中被当作公式执行（CSV 注入）。统一用 `Suanpan.Services.Common.Csv.CsvWriter` 写出。
+- **CSV 导出**：UTF-8 带 BOM，保证 Excel 打开中文不乱码；时间按操作者时区，表头写明时区；以 `=`、`+`、`-`、`@` 开头的单元格前加单引号，防止在 Excel 中被当作公式执行（CSV 注入）。统一用 `Suanpan.Services.Common.Csv.CsvWriter` 写出；Controller 先用 `Suanpan.Crm.Mvc.CsvDownload.Begin` 设置响应头（中文文件名放 `filename*`），再边查边写入 `Response.Body`，不在内存中攒整个文件。导出 action 以 `Export` 开头，标 `[OpLog]`（BR-150）。
 
 ## 8. 安全纪律
 
@@ -391,3 +391,4 @@ Suanpan.Portal/
 | v1.3 | 2026-10-18 | vivo.li / Claude | §3.3 目录加入 `Mvc/`；§4.2 补充 HTMX 请求的未登录和无权限处理 |
 | v1.4 | 2026-10-18 | vivo.li / Claude | ENG-004.2 实施：§2 写明各库的版本和目录、只放 min 文件和 LICENSE；§3.1 布局的错误提示区和确认弹窗；§3.3 开发环境示例页、Models/Shared；§5.2 中文默认校验提示；§6 公共部件的用法 |
 | v1.5 | 2026-10-18 | vivo.li / Claude | §3.1 账号页面使用 `_LayoutAccount` |
+| v1.6 | 2026-10-18 | vivo.li / Claude | ENG-004.5 实施：§5.1 筛选区的导出按钮用 `formaction` 提交筛选表单；§7.2 CSV 导出用 `CsvDownload` 设置响应头、边查边写，导出 action 以 `Export` 开头并标 `[OpLog]` |

@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.12（草稿） |
+| 版本 | v0.13（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -435,7 +435,9 @@ Crm 将来部署多个实例时，以上缓存需要改为分布式失效（如 
 
 - 操作日志页：按操作人、模块、动作、结果、时间范围筛选，按时间倒序分页。
 - 登录日志页：按登录名、结果、时间范围筛选。
-- 导出 CSV（UTF-8 带 BOM）：按当前筛选条件导出，单次最多 10 万行，按时间倒序；时间按操作者时区显示，表头写明时区；导出动作本身标 `[OpLog]`（BR-150）。
+- 时间范围在页面上按操作者时区选起止日期（含两端），换算为 UTC 区间查询，开始含、结束不含（`Suanpan.Crm/Mvc/DateRangeFilter`）。不设默认范围。
+- 模块、动作用下拉框，选项取自代码中标了 `[OpLog]` 的 action（日志里的模块和动作就是这些名字）。动作的查询参数名用 `ActionName`：路由值 `action` 优先于查询参数，同名会绑定成当前 action 名。
+- 导出 CSV（UTF-8 带 BOM）：按当前筛选条件导出，单次最多 10 万行，按时间倒序；时间按操作者时区显示，表头写明时区；导出动作本身标 `[OpLog]`（BR-150）。导出按钮用 `formaction` 提交同一个筛选表单；边查边写入响应流，不在内存中攒整个文件。符合条件的超过 10 万行时，页面提示缩小时间范围后分批导出。
 - 以 `=`、`+`、`-`、`@` 开头的单元格前加单引号，防止导出内容在 Excel 中被当作公式执行（CSV 注入）。
 - 两个日志都没有修改、删除入口；保留期限见 BR-149，第一阶段不做清理任务。
 
@@ -475,10 +477,11 @@ Suanpan.Services/Sys/
 Suanpan.Crm/
 ├─ Auth/          AutoPermissionConvention、AreaCatalog、IpWhitelistMiddleware、CrmAuthServiceCollectionExtensions
 │                 （Cookie、授权、可信代理）、CrmCookieEvents、IpListConfig、CurrentUserAuditActorProvider
-├─ Mvc/           HtmxRequestExtensions（Request.IsHtmx()）、IOperatorTimeZone、ChineseValidationMessages
+├─ Mvc/           HtmxRequestExtensions（Request.IsHtmx()）、IOperatorTimeZone、ChineseValidationMessages、
+│                 DateRangeFilter（日期筛选换算为 UTC 区间）、CsvDownload（CSV 下载的响应头）
 ├─ Filters/       DevelopmentOnlyAttribute
 ├─ Controllers/   AccountController、HomeController、DevComponentsController（开发环境示例页）
-├─ Areas/Sys/     Controllers/（User、Role、Permission）、Views/；页面见 §9.1
+├─ Areas/Sys/     Controllers/（User、Role、Permission、Config、IpWhitelist、OpLog、LoginLog、Job）、Views/；页面见 §9.1
 ├─ Models/        Sys/（各页面的 ViewModel）、Shared/（EmptyStateModel）、Dev/
 └─ TagHelpers/    见 §9.3
 ```
@@ -550,7 +553,7 @@ public interface IConfigService
 
 ### 9.1 系统管理栏目（Area：Sys）
 
-所有写操作都标 `[OpLog("系统管理", "...")]`。本模块不使用 HTMX。
+所有写操作和导出都标 `[OpLog("系统管理", "...")]`，POST 都带防伪校验；`Suanpan.Crm.Tests` 的 `AreaCatalogTests` 检查 Area 内所有 POST 和 `Export` 开头的 action。本模块不使用 HTMX。
 
 | 页面 | 路由 | 权限码 | 说明 |
 |---|---|---|---|
@@ -568,16 +571,16 @@ public interface IConfigService
 | 权限点 | `/Sys/Permission` | `sys:permission:index` | 树形表格 |
 | 修改权限点 | `/Sys/Permission/Edit/{id}` | `sys:permission:edit` | 只允许改图标、排序、启停；是临时修改，下次重建时恢复为代码中的设置（§6.3） |
 | 从代码重建 | POST | `sys:permission:rebuild` | 二次确认；完成后显示新增、更新、停用的数量 |
-| 系统配置 | `/Sys/Config` | `sys:config:index` | 按分组展示代码中定义的全部配置项，标出哪些在用默认值 |
-| 修改配置 | `/Sys/Config/Edit?key=...` | `sys:config:edit` | 按类型校验；库里没有的配置项第一次保存时新建，所以按键而不是按 id 编辑 |
-| 恢复默认值 | POST | `sys:config:reset` | 删除库中的值；二次确认 |
-| IP 白名单 | `/Sys/IpWhitelist` | `sys:ip_whitelist:index` | |
+| 系统配置 | `/Sys/Config` | `sys:config:index` | 按分组展示代码中定义的全部配置项，标出哪些在用默认值；库中有、代码中已不再使用的配置项也列出，可以删除 |
+| 修改配置 | `/Sys/Config/Edit?key=...` | `sys:config:edit` | 按类型校验，输入控件随类型变化（是 / 否用下拉框，JSON 用多行文本）；库里没有的配置项第一次保存时新建，所以按键而不是按 id 编辑。保存后 Crm 立即生效，其他程序在本机缓存过期后生效（§6.5，不超过 60 秒） |
+| 恢复默认值 | POST | `sys:config:reset` | 删除库中的值；二次确认。对代码中已不再使用的配置项即删除 |
+| IP 白名单 | `/Sys/IpWhitelist` | `sys:ip_whitelist:index` | 显示总开关是否开启和当前访问者的 IP，便于判断改动会不会把自己挡在外面 |
 | 新增 / 编辑 / 删除白名单 | `/Sys/IpWhitelist/...` | `sys:ip_whitelist:create` / `edit` / `delete` | 删除需二次确认 |
-| 操作日志 | `/Sys/OpLog` | `sys:op_log:index` | §7.3 |
-| 导出操作日志 | GET | `sys:op_log:export` | |
-| 登录日志 | `/Sys/LoginLog` | `sys:login_log:index` | |
-| 导出登录日志 | GET | `sys:login_log:export` | |
-| 任务面板 | `/Sys/hangfire` | `sys:job:index` | Hangfire 自带面板，挂为端点并要求此权限码（未登录跳转登录页，无权限跳转无权限页），面板自带的授权过滤器清空。权限点由 `Sys/Job/Index`（菜单"任务面板"，跳转到面板）生成，因为权限树只从 Controller 生成 |
+| 操作日志 | `/Sys/OpLog` | `sys:op_log:index` | §7.3；每行可展开详情：请求地址、权限码、当时的角色、请求参数、原因、失败原因、User-Agent、TraceId |
+| 导出操作日志 | `/Sys/OpLog/Export?...` | `sys:op_log:export` | 按当前筛选条件导出；导出动作本身记操作日志 |
+| 登录日志 | `/Sys/LoginLog` | `sys:login_log:index` | §7.3 |
+| 导出登录日志 | `/Sys/LoginLog/Export?...` | `sys:login_log:export` | 同上 |
+| 任务面板 | `/Sys/Job` → `/Sys/hangfire` | `sys:job:index` | Hangfire 自带面板，挂为端点并要求此权限码（未登录跳转登录页，无权限跳转无权限页），面板自带的授权过滤器清空。权限点由 `Sys/Job/Index`（菜单"任务面板"，跳转到面板）生成，因为权限树只从 Controller 生成 |
 
 **权限码与预置角色**：以上权限码只默认授予管理员（内置，直接放行）；`engineer`、`editor`、`viewer` 默认没有 系统管理栏目的任何权限（PRD §13.1.2）。
 
@@ -666,7 +669,7 @@ public interface IConfigService
 | FR-029 #1 写操作有日志 | 集成测试：执行一次写操作后查询 `sys_op_log` |
 | FR-029 #2 凭据脱敏 | `SensitiveDataMasker` 单元测试：覆盖每个敏感词，且 `config_key`、`perm_code` 不被误伤 |
 | FR-029 #3 日志表不可改删 | 用 `suanpan_app` 账号执行 UPDATE、DELETE，预期失败 |
-| FR-029 #4 导出被记录 | 集成测试 |
+| FR-029 #4 导出被记录 | Crm 管道测试 `OpLogControllerTests`：导出返回 CSV、筛选条件绑定正确、写入一条导出的操作日志；`AreaCatalogTests` 检查 Area 内所有 POST 和导出都标了 `[OpLog]` |
 | FR-029 #5 日志写入失败不影响业务 | 单元测试：模拟 `IOpLogService` 抛异常，action 结果不变，告警接口被调用 |
 | 其他 | `PasswordPolicy`、`PermCodeHelper`（含 snake_case 转换）、预置授权的通配规则匹配：单元测试 |
 
@@ -701,3 +704,4 @@ public interface IConfigService
 | v0.10 | 2026-10-18 | vivo.li / Claude | ENG-004.3、ENG-005.1 实施：§3.4 初始管理员的启动服务；§5.1 不能跳步、待完成 Cookie 下的限制、主动改密和重新绑定、激活后权限快照失效；§5.4 防重放保留时长、Redis 不可用时拒绝验证；§7.1、§7.2 登录日志与操作日志的分工和失败原因；§8.1 目录；§9.2 各页面的访问条件、错误页；§11 ERR-AUTH-005 |
 | v0.11 | 2026-10-18 | vivo.li / Claude | ENG-005.2 实施：§4.3 哪些失败计数、锁定提示、规则所在位置、写库用比较并交换（代替原来的单条 SQL 写法）；§7.2 锁定相关的失败原因 |
 | v0.12 | 2026-10-18 | vivo.li / Claude | ENG-004.4 实施：§6.3 写明图标、排序、启停也以代码为准，页面修改到下次重建为止，重建结果列出重新启用的权限码（原文只写了名称、层级、路由，与实现不一致）；§8.1 Areas/Sys 与 Models 目录；§9.1 重置密码改为表单页、修改权限点的说明 |
+| v0.13 | 2026-10-18 | vivo.li / Claude | ENG-004.5 实施：§7.3 日期筛选的换算、模块和动作的下拉选项、`ActionName` 参数名、导出用 `formaction` 并边查边写、超过 10 万行时提示；§8.1 Crm 目录；§9.1 写操作和导出由约定测试检查，配置页列出代码中已不用的配置项、其他程序的生效延迟，白名单页显示开关和当前 IP，日志详情，任务面板入口 `/Sys/Job`；§12 FR-029 #4 的测试方式 |

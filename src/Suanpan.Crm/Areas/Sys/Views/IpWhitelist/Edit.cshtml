@@ -1,0 +1,42 @@
+@model IpWhitelistEditViewModel
+@{
+    var isNew = Model.Id == 0;
+    ViewData["Title"] = isNew ? "新增 IP 白名单" : "编辑 IP 白名单";
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">@ViewData["Title"]</h2>
+</div>
+
+<div class="card" style="max-width: 40rem">
+    <form asp-action="@(isNew ? "Create" : "Edit")" method="post" class="card-body">
+        <input type="hidden" asp-for="Id" />
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        <div class="mb-3">
+            <label asp-for="IpValue" class="form-label required"></label>
+            <input asp-for="IpValue" class="form-control font-monospace" autocomplete="off" />
+            <div class="form-text">单个 IP 或 CIDR 网段，支持 IPv4 和 IPv6，如 203.0.113.8、203.0.113.0/24</div>
+            <span asp-validation-for="IpValue"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Remark" class="form-label"></label>
+            <input asp-for="Remark" class="form-control" placeholder="如：办公室网络" />
+            <span asp-validation-for="Remark"></span>
+        </div>
+        <div class="mb-3">
+            <label class="form-check form-switch">
+                <input asp-for="IsEnabled" class="form-check-input" />
+                <span class="form-check-label">启用</span>
+            </label>
+            <div class="form-text">停用的条目不参与匹配</div>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">保存</button>
+            <a asp-action="Index" class="btn">取消</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

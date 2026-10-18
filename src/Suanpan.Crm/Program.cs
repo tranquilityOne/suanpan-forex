@@ -1,4 +1,5 @@
 using Hangfire;
+using Suanpan.Crm.Areas.Sys.Controllers;
 using Suanpan.Crm.Auth;
 using Suanpan.Crm.Mvc;
 using Suanpan.Data;
@@ -61,7 +62,7 @@ app.MapStaticAssets().AllowAnonymous();
 
 // Hangfire 面板：由端点授权保护，未登录跳转登录页，没有 sys:job:index 跳转无权限页；
 // 面板自带的授权过滤器（默认只允许本机访问）清空，不重复判断
-app.MapHangfireDashboard("/Sys/hangfire", new DashboardOptions { AppPath = "/", DashboardTitle = "任务面板", Authorization = [] })
+app.MapHangfireDashboard(JobController.DashboardPath, new DashboardOptions { AppPath = "/", DashboardTitle = "任务面板", Authorization = [] })
     .RequireAuthorization(new HasPermissionAttribute("sys:job:index"));
 
 app.MapControllerRoute("areas", "{area:exists}/{controller=Home}/{action=Index}/{id?}");

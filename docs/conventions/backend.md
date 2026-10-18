@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.17 |
+| 版本 | v1.18 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -431,7 +431,7 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 
 ## 11. 日志与操作日志
 
-- **操作日志**：后台的写操作标 `[OpLog("模块", "动作")]`，由 `OpLogActionFilter` 统一写入 `sys_op_log`，权限码自动采集（沿用 VVPay）。
+- **操作日志**：后台的写操作标 `[OpLog("模块", "动作")]`，由 `OpLogActionFilter` 统一写入 `sys_op_log`，权限码自动采集（沿用 VVPay）。导出也是需要留痕的操作，action 以 `Export` 开头并标 `[OpLog]`（BR-150）。`Suanpan.Crm.Tests` 的约定测试检查 Area 内所有 POST 都带 `[ValidateAntiForgeryToken]` 和 `[OpLog]`、所有 `Export` 开头的 action 都带 `[OpLog]`。
   - 只记录请求参数；密码、密钥、API Key 等字段必须脱敏（PRD BR-147）。
   - 不记录字段修改前后的值；业务上需要的变更历史（改期、利率、模板版本）由各功能自己记录（PRD DEC-018）。
   - 操作日志写入失败时，不回滚业务操作，但要写错误日志并告警（PRD BR-151）。
@@ -616,3 +616,4 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | v1.15 | 2026-10-18 | vivo.li / Claude | ENG-004.1 实施：§4 管道顺序加入 IP 白名单、静态资源用 `MapStaticAssets`；§5 改正会话时长（空闲 30 分钟、待完成 Cookie 10 分钟，原文是 VVPay 的值），新增根目录页面默认要求登录；§12 新增 `ForwardedHeaders:TrustedProxies`；新增测试项目 `Suanpan.Crm.Tests`（§1、§1.2、§13） |
 | v1.16 | 2026-10-18 | vivo.li / Claude | §13.1 `Suanpan.Crm.Tests` 也覆盖布局和公共部件 |
 | v1.17 | 2026-10-18 | vivo.li / Claude | §8.1 Redis 异常时放行还是拒绝按用途决定 |
+| v1.18 | 2026-10-18 | vivo.li / Claude | ENG-004.5 实施：§11 写明导出也标 `[OpLog]`、action 以 `Export` 开头，由 Crm 约定测试检查写操作和导出 |

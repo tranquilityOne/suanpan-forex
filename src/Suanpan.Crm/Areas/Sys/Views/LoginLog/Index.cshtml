@@ -1,0 +1,78 @@
+@model LoginLogListViewModel
+@using Suanpan.Services.Sys.Logging
+@{
+    ViewData["Title"] = "登录日志";
+    var filter = Model.Filter;
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">登录日志</h2>
+    <div class="text-secondary">密码、二次验证、激活、退出每一步都有记录，成功和失败都记；只能查询和导出。</div>
+</div>
+
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label">登录名</label>
+        <input name="Username" value="@filter.Username" class="form-control form-control-sm" />
+    </div>
+    <div class="col-auto">
+        <label class="form-label">结果</label>
+        <select name="IsSuccess" class="form-select form-select-sm">
+            <option value="">全部</option>
+            <option value="true" selected="@(filter.IsSuccess == true)">成功</option>
+            <option value="false" selected="@(filter.IsSuccess == false)">失败</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">日期</label>
+        <div class="d-flex align-items-center gap-1">
+            <input type="date" name="From" value="@filter.From?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
+            <span>至</span>
+            <input type="date" name="To" value="@filter.To?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
+        </div>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-primary">查询</button>
+        <a asp-action="Index" class="btn btn-sm">重置</a>
+        <button type="submit" formaction="@Url.Action("Export")" class="btn btn-sm"><i class="ti ti-download me-1"></i>导出 CSV</button>
+    </div>
+</form>
+
+@if (Model.Result.Total > LogExport.MaxRows)
+{
+    <div class="alert alert-warning">符合条件的有 @Model.Result.Total 条，单次最多导出最新的 @LogExport.MaxRows 条，请缩小时间范围后分批导出。</div>
+}
+
+<div class="card">
+    @if (Model.Result.Items.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("没有符合条件的登录日志")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle card-table text-nowrap">
+                <thead>
+                    <tr><th>时间</th><th>登录名</th><th>步骤</th><th>结果</th><th>失败原因</th><th>IP</th><th>User-Agent</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var log in Model.Result.Items)
+                    {
+                        <tr>
+                            <td><utc-time value="@log.CreatedAt" format="yyyy-MM-dd HH:mm:ss" /></td>
+                            <td><code class="small">@log.Username</code></td>
+                            <td>@LoginLogService.StageName(log.Stage)</td>
+                            <td>
+                                <status-badge tone="@(log.IsSuccess ? BadgeTone.Success : BadgeTone.Failure)" text="@(log.IsSuccess ? "成功" : "失败")" />
+                            </td>
+                            <td>@log.FailReason</td>
+                            <td class="font-monospace small">@log.Ip</td>
+                            <td><span class="d-inline-block text-truncate text-secondary small" style="max-width: 20rem" title="@log.UserAgent">@log.UserAgent</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <partial name="_Pager" model="Model.Result" />
+    }
+</div>
