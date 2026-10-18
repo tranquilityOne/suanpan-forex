@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.14 |
+| 版本 | v1.15 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -41,6 +41,7 @@ suanpan-forex/
 │  ├─ Suanpan.Shared.Tests         鉴权基础组件测试（权限码生成、动态 Policy）
 │  ├─ Suanpan.Services.Tests       业务服务测试（连 Testcontainers 启动的 PostgreSQL）
 │  ├─ Suanpan.Infrastructure.Tests 基础设施测试（连 Testcontainers 启动的 Valkey、RabbitMQ）
+│  ├─ Suanpan.Crm.Tests            后台请求管道测试（在内存中启动 Crm，服务换成假实现）
 │  ├─ Suanpan.Data.Tests           数据层测试（审计拦截器、实体配置约定）
 │  └─ Suanpan.Collector.Tests      解析器测试（用保存的官方页面快照当样例）
 └─ deploy/                         Dockerfile、docker-compose
@@ -132,6 +133,7 @@ tests/
 ├─ Suanpan.Shared.Tests/                           与 Suanpan.Shared 的目录一一对应
 ├─ Suanpan.Services.Tests/{模块}/                  与 Suanpan.Services 的目录一一对应；Fixtures/ 放测试数据库，Database/ 放数据库授权的测试
 ├─ Suanpan.Infrastructure.Tests/                   与 Suanpan.Infrastructure 的目录一一对应；Fixtures/ 放测试容器
+├─ Suanpan.Crm.Tests/                             与 Suanpan.Crm 的目录一一对应；Fixtures/ 放启动器、假服务和测试用的页面
 ├─ Suanpan.Data.Tests/                             与 Suanpan.Data 的目录一一对应
 └─ Suanpan.Collector.Tests/Sources/{经济体}/{机构}/  测试代码 + Snapshots/ 快照样例
 ```
@@ -221,7 +223,7 @@ Portal                 ──►  Data（只用对外视图的只读上下文）
 
 Web 程序的请求管道顺序（沿用 VVPay）：
 
-`UseForwardedHeaders`（必须最前）→ ExceptionHandler / HSTS → HttpsRedirection → Routing → Authentication → Authorization → 静态资源 → Hangfire 面板（仅 Crm）→ Areas 路由 → 默认路由。
+`UseForwardedHeaders`（必须最前）→ ExceptionHandler / HSTS → HttpsRedirection → IP 白名单（仅 Crm）→ Routing → Authentication → Authorization → 静态资源（`MapStaticAssets`）→ Hangfire 面板（仅 Crm）→ Areas 路由 → 默认路由。
 
 ---
 
@@ -229,12 +231,13 @@ Web 程序的请求管道顺序（沿用 VVPay）：
 
 沿用 VVPay 的整套机制：
 
-- **登录**：Cookie 认证（HttpOnly、SameSite=Lax、8 小时滑动过期）。
+- **登录**：Cookie 认证（HttpOnly、SameSite=Lax、空闲 30 分钟滑动过期，`Auth:IdleTimeoutMinutes`，PRD BR-142）。**【与 VVPay 不同】** VVPay 为 8 小时。
 - **会话失效**：每个请求校验安全戳（60 秒缓存兜底），改密码、重置、停用后旧 Cookie 立即作废。
-- **二次验证**：TOTP。密码通过后先签发一个 5 分钟的半登录 Cookie（不带业务权限），TOTP 通过后才签发正式票据。
+- **二次验证**：TOTP。密码通过后先签发一个 10 分钟的待完成 Cookie（不带业务权限），TOTP 通过后才签发正式票据（sys 设计 §5.2）。**【与 VVPay 不同】** VVPay 为 5 分钟。
 - **密码哈希**：PBKDF2（10 万次迭代）。
 - **权限默认拒绝**：`AutoPermissionConvention` 给每个 Area 内的 action 自动加上 `{area}:{controller}:{action}` 权限要求；Controller 标 `[PermMenu]`，action 按需标 `[PermName]`；权限树通过"从代码重建"生成，不手工建权限点。
 - 一个账号可以有多个角色，权限取并集（PRD BR-139）。
+- **根目录页面默认要求登录**：授权的兜底策略（FallbackPolicy）要求登录，需要匿名访问的 action（登录页、错误页）显式标 `[AllowAnonymous]`。
 
 本项目新增：
 
@@ -462,6 +465,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | `Security:BootstrapAllowedIps` | 后台 IP 白名单的应急放行 IP，逗号分隔 | ✓ | | | |
 | `Seed:AdminUsername`、`Seed:AdminPassword` | 初始管理员（sys 设计 §3.4） | ✓ | | | |
 | `Auth:IdleTimeoutMinutes` | 后台会话空闲超时，默认 30 | ✓ | | | |
+| `ForwardedHeaders:TrustedProxies` | 可信的反向代理，逗号分隔的 IP 或 CIDR；为空时只信任本机回环地址。只采信这些地址传来的 `X-Forwarded-For`（sys 设计 §5.5） | ✓ | | | |
 
 ---
 
@@ -474,6 +478,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 - `Suanpan.Data.Tests`：审计拦截器（用 EF Core InMemory）、实体配置约定（命名、外键、类型）。不连接真实数据库。
 - `Suanpan.Services.Tests`：业务服务。用到数据库的测试连真实的 PostgreSQL 17：Testcontainers 启动临时容器，按生产方式建好三个账号，用迁移账号执行全部迁移，测试用应用账号连接（权限与线上一致）；整个程序集共用一个容器。**运行这些测试需要 Docker**（本地 Docker Desktop，CI 用 GitHub Actions 自带的 Docker）。数据库授权的测试（如 Hangfire 用应用账号建表）放在 `Database/`。
 - `Suanpan.Infrastructure.Tests`：Redis 组件（分布式锁、限流器）和事件总线（收发、重试后转入 `.failed`、延时投递）。Testcontainers 启动 Valkey 8.1 和 RabbitMQ 4.1，与线上服务端版本一致，同样需要 Docker。
+- `Suanpan.Crm.Tests`：后台的请求管道（Cookie、安全戳、默认拒绝、IP 白名单、Hangfire 面板的授权、全局过滤器）。WebApplicationFactory 在内存中启动 Crm，依赖数据库的服务和 Hangfire 存储换成假实现，不需要 Docker；登录 Cookie 用 Crm 自己的加密格式生成，经过真实的 Cookie 校验。测试用的页面放在 `Fixtures/`，只在测试中加载。
 - 容器夹具在第一个用到它的测试中才启动容器。xUnit 不论筛选条件都会创建程序集夹具，在 `InitializeAsync` 中启动会让只跑单元测试时也启动容器。
 - `Suanpan.Collector.Tests`：每个解析器至少有一组基于真实快照的测试样例；官方页面改版后，把新快照补进样例。
 - 每个类库对应一个测试项目（`Suanpan.{类库}.Tests`），需要测试的类库还没有测试项目时，先新建再写测试。
@@ -568,7 +573,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 - 要启动容器的测试（数据库、Valkey、RabbitMQ）标 `Category=Integration`，其余为单元测试。
 - `dotnet test`：全部测试，需要 Docker；提交前和 CI 中运行。
 - `dotnet test --filter-not-trait "Category=Integration"`：只跑单元测试，不需要 Docker、不启动容器；本地改代码时用。只跑单元测试时每个测试项目约 2 秒；全部测试约 30 秒，主要花在启动容器上。
-- HTTP 层的集成测试（启动 Crm，覆盖 Cookie、授权、IP 白名单等，sys 设计 §12）从 ENG-004 开始加入，同样标 Integration。
+- HTTP 层的测试（`Suanpan.Crm.Tests`）不启动容器，不标 Integration，只跑单元测试时也会运行。
 - GitHub Actions：构建、运行全部测试、测试规则检查（§13.4）、迁移校验（数据库变更约定 §6）、依赖漏洞扫描、密钥扫描，任一项不通过都不能合并（PRD NFR-134）。
 
 ---
@@ -606,3 +611,4 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | v1.12 | 2026-10-18 | vivo.li / Claude | §13 新增 13.3 要避免的三类测试（低价值、重复、脆弱：判断问题、常见情形、例外）、13.4 硬性规则、13.5 评审清单；原 13.4 改为 13.6 |
 | v1.13 | 2026-10-18 | vivo.li / Claude | §7 配置项登记到 `Definitions`；§10 小数不允许千分位；§11 日志用 INSERT 直接写入 |
 | v1.14 | 2026-10-18 | vivo.li / Claude | ENG-002.6 实施：§8.2 消息基类 `IntegrationMessage`、每个接收程序一个队列、重试次数的含义、首次部署顺序；§8.1 写入必须带过期时间；§8.3 Hangfire 存储位置、只用 `AddOrUpdateUtc` 注册；§12 新增 RabbitMQ 重试配置；新增测试项目 `Suanpan.Infrastructure.Tests`（§1、§1.2、§13）；§13 容器夹具延迟启动，修正"只跑单元测试不启动容器"与实际不符的问题 |
+| v1.15 | 2026-10-18 | vivo.li / Claude | ENG-004.1 实施：§4 管道顺序加入 IP 白名单、静态资源用 `MapStaticAssets`；§5 改正会话时长（空闲 30 分钟、待完成 Cookie 10 分钟，原文是 VVPay 的值），新增根目录页面默认要求登录；§12 新增 `ForwardedHeaders:TrustedProxies`；新增测试项目 `Suanpan.Crm.Tests`（§1、§1.2、§13） |

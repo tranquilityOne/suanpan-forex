@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.7（草稿） |
+| 版本 | v0.8（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -294,6 +294,11 @@ sequenceDiagram
 
 正式 Cookie 中的 Claims：用户 id、登录名、`suanpan:real_name`、`suanpan:security_stamp`。角色和权限不放进 Claims，每次从权限快照读取（§6.1），这样调整权限后不需要重新登录。
 
+- 默认 scheme 为正式登录：待完成 Cookie 访问业务页面时被当作未登录，跳转登录页。改密码、绑定 TOTP、TOTP 验证三个 action 显式指定接受待完成 Cookie。
+- 两个 Cookie 都逐请求比对安全戳（§5.3）。
+- Development 环境的 Cookie 跟随请求（`SameAsRequest`），本地用 http 也能登录；其他环境一律 Secure。
+- 未登录跳转 `/Account/Login`，无权限跳转 `/Account/AccessDenied`。HTMX 请求不跟随跳转：未登录返回 401，并在 `HX-Redirect` 头中给出登录页地址，由 htmx 整页跳转；无权限返回 403，由 site.js 统一提示（ERR-AUTH-002）。
+
 ### 5.3 安全戳
 
 沿用 VVPay：
@@ -317,12 +322,13 @@ sequenceDiagram
 
 ### 5.5 后台访问 IP 白名单（BR-141）
 
-- 在 Crm 的请求管道中，紧跟 `UseForwardedHeaders` 之后、认证之前执行，拦截所有请求（包括登录页）。
+- 在 Crm 的请求管道中，位于 `UseForwardedHeaders` 和异常处理之后、路由和认证之前，拦截所有请求（包括登录页和静态资源）。放在异常处理之后，读配置或白名单出错时也能显示错误页。
 - 判断数据来自 `sys_ip_whitelist` 中启用的条目，30 秒内存缓存；后台增删改后本实例立即生效。
 - 条目只接受单个 IP 或 CIDR 网段：IPv4 必须是完整的四段写法；CIDR 网段地址的主机位必须为 0（`203.0.113.10/24` 会被拒绝，避免误以为只放行了单个 IP）。不支持 VVPay 的起止段写法。
 - **总开关**：配置 `security:admin_ip_whitelist_enabled`，默认关闭（访问方式是 IP 白名单还是 VPN 还没定，见 PRD Q-003）。
-- **应急放行**：环境变量 `SUANPAN__Security__BootstrapAllowedIps`（逗号分隔）中的 IP 总是放行，防止把所有人都挡在外面。
-- 客户端 IP 取自 ForwardedHeaders 处理后的地址；部署时必须正确配置可信代理，否则所有请求都会显示为代理的 IP。
+- **应急放行**：环境变量 `SUANPAN__Security__BootstrapAllowedIps`（逗号分隔，单个 IP 或 CIDR，格式同白名单条目）中的地址总是放行，防止把所有人都挡在外面。格式错误时 Crm 启动即报错。
+- 客户端 IP 取自 ForwardedHeaders 处理后的地址。只采信可信代理传来的 `X-Forwarded-For`：可信代理由配置 `ForwardedHeaders:TrustedProxies`（逗号分隔的 IP 或 CIDR）指定，未配置时只信任本机回环地址。部署时必须按实际的反向代理填写，否则所有请求都会显示为代理的 IP；也不能填得过宽，否则客户端可以伪造 `X-Forwarded-For` 绕过白名单。
+- 被拒绝时返回一个只写"禁止访问"的 403 页面，并记 Warning 日志（IP、路径）。
 
 ---
 
@@ -343,7 +349,8 @@ sequenceDiagram
 - `AutoPermissionConvention`（`Suanpan.Crm/Auth/`）给每个 Area 内的 action 自动加上权限要求；忘了标特性的 action 会返回 403，不会裸奔。
 - Controller 必须标 `[Area("模块名")]` 和 `[PermMenu("菜单名", Icon = "...", Sort = n)]`；特殊 action 按需标 `[PermName("中文名")]`。
 - 多个 action 共用一个权限码，或需要特殊权限码时，显式标 `[HasPermission("...")]`。
-- 根目录的 `AccountController`、`HomeController` 只要求登录，不进入权限体系。
+- 根目录的 `AccountController`、`HomeController` 只要求登录，不进入权限体系：授权的兜底策略（FallbackPolicy）要求登录，所以没有标授权特性的页面也不会被匿名访问；登录页、错误页等需要匿名访问的 action 显式标 `[AllowAnonymous]`。静态资源（`MapStaticAssets`）允许匿名。
+- `AutoPermissionConvention` 把权限码写进端点元数据的 `[HasPermission]`；Controller 或 action 已显式标 `[HasPermission]` 时不再自动添加。权限树重建和操作日志读的都是这一份。
 - 栏目（Area）清单在 `Suanpan.Crm/Auth/AreaCatalog` 中集中维护：
 
 | Area | 栏目名 | 图标 | 排序 |
@@ -458,8 +465,9 @@ Suanpan.Services/Sys/
                   IpWhitelistMatcher、QrCodeHelper
 
 Suanpan.Crm/
-├─ Auth/          AutoPermissionConvention、AreaCatalog、HangfireDashboardAuthFilter、
-│                 IpWhitelistMiddleware
+├─ Auth/          AutoPermissionConvention、AreaCatalog、IpWhitelistMiddleware、CrmAuthServiceCollectionExtensions
+│                 （Cookie、授权、可信代理）、CrmCookieEvents、IpListConfig、CurrentUserAuditActorProvider
+├─ Mvc/           HtmxRequestExtensions（Request.IsHtmx()）
 ├─ Controllers/   AccountController、HomeController
 ├─ Areas/Sys/  见 §9.1
 ├─ Models/Sys/
@@ -560,7 +568,7 @@ public interface IConfigService
 | 导出操作日志 | GET | `sys:op_log:export` | |
 | 登录日志 | `/Sys/LoginLog` | `sys:login_log:index` | |
 | 导出登录日志 | GET | `sys:login_log:export` | |
-| 任务面板 | `/Sys/hangfire` | `sys:job:index` | Hangfire 自带面板，由授权过滤器校验此权限码 |
+| 任务面板 | `/Sys/hangfire` | `sys:job:index` | Hangfire 自带面板，挂为端点并要求此权限码（未登录跳转登录页，无权限跳转无权限页），面板自带的授权过滤器清空。权限点由 `Sys/Job/Index`（菜单"任务面板"，跳转到面板）生成，因为权限树只从 Controller 生成 |
 
 **权限码与预置角色**：以上权限码只默认授予管理员（内置，直接放行）；`engineer`、`editor`、`viewer` 默认没有 系统管理栏目的任何权限（PRD §13.1.2）。
 
@@ -602,6 +610,7 @@ public interface IConfigService
 | `SUANPAN__RabbitMq__Uri` | RabbitMQ 连接串 |
 | `SUANPAN__Security__EncryptionKey` | AES 加密密钥（TOTP 密钥、数据源凭据共用） |
 | `SUANPAN__Security__BootstrapAllowedIps` | 应急放行 IP，逗号分隔（§5.5） |
+| `SUANPAN__ForwardedHeaders__TrustedProxies` | 可信的反向代理，逗号分隔的 IP 或 CIDR；为空时只信任本机（§5.5） |
 | `SUANPAN__Seed__AdminUsername`、`SUANPAN__Seed__AdminPassword` | 初始管理员（§3.4） |
 | `SUANPAN__Auth__IdleTimeoutMinutes` | 会话空闲超时，默认 30 |
 
@@ -634,12 +643,12 @@ public interface IConfigService
 
 | 验收标准 | 测试方式 |
 |---|---|
-| FR-028 #1 未绑定 TOTP 无法进入功能页 | 集成测试：待完成 Cookie 访问任意 Area 页面被重定向 |
-| FR-028 #2 非白名单 IP 被拒 | 集成测试：开关打开时，非白名单 IP 访问返回 403；应急 IP 放行 |
+| FR-028 #1 未绑定 TOTP 无法进入功能页 | Crm 管道测试：待完成 Cookie 访问任意 Area 页面被重定向 |
+| FR-028 #2 非白名单 IP 被拒 | Crm 管道测试：开关打开时，非白名单 IP 访问返回 403；应急 IP 放行；不可信来源伪造 `X-Forwarded-For` 无效 |
 | FR-028 #3 后端拒绝越权 | 集成测试：编辑角色直接 POST 系统管理栏目的写操作，返回 403 |
 | FR-028 #4 连续 5 次锁定 15 分钟，管理员解锁 | 单元测试 `LockoutRule`（第 4、5、6 次的状态，期满后重新计数）；集成测试：锁定期间密码正确也拒绝，解锁后可登录 |
 | FR-028 #5 不能停用最后一个管理员 | 单元测试 `UserStatusRule` |
-| FR-028 #6 新页面默认拒绝 | 集成测试：新增一个未授权的测试 Controller，非管理员访问返回 403 |
+| FR-028 #6 新页面默认拒绝 | Crm 管道测试：测试用的 Area Controller，没有对应权限码的账号被拒绝 |
 | FR-028 #7 无权限的按钮不显示 | 标签助手单元测试：有权限、无权限、管理员三种情况 |
 | FR-029 #1 写操作有日志 | 集成测试：执行一次写操作后查询 `sys_op_log` |
 | FR-029 #2 凭据脱敏 | `SensitiveDataMasker` 单元测试：覆盖每个敏感词，且 `config_key`、`perm_code` 不被误伤 |
@@ -674,3 +683,4 @@ public interface IConfigService
 | v0.5 | 2026-10-18 | vivo.li / Claude | ENG-002.3 实施：§5.4 写明加密密钥格式、解密不兼容明文、TOTP 用 `TimeProvider`；§5.5 写明 IP 白名单条目的格式要求 |
 | v0.6 | 2026-10-18 | vivo.li / Claude | ENG-002.4 实施：§4.1 明确"最后一个管理员"按未停用（含待激活）计数，启用只能从停用恢复；§6.5 权限快照的缓存键带版本号；§8.1 Rbac 拆出 Manage 子目录，Core 增加 Constants 和 PermCodePattern；§8.2 补充接口 |
 | v0.7 | 2026-10-18 | vivo.li / Claude | ENG-002.5 实施：§7.1 日志用 INSERT 直接写入；§7.3 导出的时区和 CSV 注入防护；§8.2 配置服务接口；§9.1 配置按键编辑、新增"恢复默认值"；§10.2 配置项登记到 `SysConfigKeys.Definitions` |
+| v0.8 | 2026-10-18 | vivo.li / Claude | ENG-004.1 实施：§5.2 默认 scheme、开发环境 Cookie、HTMX 的未登录和无权限处理；§5.5 白名单在管道中的位置、可信代理 `ForwardedHeaders:TrustedProxies`；§6.2 兜底策略要求登录、显式 `[HasPermission]` 时不自动生成；§8.1 Crm 目录；§9.1 Hangfire 面板改为端点授权，权限点由 `Sys/Job/Index` 生成；§10.1 新增环境变量；§12 管道测试的方式 |

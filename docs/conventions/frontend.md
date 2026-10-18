@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.2 |
+| 版本 | v1.3 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 后台 Suanpan.Crm 和前台 Suanpan.Portal 的页面、视图、静态资源 |
 | 依据 | data-hub PRD v1.0.0.2（DEC-014、NFR-131、§10.10）；web-portal PRD v1.0.0.2（DEC-005 ~ DEC-007、NFR-120 ~ NFR-124）；VVPay `doc/frontend.md` |
@@ -102,6 +102,7 @@ Suanpan.Crm/
 ├─ TagHelpers/                           公共标签助手（§6）
 ├─ Filters/                              全局过滤器
 ├─ Auth/                                 权限约定、授权处理
+├─ Mvc/                                  MVC 辅助（如 Request.IsHtmx()）
 ├─ Views/Shared/                         布局、公共局部视图（_Pager、_EmptyState 等）
 └─ wwwroot/
    ├─ lib/                               第三方库（自托管）
@@ -139,6 +140,7 @@ Suanpan.Crm/
 - **防伪令牌**：布局在 `<body>` 上设置 `hx-headers`，把防伪令牌放进 `RequestVerificationToken` 请求头；POST action 照常标 `[ValidateAntiForgeryToken]`。
 - **定时刷新在标签页不可见时暂停**，写法如 `hx-trigger="every 5s [!document.hidden]"`。
 - **出错处理**：在 site.js 中统一监听 `htmx:responseError`，在页面顶部显示错误提示。
+- **会话超时和无权限**：HTMX 请求未登录（如会话超时）时，服务端返回 401 并带 `HX-Redirect`，htmx 自动整页跳转到登录页；无权限返回 403，按出错处理提示（sys 设计 §5.2）。
 - **表单校验**：HTMX 插入的表单，要在 `htmx.onLoad` 中重新执行 `$.validator.unobtrusive.parse`，否则客户端校验不生效。
 - 写操作照常标 `[OpLog]`，和整页提交的写操作完全一样。
 
@@ -359,3 +361,4 @@ Suanpan.Portal/
 | v1.0 | 2026-10-17 | vivo.li / Claude | 初版：基于 VVPay 前端框架、data-hub 与 web-portal PRD v1.0.0.2 的决策整理 |
 | v1.1 | 2026-10-17 | vivo.li / Claude | §3.2 新增 Publish Area，Area 名与模块名统一，系统管理的 Area 名为 `Sys`；§3.3 后台目录按模块分文件夹；新增 §9.2 前台目录组织；明确约定未覆盖的情况不参考 VVPay |
 | v1.2 | 2026-10-18 | vivo.li / Claude | §7.2 CSV 导出补充时区和 CSV 注入防护 |
+| v1.3 | 2026-10-18 | vivo.li / Claude | §3.3 目录加入 `Mvc/`；§4.2 补充 HTMX 请求的未登录和无权限处理 |

@@ -86,6 +86,7 @@ dotnet user-secrets list --project src/Suanpan.Crm
 | `Security:EncryptionKey` | 加密 TOTP 密钥和数据源凭据；32 字节随机数的 Base64，用 `openssl rand -base64 32` 生成 | 绑定 TOTP 的页面完成后（ENG-004.3） |
 | `Seed:AdminUsername`、`Seed:AdminPassword` | 初始管理员的登录名和初始密码 | 实现初始管理员后（ENG-005.1） |
 | `Security:BootstrapAllowedIps` | 后台 IP 白名单的应急放行 IP，逗号分隔 | 可选 |
+| `ForwardedHeaders:TrustedProxies` | 可信的反向代理，逗号分隔的 IP 或 CIDR；本地直接访问时不用设置 | 部署到反向代理后面时 |
 
 ### 3. 编译和运行
 
