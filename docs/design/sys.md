@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.3（草稿） |
+| 版本 | v0.4（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -194,7 +194,7 @@
 
 | 数据 | 方式 | 说明 |
 |---|---|---|
-| 4 个预置角色 | 迁移中的种子数据 | `super_admin`（管理员，内置）、`engineer`（采集工程师）、`editor`（编辑）、`viewer`（只读） |
+| 4 个预置角色 | 迁移中的种子数据 | `super_admin`（管理员，内置）、`engineer`（采集工程师）、`editor`（编辑）、`viewer`（只读）。id 为 1 ~ 4，`created_by` 为 `migration`；`sys_role` 的自增从 100 开始，1 ~ 99 留给预置角色。编码常量见 `Suanpan.Core/Sys/Constants/RoleCodes` |
 | 初始管理员 | 程序启动时的种子服务 | 仅当 `sys_user` 为空时执行；登录名和初始密码读环境变量 `SUANPAN__Seed__AdminUsername`、`SUANPAN__Seed__AdminPassword`，未设置则跳过并记录 Error 日志；账号状态为"待激活"，绑定 `super_admin` |
 | 权限点 | 不做种子 | 部署后在后台执行"从代码重建"生成（§6.3） |
 | 系统配置默认值 | 不做种子 | 代码中有默认值，表里有值时才覆盖（§10.2） |
@@ -655,3 +655,4 @@ public interface IConfigService
 | v0.1 | 2026-10-17 | vivo.li / Claude | 初稿；模块名由 System 改为 Sys（文件名同步改为 sys.md） |
 | v0.2 | 2026-10-17 | vivo.li / Claude | ENG-002.1 实施：§8.1 补充 `HttpContextCurrentUser`、`PagedResult` 的位置。`ICurrentUser` 只有 `UserId`、`UserName`，未登录时为空，不再回落为 "system"（审计字段的程序名由数据层的 `IAuditActorProvider` 提供） |
 | v0.3 | 2026-10-17 | vivo.li / Claude | ENG-002.2 实施：§3.1 写明两张日志表哪些列可空（`roles` 不可空，没有角色时为空串）；§3 补充主键、索引的命名方式 |
+| v0.4 | 2026-10-18 | vivo.li / Claude | ENG-003.2 实施：§3.4 写明预置角色的 id、`created_by` 和 `sys_role` 自增起点 |

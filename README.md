@@ -63,9 +63,10 @@ docker exec <容器名> rabbitmqctl set_permissions -p suanpan suanpan ".*" ".*"
 
 ### 2. 配置本地密钥
 
-四个程序共用一份 user-secrets，在任意一个程序上设置即可，下面都用 Crm。尖括号中的密码取自 `deploy/.env`；复用本机已有的服务时，填那个服务的密码。
+四个程序共用一份 user-secrets，在任意一个程序上设置即可，下面都用 Crm。`ConnectionStrings:Migrator` 只供 `dotnet ef` 执行迁移，程序不读取。尖括号中的密码取自 `deploy/.env`；复用本机已有的服务时，填那个服务的密码。
 
 ```bash
+dotnet user-secrets set "ConnectionStrings:Migrator" "Host=127.0.0.1;Port=5432;Database=suanpan;Username=suanpan_migrator;Password=<SUANPAN_MIGRATOR_PASSWORD>" --project src/Suanpan.Crm
 dotnet user-secrets set "ConnectionStrings:Main" "Host=127.0.0.1;Port=5432;Database=suanpan;Username=suanpan_app;Password=<SUANPAN_APP_PASSWORD>" --project src/Suanpan.Crm
 dotnet user-secrets set "ConnectionStrings:Portal" "Host=127.0.0.1;Port=5432;Database=suanpan;Username=suanpan_portal;Password=<SUANPAN_PORTAL_PASSWORD>" --project src/Suanpan.Crm
 dotnet user-secrets set "Redis:Configuration" "127.0.0.1:6379,password=<REDIS_PASSWORD>" --project src/Suanpan.Crm
@@ -107,7 +108,19 @@ dotnet run --project src/Suanpan.Crm
 
 ### 4. 数据库迁移
 
-表结构由 EF Core Migrations 管理，迁移步骤在第一个迁移（ENG-003.2）完成后补充到这里。
+表结构由 EF Core Migrations 管理。首次使用先安装仓库固定版本的 `dotnet-ef`：
+
+```bash
+dotnet tool restore
+```
+
+用迁移账号（上面设置的 `ConnectionStrings:Migrator`）把本地库更新到最新：
+
+```bash
+dotnet ef database update --context SuanpanDbContext --project src/Suanpan.Data --startup-project src/Suanpan.Data
+```
+
+完成后库里有 9 张 `sys_` 表和 4 个预置角色。编写迁移的规则见[数据库变更约定](docs/conventions/database.md)。
 
 ## 配置说明
 

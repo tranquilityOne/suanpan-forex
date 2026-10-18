@@ -52,9 +52,11 @@ dotnet user-secrets list --project src/Suanpan.Crm   # 查看本地配置了哪�
 dotnet build                                          # 编译整个解决方案
 dotnet test                                           # 运行全部测试
 dotnet run --project src/Suanpan.Crm                  # 运行后台（其他程序同理）
-dotnet ef migrations add <PascalCase描述> --project src/Suanpan.Data --startup-project src/Suanpan.Crm
-dotnet ef migrations has-pending-model-changes --project src/Suanpan.Data --startup-project src/Suanpan.Crm
-dotnet ef migrations script <上次上线的迁移> --idempotent -o deploy/sql/<版本>.sql --project src/Suanpan.Data --startup-project src/Suanpan.Crm
+dotnet tool restore                                   # 安装仓库固定版本的 dotnet-ef（.config/dotnet-tools.json）
+dotnet ef migrations add <PascalCase描述> --context SuanpanDbContext --project src/Suanpan.Data --startup-project src/Suanpan.Data
+dotnet ef migrations has-pending-model-changes --context SuanpanDbContext --project src/Suanpan.Data --startup-project src/Suanpan.Data
+dotnet ef database update --context SuanpanDbContext --project src/Suanpan.Data --startup-project src/Suanpan.Data   # 本地执行迁移，用 ConnectionStrings:Migrator
+dotnet ef migrations script <上次上线的迁移> --idempotent -o deploy/sql/<版本>.sql --context SuanpanDbContext --project src/Suanpan.Data --startup-project src/Suanpan.Data
 node --test src/Suanpan.Portal/wwwroot/js/calc        # 前台计算器公式测试
 ```
 

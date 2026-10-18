@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.7 |
+| 版本 | v1.8 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -96,6 +96,7 @@ Suanpan.Data/
 ├─ Interceptors/                   审计字段拦截器
 ├─ Migrations/                     迁移（由工具生成，不手工分目录）
 ├─ PublicViews/                    对外视图定义与前台只读上下文（PortalReadDbContext）
+├─ DesignTime/                     dotnet ef 用的设计时工厂（数据库变更约定 §3.1）
 └─ Seed/                           初始化数据
 
 Suanpan.Infrastructure/
@@ -434,6 +435,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | 键 | 说明 | Crm | Job | Collector | Portal |
 |---|---|---|---|---|---|
 | `ConnectionStrings:Main` | 应用账号 `suanpan_app` 的连接串 | ✓ | ✓ | ✓ | |
+| `ConnectionStrings:Migrator` | 迁移账号 `suanpan_migrator` 的连接串，只供本地和 CI 执行 `dotnet ef` 使用（数据库变更约定 §3.5），四个程序都不读取 | | | | |
 | `ConnectionStrings:Portal` | 前台只读账号 `suanpan_portal` 的连接串；中期改连大陆只读副本时只改这个值（PRD BR-119） | | | | ✓ |
 | `Redis:Configuration` | StackExchange.Redis 连接串（含密码） | ✓ | ✓ | ✓ | 可选 |
 | `Redis:InstanceName` | 键前缀，默认 `suanpan:`；与其他项目共用 Redis 时靠它隔离 | ✓ | ✓ | ✓ | 可选 |
@@ -484,3 +486,4 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | v1.5 | 2026-10-17 | vivo.li / Claude | 新增测试项目 `Suanpan.Data.Tests`（§1、§1.2、§13）；§6.1 写明审计字段的基类、类型、填充规则和不经过拦截器的情况；§10 补充 `TimeProvider`；§3.1、§13 补充测试运行器 |
 | v1.6 | 2026-10-17 | vivo.li / Claude | 新增测试项目 `Suanpan.Shared.Tests`（§1、§1.2、§13）；§13 明确每个类库对应一个测试项目 |
 | v1.7 | 2026-10-17 | vivo.li / Claude | §6.2 补充主键和索引的命名方式、63 字符上限、自增主键与预置数据；§6.1 约定测试的检查范围 |
+| v1.8 | 2026-10-18 | vivo.li / Claude | §1.2 Data 目录加入 `DesignTime/`；§12 新增配置键 `ConnectionStrings:Migrator` |

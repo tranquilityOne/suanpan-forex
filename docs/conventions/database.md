@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.1 |
+| 版本 | v1.2 |
 | 日期 | 2026-10-17 |
 | 适用范围 | PostgreSQL 中表结构、视图、索引、授权、预置数据的编写、校验与上线 |
 | 依据 | data-hub PRD：DEC-009（PostgreSQL）、DEC-015（EF Core Migrations）、NFR-132、NFR-090、BR-119、BR-121、BR-148 |
@@ -30,8 +30,8 @@
 
 | 环境 | 执行方式 | 执行账号 |
 |---|---|---|
-| 本地开发 | 允许 `dotnet ef database update` | 本地账号 |
-| CI | 临时数据库：从空库执行全部迁移，再执行两遍导出的幂等脚本（§6） | CI 临时账号 |
+| 本地开发 | 允许 `dotnet ef database update`（§3.5） | `suanpan_migrator` |
+| CI | 临时数据库：从空库执行全部迁移，再执行两遍导出的幂等脚本（§6） | CI 中创建的 `suanpan_migrator`（三个账号都要先建好） |
 | 预发布 | 导出的 SQL 脚本，用 psql 执行 | `suanpan_migrator` |
 | 生产 | 与预发布**同一份**脚本，用 psql 执行 | `suanpan_migrator` |
 
@@ -78,13 +78,19 @@ ALTER DEFAULT PRIVILEGES FOR ROLE suanpan_migrator IN SCHEMA public
 ### 3.1 新增迁移
 
 ```bash
-dotnet ef migrations add <名称> --project src/Suanpan.Data --startup-project src/Suanpan.Crm
+dotnet tool restore     # 首次使用：安装仓库固定版本的 dotnet-ef
+dotnet ef migrations add <名称> --context SuanpanDbContext --project src/Suanpan.Data --startup-project src/Suanpan.Data
 ```
+
+- `dotnet ef` 用仓库的本地工具（版本见 `.config/dotnet-tools.json`），不用全局安装的版本。
+- **Data 自己作为启动项目**：设计时工厂 `Suanpan.Data/DesignTime/SuanpanDbContextFactory` 负责创建上下文。`Microsoft.EntityFrameworkCore.Design` 只加在 Data 上，标为开发依赖、不随程序发布，程序项目仍然不引用第三方包。
+- 解决方案里有两个上下文，命令都要带 `--context SuanpanDbContext`。对外视图也写在 `SuanpanDbContext` 的迁移里，`PortalReadDbContext` 没有迁移。
 
 - **名称**用 PascalCase，"动词 + 对象"，说清改了什么：`AddCalendarEvent`、`AddIndicatorFlatTolerance`、`RenameFlashTitle`、`CreatePublicCalendarView`、`SeedPresetRoles`。
 - **一个功能一个迁移**；不要把不相关的变更塞进同一个迁移。
 - 迁移文件和模型快照（`SuanpanDbContextModelSnapshot.cs`）**一起提交**，PR 中必须审核迁移代码，不能只看实体类的改动。
 - 迁移文件放在 `Suanpan.Data/Migrations/`，由工具生成，不手工分目录。
+- 用 `HasData` 写入的预置数据，审计字段 `created_by` 写 `migration`，`created_at` 写固定的 UTC 时间（不能用当前时间，否则每次都会产生新的迁移）。
 
 ### 3.2 修改迁移
 
@@ -112,6 +118,16 @@ dotnet ef migrations add <名称> --project src/Suanpan.Data --startup-project s
 | 固定不变、与环境无关的数据 | 实体配置中的 `HasData`，随迁移写入 | 4 个预置角色 |
 | 依赖环境变量的数据 | 程序启动时的种子服务，只在表为空时执行 | 初始管理员 |
 | 运营维护的数据 | 后台录入或 CSV 导入，不进迁移 | 指标字典、数据源 |
+
+### 3.5 本地执行迁移
+
+```bash
+dotnet ef database update --context SuanpanDbContext --project src/Suanpan.Data --startup-project src/Suanpan.Data
+```
+
+- 连接串取 `ConnectionStrings:Migrator`（`suanpan_migrator` 账号），设置在四个程序共用的 user-secrets 中，或用环境变量 `SUANPAN__ConnectionStrings__Migrator`。只生成迁移、导出脚本时不用设置。
+- **必须用 `suanpan_migrator` 执行**：默认授权只对它新建的表生效（§2.3），用其他账号建的表，应用账号没有权限。
+- 回退到某个迁移：`dotnet ef database update <迁移名> ...`；回退到空库：`dotnet ef database update 0 ...`。
 
 ---
 
@@ -155,7 +171,7 @@ dotnet ef migrations add <名称> --project src/Suanpan.Data --startup-project s
 每个 PR 自动执行，任一项不通过不能合并：
 
 1. `dotnet ef migrations has-pending-model-changes`：确认没有"改了实体却忘了生成迁移"。
-2. 在临时 PostgreSQL 中从空库执行全部迁移，确认成功。
+2. 在临时 PostgreSQL 中先建好三个账号，再用 `suanpan_migrator` 从空库执行全部迁移，确认成功。
 3. 导出全量幂等脚本（`--idempotent`），在同一个库上再执行两遍，确认重复执行不报错。
 4. 检查本次新增的迁移：出现 `DropTable`、`DropColumn` 时，要求 PR 描述中注明理由（第二人审核）。
 
@@ -181,10 +197,10 @@ dotnet ef migrations add <名称> --project src/Suanpan.Data --startup-project s
 
 ```bash
 # 导出本次要执行的脚本（从上次上线的迁移到最新），幂等
-dotnet ef migrations script <上次上线的迁移> --idempotent -o deploy/sql/v0.2.0.sql --project src/Suanpan.Data --startup-project src/Suanpan.Crm
+dotnet ef migrations script <上次上线的迁移> --idempotent -o deploy/sql/v0.2.0.sql --context SuanpanDbContext --project src/Suanpan.Data --startup-project src/Suanpan.Data
 
 # 导出回滚脚本（从本次最新的迁移回到上次上线的迁移）
-dotnet ef migrations script <本次最新的迁移> <上次上线的迁移> -o deploy/sql/v0.2.0.rollback.sql --project src/Suanpan.Data --startup-project src/Suanpan.Crm
+dotnet ef migrations script <本次最新的迁移> <上次上线的迁移> -o deploy/sql/v0.2.0.rollback.sql --context SuanpanDbContext --project src/Suanpan.Data --startup-project src/Suanpan.Data
 
 # 执行（连接串中的密码通过环境变量 PGPASSWORD 或 .pgpass 提供，不写在命令里）
 psql "host=<主机> dbname=<库名> user=suanpan_migrator" -v ON_ERROR_STOP=1 -f deploy/sql/v0.2.0.sql
@@ -241,3 +257,4 @@ deploy/sql/
 |---|---|---|---|
 | v1.0 | 2026-10-17 | vivo.li / Claude | 初版 |
 | v1.1 | 2026-10-17 | vivo.li / Claude | §2.2 补充本地开发环境的建库和建账号方式 |
+| v1.2 | 2026-10-18 | vivo.li / Claude | ENG-003.2 实施：`dotnet ef` 改用本地工具，Data 自己作为启动项目（设计时工厂），命令统一加 `--context SuanpanDbContext`；新增 §3.5 本地执行迁移（`ConnectionStrings:Migrator`）；§3.1 预置数据的审计字段；§2.1、§6 明确本地和 CI 都用 `suanpan_migrator` 执行 |
