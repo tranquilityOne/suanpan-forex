@@ -1,0 +1,30 @@
+@model Suanpan.Crm.Models.Account.TwoFactorViewModel
+@{
+    ViewData["Title"] = "二次验证";
+    Layout = "_LayoutAccount";
+}
+
+<div class="card card-md">
+    <div class="card-body">
+        <h2 class="h2 text-center mb-2">二次验证</h2>
+        <p class="text-secondary text-center mb-4">打开验证器 App，输入其中显示的 6 位验证码</p>
+        <form asp-action="TwoFactor" method="post" autocomplete="off">
+            <input type="hidden" asp-for="ReturnUrl" />
+            <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+            <div class="mb-3">
+                <label asp-for="Code" class="form-label"></label>
+                <input asp-for="Code" class="form-control text-center fs-2 font-monospace" inputmode="numeric"
+                       autocomplete="one-time-code" maxlength="6" autofocus />
+                <span asp-validation-for="Code"></span>
+            </div>
+            <div class="form-footer">
+                <button type="submit" class="btn btn-primary w-100">验证并登录</button>
+            </div>
+        </form>
+    </div>
+</div>
+<partial name="_CancelSignIn" />
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

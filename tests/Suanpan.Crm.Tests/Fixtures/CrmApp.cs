@@ -40,8 +40,18 @@ public sealed class CrmApp(string environment = "Testing") : WebApplicationFacto
 
     public FakeMenuService Menus { get; } = new();
 
-    /// <summary>不自动跟随跳转，测试要断言 302 的目标</summary>
-    public HttpClient CreateBrowser() => CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+    public FakeSecurityStampValidator Stamps { get; } = new();
+
+    public FakeAuthService Auth => field ??= new FakeAuthService(Stamps);
+
+    /// <summary>
+    /// 模拟浏览器：不自动跟随跳转（测试要断言 302 的目标）；自动保存 Cookie。用 https 地址，Testing 环境的 Cookie 带 Secure
+    /// </summary>
+    public HttpClient CreateBrowser() => CreateClient(new WebApplicationFactoryClientOptions
+    {
+        AllowAutoRedirect = false,
+        BaseAddress = new Uri("https://localhost"),
+    });
 
     /// <summary>用 Crm 自己的加密格式生成登录 Cookie（请求头 Cookie 的值），会经过真实的 Cookie 校验和安全戳比对</summary>
     public string CreateCookie(long userId, string scheme = AuthSchemes.Crm, string stamp = FakeSecurityStampValidator.ValidStamp)
@@ -72,7 +82,9 @@ public sealed class CrmApp(string environment = "Testing") : WebApplicationFacto
             services.AddSingleton<IConfigService>(Config);
             services.AddSingleton<IIpWhitelistService>(Whitelist);
             services.AddSingleton<IPermissionService>(Permissions);
-            services.AddSingleton<ISecurityStampValidator, FakeSecurityStampValidator>();
+            services.AddSingleton<ISecurityStampValidator>(Stamps);
+            services.AddSingleton<IAuthService>(Auth);
+            services.Remove(services.Single(d => d.ImplementationType == typeof(AdminSeedHostedService)));
             services.AddSingleton<IOpLogService>(OpLogs);
             services.AddSingleton<IMenuService>(Menus);
 

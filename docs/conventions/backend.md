@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.16 |
+| 版本 | v1.17 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -361,6 +361,8 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 - `IDistributedLock`：`await using` 获取锁句柄；过期时间必须大于临界区耗时；拿不到锁时返回 null，调用方直接跳过本轮。
 - `IRateLimiter`：秒级固定窗口；Redis 异常时放行并告警。本项目用它控制每个数据源的请求频率（PRD BR-003）。
 
+Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流）放行，可用性优先；安全控制类（TOTP 防重放）拒绝，安全优先（sys 设计 §5.4）。新增依赖 Redis 的功能时写明属于哪一类。
+
 缓存的约定：key 用常量前缀，必须设置明确的 TTL（`IRedisCache` 的写入方法都要求传过期时间），**由写数据的一方负责让缓存失效**。
 
 - 连接时设置 `AbortOnConnectFail = false`：Redis 暂时不可用不阻断程序启动，连上后自动恢复。
@@ -613,3 +615,4 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | v1.14 | 2026-10-18 | vivo.li / Claude | ENG-002.6 实施：§8.2 消息基类 `IntegrationMessage`、每个接收程序一个队列、重试次数的含义、首次部署顺序；§8.1 写入必须带过期时间；§8.3 Hangfire 存储位置、只用 `AddOrUpdateUtc` 注册；§12 新增 RabbitMQ 重试配置；新增测试项目 `Suanpan.Infrastructure.Tests`（§1、§1.2、§13）；§13 容器夹具延迟启动，修正"只跑单元测试不启动容器"与实际不符的问题 |
 | v1.15 | 2026-10-18 | vivo.li / Claude | ENG-004.1 实施：§4 管道顺序加入 IP 白名单、静态资源用 `MapStaticAssets`；§5 改正会话时长（空闲 30 分钟、待完成 Cookie 10 分钟，原文是 VVPay 的值），新增根目录页面默认要求登录；§12 新增 `ForwardedHeaders:TrustedProxies`；新增测试项目 `Suanpan.Crm.Tests`（§1、§1.2、§13） |
 | v1.16 | 2026-10-18 | vivo.li / Claude | §13.1 `Suanpan.Crm.Tests` 也覆盖布局和公共部件 |
+| v1.17 | 2026-10-18 | vivo.li / Claude | §8.1 Redis 异常时放行还是拒绝按用途决定 |

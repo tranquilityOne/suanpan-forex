@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using Suanpan.Core.Sys.Entities;
 using Suanpan.Services.Sys.Auth;
@@ -84,12 +85,19 @@ public sealed class FakeMenuService : IMenuService
         => Task.FromResult(_menus.GetValueOrDefault(userId, []));
 }
 
-/// <summary>只有 <see cref="ValidStamp"/> 视为与库中一致</summary>
+/// <summary>按账号记录当前安全戳；没有记录的账号，当前安全戳为 <see cref="ValidStamp"/></summary>
 public sealed class FakeSecurityStampValidator : ISecurityStampValidator
 {
     public const string ValidStamp = "current-stamp";
 
-    public Task<bool> ValidateAsync(long userId, string? stamp, CancellationToken ct = default) => Task.FromResult(stamp == ValidStamp);
+    private readonly ConcurrentDictionary<long, string> _stamps = new();
+
+    public string Current(long userId) => _stamps.GetValueOrDefault(userId, ValidStamp);
+
+    /// <summary>刷新安全戳（改密码、绑定 TOTP 时），返回新值</summary>
+    public string Renew(long userId) => _stamps[userId] = Guid.NewGuid().ToString("N");
+
+    public Task<bool> ValidateAsync(long userId, string? stamp, CancellationToken ct = default) => Task.FromResult(stamp == Current(userId));
 
     public void Invalidate(long userId)
     {

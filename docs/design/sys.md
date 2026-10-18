@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.9（草稿） |
+| 版本 | v0.10（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -195,7 +195,7 @@
 | 数据 | 方式 | 说明 |
 |---|---|---|
 | 4 个预置角色 | 迁移中的种子数据 | `super_admin`（管理员，内置）、`engineer`（采集工程师）、`editor`（编辑）、`viewer`（只读）。id 为 1 ~ 4，`created_by` 为 `migration`；`sys_role` 的自增从 100 开始，1 ~ 99 留给预置角色。编码常量见 `Suanpan.Core/Sys/Constants/RoleCodes` |
-| 初始管理员 | 程序启动时的种子服务 | 仅当 `sys_user` 为空时执行；登录名和初始密码读环境变量 `SUANPAN__Seed__AdminUsername`、`SUANPAN__Seed__AdminPassword`，未设置则跳过并记录 Error 日志；账号状态为"待激活"，绑定 `super_admin` |
+| 初始管理员 | 程序启动时的种子服务 | 仅当 `sys_user` 为空时执行；登录名和初始密码读环境变量 `SUANPAN__Seed__AdminUsername`、`SUANPAN__Seed__AdminPassword`，未设置则跳过并记录 Error 日志；账号状态为"待激活"，绑定 `super_admin`。由 Crm 启动时的 `AdminSeedHostedService` 调用 `AdminSeeder`，失败只记 Error 日志，不阻止启动 |
 | 权限点 | 不做种子 | 部署后在后台执行"从代码重建"生成（§6.3） |
 | 系统配置默认值 | 不做种子 | 代码中有默认值，表里有值时才覆盖（§10.2） |
 
@@ -284,6 +284,11 @@ sequenceDiagram
 - **失败提示统一**：账号不存在、密码错误统一提示"用户名或密码错误"；已锁定提示剩余时间；已停用提示"账号已停用"。真实原因记入登录日志（ERR-AUTH-001、ERR-AUTH-005）。
 - **每一步都记录登录日志**，包括成功和失败（§7.2）。
 - 改密码和绑定 TOTP 这两步都在"待完成 Cookie"下进行，这个 Cookie 不带任何业务权限。
+- **不能跳步**：下一步由 `SignInStepRule`（Core）按账号当前状态判断：必须改密码 → 改密码；未绑定 TOTP → 绑定；否则输入验证码。每个页面打开时都重新判断，不在这一步就跳到应进行的步骤。
+- **只通过了密码的人**（待完成 Cookie）只能在"必须改密码"时改密码、只能在"尚未绑定"时绑定 TOTP，不能主动改密码，也不能改绑 TOTP，否则拿到密码就能绕过二次验证。这个限制在 `AuthService` 中判断。
+- 已完成登录（正式 Cookie）的人可以主动改密码（须输入当前密码）、重新绑定 TOTP。完成后刷新安全戳并用新安全戳重签当前 Cookie：本会话不受影响，其他设备上的会话失效。
+- 待激活账号绑定 TOTP 成功后变为"启用"，并让它的权限快照失效（待激活时是空快照）。
+- 登录过程中的页面底部可以"放弃登录"（POST 退出）；`returnUrl` 在各步骤之间传递，只接受本站地址。
 
 ### 5.2 Cookie
 
@@ -316,7 +321,8 @@ sequenceDiagram
 - 密钥为 20 字节，Base32 编码；保存前用 AES-256-GCM 加密（`ISecretProtector`），加密密钥来自环境变量 `SUANPAN__Security__EncryptionKey`，格式为 32 字节随机数的 Base64。解密时不是 `enc:` 开头的值直接报错，不按明文兼容。
 - `TotpService` 通过注入的 `TimeProvider` 取时间，用 RFC 6238 附录 B 的测试向量验证。
 - 绑定时，待绑定的密钥加密后放在页面隐藏域里，验证通过才保存。
-- **防重放**：Redis 键 `suanpan:totp:used:{userId}:{时间步}` 用 SETNX 写入，同一个时间步的验证码只能用一次。
+- **防重放**：Redis 键 `suanpan:totp:used:{userId}:{时间步}` 用 SETNX 写入（保留 3 分钟），同一个时间步的验证码只能用一次（`TotpReplayGuard`）。
+- **Redis 不可用时拒绝验证**（fail-closed）：无法确认验证码是否用过，提示"暂时无法校验验证码，请稍后重试"，记 Error 日志和登录日志。Redis 故障期间无法登录后台。与限流器相反，限流器在 Redis 异常时放行。
 - **限流**：TOTP 失败计入 §4.3 的统一失败次数，不再单独设 Redis 计数（与 VVPay 不同）。
 - **救援**：管理员在账号编辑页执行"重置二次验证"，清空密钥并刷新安全戳；该账号下次登录时必须重新绑定。
 
@@ -417,11 +423,11 @@ Crm 将来部署多个实例时，以上缓存需要改为分布式失效（如 
 
 **写入失败**（BR-151）：不影响业务请求的结果；记录 Error 级日志，并调用告警接口 `IAlertService`。告警接口由 Ops 模块（FR-025，M2）实现；M1 阶段先提供一个只写 Error 日志的空实现。
 
-**哪些 action 要标 `[OpLog]`**：所有写操作（新增、修改、删除、状态变更、授权、重置、解锁、重建、导出、手动触发）。查询类 action 不标。
+**哪些 action 要标 `[OpLog]`**：所有写操作（新增、修改、删除、状态变更、授权、重置、解锁、重建、导出、手动触发）。查询类 action 不标。登录、输入验证码、退出不标，它们写登录日志；改密码、绑定 TOTP 是账号变更，另标 `[OpLog]`。
 
 ### 7.2 登录日志
 
-由 `AuthService` 在每一步写入：密码步、TOTP 步、激活（改密 + 绑定）、退出，成功和失败都记。`fail_reason` 记真实原因，如"账号不存在""密码错误""已锁定""TOTP 错误""TOTP 重放"。
+由 `AuthService` 在登录过程的每一步写入，成功和失败都记：密码步、TOTP 步、激活（登录过程中的强制改密码、绑定 TOTP，包括首次登录和被重置之后）、退出。`fail_reason` 记真实原因："账号不存在""账号已停用""密码错误""TOTP 错误""TOTP 重放""防重放检查失败（Redis 不可用）"，锁定在 ENG-005.2 中加入（"已锁定"）。已登录后主动改密码、重新绑定 TOTP 不是登录过程，只记操作日志。
 
 ### 7.3 查询与导出
 
@@ -441,9 +447,9 @@ Crm 将来部署多个实例时，以上缓存需要改为分布式失效（如 
 Suanpan.Core/Sys/
 ├─ Entities/      SysUser、SysRole、SysUserRole、SysPermission、SysRolePermission、
 │                 SysConfig、SysIpWhitelist、SysOpLog、SysLoginLog
-├─ Enums/         UserStatus、PermType、ConfigValueType、LoginStage
+├─ Enums/         UserStatus、PermType、ConfigValueType、LoginStage、SignInStep
 ├─ Constants/     RoleCodes
-└─ Rules/         PasswordPolicy、LockoutRule、UserStatusRule、PermCodePattern、ConfigValueRule
+└─ Rules/         PasswordPolicy、LockoutRule、UserStatusRule、PermCodePattern、ConfigValueRule、SignInStepRule
 
 Suanpan.Shared/Auth/      AuthSchemes、SuanpanClaimTypes、ICurrentUser、HttpContextCurrentUser、
                           HasPermission 三件套、PermMenu / PermName 特性、PermCodeHelper
@@ -455,7 +461,7 @@ Suanpan.Data/
 └─ Configurations/Sys/
 
 Suanpan.Services/Sys/
-├─ Auth/          AuthService、SecurityStampValidator、AdminSeeder
+├─ Auth/          AuthService、TotpReplayGuard、SecurityStampValidator、AdminSeeder、AdminSeedHostedService、Models/
 ├─ Rbac/          PermissionService、PermissionAuthorizationHandler、PermissionRebuildService、
 │  │              PresetRoleGrantService、PresetRoleGrants、MenuService
 │  └─ Manage/     UserManageService、RoleManageService、PermissionManageService
@@ -578,12 +584,13 @@ public interface IConfigService
 | 页面 | 路由 | 访问条件 |
 |---|---|---|
 | 登录 | `/Account/Login` | 匿名 |
-| 修改密码（激活或被重置后强制进入） | `/Account/ChangePassword` | 待完成 Cookie 或正式 Cookie |
-| 绑定二次验证 | `/Account/TwoFactorSetup` | 待完成 Cookie 或正式 Cookie |
+| 修改密码（激活或被重置后强制进入） | `/Account/ChangePassword` | 待完成 Cookie（只在必须改密码时）或正式 Cookie（须输入当前密码） |
+| 绑定二次验证 | `/Account/TwoFactorSetup` | 待完成 Cookie（只在尚未绑定时）或正式 Cookie（重新绑定） |
 | 输入验证码 | `/Account/TwoFactor` | 待完成 Cookie |
-| 退出 | POST `/Account/Logout` | 正式 Cookie |
+| 退出 | POST `/Account/Logout` | 正式 Cookie 或待完成 Cookie（放弃登录） |
 | 无权限 | `/Account/AccessDenied` | 正式 Cookie |
 | 首页 | `/` | 正式 Cookie |
+| 错误页 | `/Home/Error` | 匿名；非开发环境的异常处理使用，用不读业务数据的 `_LayoutAccount` |
 
 ### 9.3 Crm 框架（ENG-004）
 
@@ -638,7 +645,7 @@ public interface IConfigService
 | ERR-AUTH-002 | 无权限 | 页面请求跳转无权限页；HTMX 请求返回 403 片段 |
 | ERR-AUTH-003 | IP 不在白名单 | 返回 403 页面，不暴露原因细节 |
 | ERR-AUTH-004 | 停用最后一个管理员、停用自己 | `ManageResult` 返回错误，显示在页面上 |
-| ERR-AUTH-005 | TOTP 错误或重放 | 提示"验证码错误"，计入失败次数 |
+| ERR-AUTH-005 | TOTP 错误或重放 | 提示"验证码错误"，计入失败次数（ENG-005.2）；Redis 不可用时提示"暂时无法校验验证码，请稍后重试" |
 | ERR-AUD-001 | 操作日志写入失败 | 业务不受影响；Error 日志 + 告警 |
 
 ---
@@ -689,3 +696,4 @@ public interface IConfigService
 | v0.7 | 2026-10-18 | vivo.li / Claude | ENG-002.5 实施：§7.1 日志用 INSERT 直接写入；§7.3 导出的时区和 CSV 注入防护；§8.2 配置服务接口；§9.1 配置按键编辑、新增"恢复默认值"；§10.2 配置项登记到 `SysConfigKeys.Definitions` |
 | v0.8 | 2026-10-18 | vivo.li / Claude | ENG-004.1 实施：§5.2 默认 scheme、开发环境 Cookie、HTMX 的未登录和无权限处理；§5.5 白名单在管道中的位置、可信代理 `ForwardedHeaders:TrustedProxies`；§6.2 兜底策略要求登录、显式 `[HasPermission]` 时不自动生成；§8.1 Crm 目录；§9.1 Hangfire 面板改为端点授权，权限点由 `Sys/Job/Index` 生成；§10.1 新增环境变量；§12 管道测试的方式 |
 | v0.9 | 2026-10-18 | vivo.li / Claude | ENG-004.2 实施：§8.1 Crm 目录；§9.3 布局细节、二次确认、中文校验提示、开发环境示例页、操作者时区改为 `IOperatorTimeZone` |
+| v0.10 | 2026-10-18 | vivo.li / Claude | ENG-004.3、ENG-005.1 实施：§3.4 初始管理员的启动服务；§5.1 不能跳步、待完成 Cookie 下的限制、主动改密和重新绑定、激活后权限快照失效；§5.4 防重放保留时长、Redis 不可用时拒绝验证；§7.1、§7.2 登录日志与操作日志的分工和失败原因；§8.1 目录；§9.2 各页面的访问条件、错误页；§11 ERR-AUTH-005 |

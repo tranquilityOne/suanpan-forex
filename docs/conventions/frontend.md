@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.4 |
+| 版本 | v1.5 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 后台 Suanpan.Crm 和前台 Suanpan.Portal 的页面、视图、静态资源 |
 | 依据 | data-hub PRD v1.0.0.2（DEC-014、NFR-131、§10.10）；web-portal PRD v1.0.0.2（DEC-005 ~ DEC-007、NFR-120 ~ NFR-124）；VVPay `doc/frontend.md` |
@@ -62,6 +62,7 @@
 - **顶栏用户菜单**：修改密码 / 二步验证 / 退出。退出用 POST 表单，防止 CSRF。
 - **布局统一加载**：`tabler.min.js`、`jquery.min.js`、`htmx.min.js`、`site.js`；页面级脚本写在 `@section Scripts` 中。
 - **布局还包括**：HTMX 出错时的错误提示区（site.js 填写）、`<confirm-form>` 共用的确认弹窗；页脚注明页面时间按哪个时区显示。
+- **账号页面用 `_LayoutAccount`**：登录、登录过程中的改密码和绑定 TOTP、错误页。没有侧边栏和菜单，不读任何业务数据，所以数据库不可用时错误页仍能显示。已登录后主动改密码、重新绑定 TOTP 仍用 `_Layout`。
 
 ### 3.2 Areas（栏目）
 
@@ -389,3 +390,4 @@ Suanpan.Portal/
 | v1.2 | 2026-10-18 | vivo.li / Claude | §7.2 CSV 导出补充时区和 CSV 注入防护 |
 | v1.3 | 2026-10-18 | vivo.li / Claude | §3.3 目录加入 `Mvc/`；§4.2 补充 HTMX 请求的未登录和无权限处理 |
 | v1.4 | 2026-10-18 | vivo.li / Claude | ENG-004.2 实施：§2 写明各库的版本和目录、只放 min 文件和 LICENSE；§3.1 布局的错误提示区和确认弹窗；§3.3 开发环境示例页、Models/Shared；§5.2 中文默认校验提示；§6 公共部件的用法 |
+| v1.5 | 2026-10-18 | vivo.li / Claude | §3.1 账号页面使用 `_LayoutAccount` |

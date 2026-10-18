@@ -33,9 +33,16 @@ public static class Requests
         return request;
     }
 
-    /// <summary>302 跳转的目标路径（不含查询串）；不是 302 时返回 null</summary>
+    /// <summary>302 跳转的目标路径（不含查询串）；不是 302 时返回 null。Cookie 认证给出绝对地址，MVC 的跳转给出相对地址</summary>
     public static string? RedirectPath(this HttpResponseMessage response)
-        => response.StatusCode == HttpStatusCode.Redirect ? response.Headers.Location?.AbsolutePath : null;
+    {
+        if (response.StatusCode != HttpStatusCode.Redirect || response.Headers.Location is not { } location)
+        {
+            return null;
+        }
+
+        return location.IsAbsoluteUri ? location.AbsolutePath : location.OriginalString.Split('?')[0];
+    }
 
     private static HttpRequestMessage Create(HttpMethod method, string path, string? cookie)
     {

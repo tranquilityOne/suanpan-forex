@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Suanpan.Data;
+using Suanpan.Infrastructure;
 using Suanpan.Services.Sys.Rbac.Manage;
 using Suanpan.Services.Sys.Security;
 using Xunit;
@@ -22,11 +23,13 @@ public class ServicesServiceCollectionExtensionsTests
         {
             ["ConnectionStrings:Main"] = "Host=127.0.0.1;Database=resolve_only",
             ["Security:EncryptionKey"] = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)),
+            ["Redis:Configuration"] = "127.0.0.1:1",
         }).Build();
         var services = new ServiceCollection()
             .AddSingleton<IConfiguration>(configuration)
             .AddLogging()
             .AddSuanpanData(configuration, "test")
+            .AddSuanpanRedis(configuration)
             .AddSuanpanServices();
 
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });

@@ -5,6 +5,7 @@ using Suanpan.Data;
 using Suanpan.Data.Interceptors;
 using Suanpan.Infrastructure;
 using Suanpan.Services;
+using Suanpan.Services.Sys.Auth;
 using Suanpan.Services.Sys.Logging;
 using Suanpan.Services.Sys.Rbac;
 using Suanpan.Shared.Auth;
@@ -29,6 +30,7 @@ services.AddCrmForwardedHeaders(configuration);
 services.AddCrmAuthentication(configuration, builder.Environment);
 services.AddCrmAuthorization();
 services.AddScoped<IPermissionRebuildService, PermissionRebuildService>();
+services.AddHostedService<AdminSeedHostedService>();
 services.AddSingleton<IOperatorTimeZone, DefaultOperatorTimeZone>();
 services.AddControllersWithViews(options =>
 {

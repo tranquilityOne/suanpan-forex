@@ -14,9 +14,9 @@ namespace Suanpan.Services;
 public static class ServicesServiceCollectionExtensions
 {
     /// <summary>
-    /// 注册业务服务。调用方还需要注册 Data（AddSuanpanData）；用到 Redis 的服务加入后，
-    /// 调用方必须同时注册 Redis（docs/conventions/backend.md §4）。
-    /// 权限树重建 <see cref="IPermissionRebuildService"/> 依赖 MVC，只由 Crm 注册。
+    /// 注册业务服务。调用方还需要注册 Data（AddSuanpanData）和 Redis（AddSuanpanRedis，登录的 TOTP 防重放等用到），
+    /// 见 docs/conventions/backend.md §4。
+    /// 权限树重建 <see cref="IPermissionRebuildService"/> 依赖 MVC、初始管理员的启动服务 <see cref="AdminSeedHostedService"/>，只由 Crm 注册。
     /// </summary>
     public static IServiceCollection AddSuanpanServices(this IServiceCollection services)
     {
@@ -33,6 +33,9 @@ public static class ServicesServiceCollectionExtensions
         services.AddScoped<IIpWhitelistService, IpWhitelistService>();
 
         // Sys：认证与授权
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddSingleton<TotpReplayGuard>();
+        services.AddScoped<AdminSeeder>();
         services.AddScoped<ISecurityStampValidator, SecurityStampValidator>();
         services.AddScoped<IPermissionService, PermissionService>();
         services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();

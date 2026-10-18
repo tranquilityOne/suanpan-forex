@@ -1,0 +1,29 @@
+@*
+    账号页面的布局（登录、登录过程中的改密码和绑定、错误页）：没有侧边栏和菜单，也不读取任何业务数据，
+    所以数据库不可用时错误页仍能显示。
+*@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - 数据中台</title>
+    <link rel="stylesheet" href="~/lib/tabler/css/tabler.min.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/lib/tabler-icons/tabler-icons.min.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body class="d-flex flex-column">
+    <div class="page page-center">
+        <div class="container container-tight py-4">
+            <div class="text-center mb-4">
+                <span class="navbar-brand fs-2"><i class="ti ti-chart-candle me-1"></i>数据中台</span>
+            </div>
+            @RenderBody()
+        </div>
+    </div>
+
+    <script src="~/lib/tabler/js/tabler.min.js" asp-append-version="true"></script>
+    <script src="~/lib/jquery/jquery.min.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

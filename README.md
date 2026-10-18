@@ -79,12 +79,17 @@ dotnet user-secrets set "RabbitMq:Uri" "amqp://suanpan:<RABBITMQ_PASSWORD>@127.0
 dotnet user-secrets list --project src/Suanpan.Crm
 ```
 
-以下配置在对应功能完成后才需要设置，完整的配置键见[后端约定 §12](docs/conventions/backend.md)：
+运行 Crm 还需要下面两项（完整的配置键见[后端约定 §12](docs/conventions/backend.md)）：
 
 | 键 | 用途 | 何时需要 |
 |---|---|---|
-| `Security:EncryptionKey` | 加密 TOTP 密钥和数据源凭据；32 字节随机数的 Base64，用 `openssl rand -base64 32` 生成 | 绑定 TOTP 的页面完成后（ENG-004.3） |
-| `Seed:AdminUsername`、`Seed:AdminPassword` | 初始管理员的登录名和初始密码 | 实现初始管理员后（ENG-005.1） |
+| `Security:EncryptionKey` | 加密 TOTP 密钥和数据源凭据；32 字节随机数的 Base64，用 `openssl rand -base64 32` 生成 | 必填，Crm 启动和登录时用到 |
+| `Seed:AdminUsername`、`Seed:AdminPassword` | 初始管理员的登录名和初始密码：库里还没有任何账号时，Crm 启动时用它创建（待激活），首次登录须改密码并绑定二次验证 | 首次启动 Crm 之前 |
+
+其余可选配置：
+
+| 键 | 用途 | 何时需要 |
+|---|---|---|
 | `Security:BootstrapAllowedIps` | 后台 IP 白名单的应急放行 IP，逗号分隔 | 可选 |
 | `ForwardedHeaders:TrustedProxies` | 可信的反向代理，逗号分隔的 IP 或 CIDR；本地直接访问时不用设置 | 部署到反向代理后面时 |
 
@@ -108,6 +113,8 @@ dotnet run --project src/Suanpan.Crm
 | Collector | http://127.0.0.1:5400 |
 
 Crm 在开发环境下可以打开 http://127.0.0.1:5100/Dev/Components 查看后台的布局和公共部件（不需要登录，其他环境不可用）。
+
+首次登录后台：用 `Seed:AdminUsername`、`Seed:AdminPassword` 登录，按提示设置新密码，再用手机上的验证器 App（如 Microsoft Authenticator）扫码绑定二次验证。之后每次登录都要输入验证码。登录时的验证码防重放依赖 Redis，Redis 连不上时无法登录。
 
 运行全部测试（集成测试会用 Docker 启动临时的 PostgreSQL、Valkey、RabbitMQ，需要 Docker 在运行）：
 
