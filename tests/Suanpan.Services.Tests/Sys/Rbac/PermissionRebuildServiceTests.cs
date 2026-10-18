@@ -76,9 +76,10 @@ public class PermissionRebuildServiceTests(PostgresFixture postgres)
         Assert.False(row.IsEnabled);
         Assert.True(await db.SysRolePermissions.AnyAsync(x => x.RoleId == role.Id && x.PermId == edit.Id, Ct));
 
-        // 代码中恢复后重新启用，id 不变
-        await Rebuild(db, Endpoints.All(_area));
+        // 代码中恢复后重新启用，id 不变，并在结果中列出
+        var restored = await Rebuild(db, Endpoints.All(_area));
         Assert.True((await db.SysPermissions.AsNoTracking().SingleAsync(p => p.Id == edit.Id, Ct)).IsEnabled);
+        Assert.Equal([edit.PermCode], restored.ReEnabledCodes);
     }
 
     [Fact]

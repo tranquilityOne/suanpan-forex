@@ -1,0 +1,62 @@
+@model RoleAssignViewModel
+@using Suanpan.Core.Sys.Enums
+@{
+    ViewData["Title"] = "角色授权";
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">角色授权：@Model.RoleName</h2>
+    <div class="text-secondary">勾选目录或菜单会同时勾选其下的全部按钮；勾选按钮会自动勾选它所在的菜单和目录。保存后持有该角色的账号立即生效。</div>
+</div>
+
+<form asp-action="Assign" asp-route-id="@Model.RoleId" method="post">
+    <div class="card">
+        <div class="card-header">
+            <div class="btn-list">
+                <button type="button" class="btn btn-sm" data-check-all="true">全选</button>
+                <button type="button" class="btn btn-sm" data-check-all="false">全不选</button>
+            </div>
+        </div>
+        @if (Model.Permissions.Count == 0)
+        {
+            <partial name="_EmptyState" model='new EmptyStateModel("还没有权限点，请先在“权限点”页面从代码重建", "去重建", Url.Action("Index", "Permission"))' />
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle card-table">
+                    <tbody>
+                        @foreach (var permission in Model.Permissions)
+                        {
+                            <tr>
+                                <td style="padding-left: @(0.75 + permission.Depth * 1.5)rem">
+                                    <label class="form-check mb-0">
+                                        <input type="checkbox" name="permIds" value="@permission.Id" class="form-check-input"
+                                               data-perm-id="@permission.Id" data-parent-id="@permission.ParentId"
+                                               checked="@Model.GrantedIds.Contains(permission.Id)" />
+                                        <span class="form-check-label @(permission.PermType == PermType.Directory ? "fw-bold" : "")">
+                                            @if (permission.Icon is not null)
+                                            {
+                                                <i class="ti ti-@permission.Icon me-1"></i>
+                                            }
+                                            @permission.PermName
+                                        </span>
+                                    </label>
+                                </td>
+                                <td class="text-secondary"><code class="small">@permission.PermCode</code></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        <div class="card-footer d-flex gap-2">
+            <button type="submit" class="btn btn-primary">保存授权</button>
+            <a asp-action="Index" class="btn">取消</a>
+        </div>
+    </div>
+</form>
+
+@section Scripts {
+    <script src="~/js/sys/role-assign.js" asp-append-version="true"></script>
+}

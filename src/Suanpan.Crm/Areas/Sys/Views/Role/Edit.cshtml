@@ -1,0 +1,54 @@
+@model RoleEditViewModel
+@{
+    var isNew = Model.Id == 0;
+    ViewData["Title"] = isNew ? "新建角色" : "编辑角色";
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">@ViewData["Title"]</h2>
+</div>
+
+<div class="card" style="max-width: 40rem">
+    <form asp-action="@(isNew ? "Create" : "Edit")" method="post" class="card-body">
+        <input type="hidden" asp-for="Id" />
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        <div class="mb-3">
+            <label asp-for="RoleCode" class="form-label required"></label>
+            @if (isNew)
+            {
+                <input asp-for="RoleCode" class="form-control" autocomplete="off" />
+                <div class="form-text">小写字母开头，只用小写字母、数字和下划线，如 data_auditor；创建后不能修改</div>
+                <span asp-validation-for="RoleCode"></span>
+            }
+            else
+            {
+                <div class="form-control-plaintext"><code>@Model.RoleCode</code></div>
+            }
+        </div>
+        <div class="mb-3">
+            <label asp-for="RoleName" class="form-label required"></label>
+            <input asp-for="RoleName" class="form-control" />
+            <span asp-validation-for="RoleName"></span>
+        </div>
+        <div class="mb-3">
+            <label class="form-check form-switch">
+                <input asp-for="IsEnabled" class="form-check-input" />
+                <span class="form-check-label">启用</span>
+            </label>
+            <div class="form-text">停用后，持有该角色的账号立即失去它的权限</div>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Remark" class="form-label"></label>
+            <textarea asp-for="Remark" class="form-control" rows="2"></textarea>
+            <span asp-validation-for="Remark"></span>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">保存</button>
+            <a asp-action="Index" class="btn">取消</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

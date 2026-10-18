@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.11（草稿） |
+| 版本 | v0.12（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -377,7 +377,8 @@ sequenceDiagram
 沿用 VVPay，"系统管理 → 权限点 → 从代码重建"：
 
 - Area 生成目录，Controller 生成菜单（权限码取 Index 的码，菜单路由自动为 `/{Area}/{Controller}`），其余 action 生成按钮。
-- **代码是唯一的事实来源**：名称、层级、路由以代码为准覆盖；代码中已不存在的权限码停用，不删除；已存在的行保留 id，所以角色授权不会丢。
+- **代码是唯一的事实来源**：名称、层级、路由、图标、排序以代码为准覆盖，代码中存在的权限码一律启用；代码中已不存在的权限码停用，不删除；已存在的行保留 id，所以角色授权不会丢。
+- 权限点页面上改的图标、排序、启停只是临时的，到下次重建时恢复为代码中的设置。重建结果列出新增、更新、停用的数量，以及停用的和重新启用的权限码，便于核对。
 - 重建完成后，菜单缓存和全部权限快照立即失效。
 - 在页面上手工新增的权限点，会在下次重建时被停用，因此不提供手工新增入口。
 
@@ -477,8 +478,8 @@ Suanpan.Crm/
 ├─ Mvc/           HtmxRequestExtensions（Request.IsHtmx()）、IOperatorTimeZone、ChineseValidationMessages
 ├─ Filters/       DevelopmentOnlyAttribute
 ├─ Controllers/   AccountController、HomeController、DevComponentsController（开发环境示例页）
-├─ Areas/Sys/  见 §9.1
-├─ Models/        Sys/、Shared/（EmptyStateModel）、Dev/
+├─ Areas/Sys/     Controllers/（User、Role、Permission）、Views/；页面见 §9.1
+├─ Models/        Sys/（各页面的 ViewModel）、Shared/（EmptyStateModel）、Dev/
 └─ TagHelpers/    见 §9.3
 ```
 
@@ -557,7 +558,7 @@ public interface IConfigService
 | 新建账号 | `/Sys/User/Create` | `sys:user:create` | 填写登录名、姓名、邮箱、角色、初始密码；状态为待激活 |
 | 编辑账号 | `/Sys/User/Edit/{id}` | `sys:user:edit` | 姓名、邮箱、角色；登录名不可改 |
 | 启用 / 停用 | POST | `sys:user:set_status` | 二次确认；不能停用自己和最后一个管理员 |
-| 重置密码 | POST | `sys:user:reset_password` | 设为待改密码状态，刷新安全戳 |
+| 重置密码 | `/Sys/User/ResetPassword/{id}` | `sys:user:reset_password` | 管理员输入临时密码（符合密码规则），线下告知本人；设为待改密码状态，刷新安全戳 |
 | 重置二次验证 | POST | `sys:user:reset_totp` | 二次确认 |
 | 解锁 | POST | `sys:user:unlock` | 只在锁定时显示 |
 | 角色列表 | `/Sys/Role` | `sys:role:index` | 内置角色只读 |
@@ -565,7 +566,7 @@ public interface IConfigService
 | 角色授权 | `/Sys/Role/Assign/{id}` | `sys:role:assign` | 复选框权限树（勾选父节点全选子节点，勾选子节点自动选中祖先） |
 | 恢复默认授权 | POST | `sys:role:apply_defaults` | 只对 3 个预置角色可用；二次确认 |
 | 权限点 | `/Sys/Permission` | `sys:permission:index` | 树形表格 |
-| 修改权限点 | `/Sys/Permission/Edit/{id}` | `sys:permission:edit` | 只允许改图标、排序、启停 |
+| 修改权限点 | `/Sys/Permission/Edit/{id}` | `sys:permission:edit` | 只允许改图标、排序、启停；是临时修改，下次重建时恢复为代码中的设置（§6.3） |
 | 从代码重建 | POST | `sys:permission:rebuild` | 二次确认；完成后显示新增、更新、停用的数量 |
 | 系统配置 | `/Sys/Config` | `sys:config:index` | 按分组展示代码中定义的全部配置项，标出哪些在用默认值 |
 | 修改配置 | `/Sys/Config/Edit?key=...` | `sys:config:edit` | 按类型校验；库里没有的配置项第一次保存时新建，所以按键而不是按 id 编辑 |
@@ -699,3 +700,4 @@ public interface IConfigService
 | v0.9 | 2026-10-18 | vivo.li / Claude | ENG-004.2 实施：§8.1 Crm 目录；§9.3 布局细节、二次确认、中文校验提示、开发环境示例页、操作者时区改为 `IOperatorTimeZone` |
 | v0.10 | 2026-10-18 | vivo.li / Claude | ENG-004.3、ENG-005.1 实施：§3.4 初始管理员的启动服务；§5.1 不能跳步、待完成 Cookie 下的限制、主动改密和重新绑定、激活后权限快照失效；§5.4 防重放保留时长、Redis 不可用时拒绝验证；§7.1、§7.2 登录日志与操作日志的分工和失败原因；§8.1 目录；§9.2 各页面的访问条件、错误页；§11 ERR-AUTH-005 |
 | v0.11 | 2026-10-18 | vivo.li / Claude | ENG-005.2 实施：§4.3 哪些失败计数、锁定提示、规则所在位置、写库用比较并交换（代替原来的单条 SQL 写法）；§7.2 锁定相关的失败原因 |
+| v0.12 | 2026-10-18 | vivo.li / Claude | ENG-004.4 实施：§6.3 写明图标、排序、启停也以代码为准，页面修改到下次重建为止，重建结果列出重新启用的权限码（原文只写了名称、层级、路由，与实现不一致）；§8.1 Areas/Sys 与 Models 目录；§9.1 重置密码改为表单页、修改权限点的说明 |

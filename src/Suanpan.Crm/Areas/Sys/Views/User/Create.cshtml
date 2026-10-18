@@ -1,0 +1,51 @@
+@model UserCreateViewModel
+@using Suanpan.Core.Sys.Rules
+@{
+    ViewData["Title"] = "新建账号";
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">新建账号</h2>
+</div>
+
+<div class="card" style="max-width: 40rem">
+    <form asp-action="Create" method="post" class="card-body">
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        <div class="mb-3">
+            <label asp-for="Username" class="form-label required"></label>
+            <input asp-for="Username" class="form-control" autocomplete="off" />
+            <div class="form-text">创建后不能修改</div>
+            <span asp-validation-for="Username"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="RealName" class="form-label required"></label>
+            <input asp-for="RealName" class="form-control" />
+            <span asp-validation-for="RealName"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Email" class="form-label"></label>
+            <input asp-for="Email" class="form-control" />
+            <span asp-validation-for="Email"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Password" class="form-label required"></label>
+            <input asp-for="Password" class="form-control" autocomplete="new-password" />
+            <div class="form-text">至少 @PasswordPolicy.MinLength 位，同时包含英文字母和数字；线下告知本人，首次登录时必须修改</div>
+            <span asp-validation-for="Password"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="ConfirmPassword" class="form-label required"></label>
+            <input asp-for="ConfirmPassword" class="form-control" autocomplete="new-password" />
+            <span asp-validation-for="ConfirmPassword"></span>
+        </div>
+        <partial name="_RoleChecks" model="(Model.RoleOptions, (IReadOnlyCollection<long>)Model.RoleIds)" />
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">保存</button>
+            <a asp-action="Index" class="btn">取消</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

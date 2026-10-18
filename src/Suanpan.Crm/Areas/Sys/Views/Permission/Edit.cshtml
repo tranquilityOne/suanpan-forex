@@ -1,0 +1,47 @@
+@model PermissionEditViewModel
+@{
+    ViewData["Title"] = "修改权限点";
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">修改权限点：@Model.PermName</h2>
+    <div class="text-secondary">这里可以临时改图标、排序和启停。权限点以代码为准：下次“从代码重建”时，这些修改会恢复为代码中的设置，停用的也会重新启用。</div>
+</div>
+
+<div class="card" style="max-width: 40rem">
+    <form asp-action="Edit" method="post" class="card-body">
+        <input type="hidden" asp-for="Id" />
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        <div class="mb-3">
+            <label class="form-label">权限码</label>
+            <div class="form-control-plaintext"><code>@Model.PermCode</code></div>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Icon" class="form-label"></label>
+            <input asp-for="Icon" class="form-control" />
+            <div class="form-text">Tabler Icons 的图标名（不含 ti- 前缀），如 users；只对目录和菜单有效</div>
+            <span asp-validation-for="Icon"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Sort" class="form-label"></label>
+            <input asp-for="Sort" class="form-control" />
+            <div class="form-text">同一层内从小到大排列</div>
+            <span asp-validation-for="Sort"></span>
+        </div>
+        <div class="mb-3">
+            <label class="form-check form-switch">
+                <input asp-for="IsEnabled" class="form-check-input" />
+                <span class="form-check-label">启用</span>
+            </label>
+            <div class="form-text">停用后，持有它的角色立即失去这项权限，菜单中也不再显示</div>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">保存</button>
+            <a asp-action="Index" class="btn">取消</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

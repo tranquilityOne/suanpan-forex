@@ -32,6 +32,7 @@ public sealed class PermissionRebuildService(
         var byCode = existing.ToDictionary(p => p.PermCode, StringComparer.Ordinal);
         var desired = new HashSet<string>(StringComparer.Ordinal);
         var disabledCodes = new List<string>();
+        var reEnabledCodes = new List<string>();
         int added = 0, updated = 0;
 
         SysPermission Upsert(string code, string name, PermType type, long parentId, string? url, string? icon, int sort)
@@ -41,6 +42,11 @@ public sealed class PermissionRebuildService(
             {
                 var changed = row.PermName != name || row.PermType != type || row.ParentId != parentId
                               || row.MenuUrl != url || row.Icon != icon || row.Sort != sort || !row.IsEnabled;
+                if (!row.IsEnabled)
+                {
+                    reEnabledCodes.Add(code);
+                }
+
                 if (changed)
                 {
                     row.PermName = name;
@@ -117,7 +123,7 @@ public sealed class PermissionRebuildService(
         permissionService.InvalidateAll();
 
         logger.LogInformation("权限树重建完成：新增 {Added}，更新 {Updated}，停用 {Disabled}", added, updated, disabledCodes.Count);
-        return new RebuildReport(added, updated, disabledCodes.Count, disabledCodes, missingMenu);
+        return new RebuildReport(added, updated, disabledCodes.Count, disabledCodes, missingMenu, reEnabledCodes);
     }
 
     /// <summary>扫描 Area 内的控制器 action，按控制器聚合成菜单组；同一个权限码只算一次（GET、POST 同名 action）</summary>

@@ -1,0 +1,15 @@
+@model (IReadOnlyList<RoleOption> Options, IReadOnlyCollection<long> Selected)
+@* 账号的角色：复选框，一个账号可以有多个角色，权限取并集（BR-139） *@
+<div class="mb-3">
+    <label class="form-label">角色</label>
+    <div>
+        @foreach (var role in Model.Options)
+        {
+            <label class="form-check form-check-inline">
+                <input type="checkbox" name="RoleIds" value="@role.Id" class="form-check-input" checked="@Model.Selected.Contains(role.Id)" />
+                <span class="form-check-label">@role.Name@(role.IsEnabled ? "" : "（已停用）")</span>
+            </label>
+        }
+    </div>
+    <div class="form-text">可以选多个角色，权限取并集；不选角色的账号登录后看不到任何栏目</div>
+</div>

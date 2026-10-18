@@ -1,0 +1,60 @@
+@model IReadOnlyList<Suanpan.Services.Sys.Rbac.Manage.Models.PermissionRow>
+@using Suanpan.Core.Sys.Enums
+@{
+    ViewData["Title"] = "权限点";
+
+    static string TypeText(PermType type) => type switch
+    {
+        PermType.Directory => "目录",
+        PermType.Menu => "菜单",
+        _ => "按钮",
+    };
+}
+
+<div class="page-header mb-3 d-flex align-items-center">
+    <div>
+        <h2 class="page-title">权限点</h2>
+        <div class="text-secondary">权限点由代码生成：新增页面后点“从代码重建”，菜单和权限码自动出现；代码中已删除的页面会被停用。页面上的修改只到下次重建为止。</div>
+    </div>
+    <div class="ms-auto">
+        <confirm-form asp-action="Rebuild" button-text="从代码重建" button-class="btn btn-primary"
+                      message="按代码重新生成权限树：名称、层级、路由、图标、排序都以代码为准覆盖，页面上停用的权限点会重新启用，代码中已不存在的权限码会被停用。已有的授权不受影响。" />
+    </div>
+</div>
+
+<div class="card">
+    @if (Model.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("还没有权限点，点右上角“从代码重建”生成", Icon: "key-off")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle card-table text-nowrap">
+                <thead>
+                    <tr><th>名称</th><th>类型</th><th>权限码</th><th>菜单地址</th><th class="text-end">排序</th><th>状态</th><th class="w-1"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var permission in Model)
+                    {
+                        <tr class="@(permission.IsEnabled ? "" : "text-secondary")">
+                            <td style="padding-left: @(0.75 + permission.Depth * 1.5)rem">
+                                @if (permission.Icon is not null)
+                                {
+                                    <i class="ti ti-@permission.Icon me-1"></i>
+                                }
+                                <span class="@(permission.PermType == PermType.Directory ? "fw-bold" : "")">@permission.PermName</span>
+                            </td>
+                            <td>@TypeText(permission.PermType)</td>
+                            <td><code class="small">@permission.PermCode</code></td>
+                            <td>@permission.MenuUrl</td>
+                            <td class="text-end font-monospace">@permission.Sort</td>
+                            <td><status-badge tone="@(permission.IsEnabled ? BadgeTone.Success : BadgeTone.Neutral)" text="@(permission.IsEnabled ? "启用" : "停用")" /></td>
+                            <td><a asp-action="Edit" asp-route-id="@permission.Id" class="btn btn-sm">修改</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

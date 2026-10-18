@@ -1,0 +1,98 @@
+@model UserListViewModel
+@using Suanpan.Core.Sys.Enums
+@using Suanpan.Core.Sys.Rules
+@{
+    ViewData["Title"] = "账号管理";
+}
+
+<div class="page-header mb-3 d-flex align-items-center">
+    <h2 class="page-title">账号管理</h2>
+    <a asp-action="Create" class="btn btn-primary ms-auto"><i class="ti ti-plus me-1"></i>新建账号</a>
+</div>
+
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label">关键字</label>
+        <input name="keyword" value="@Model.Keyword" class="form-control form-control-sm" placeholder="登录名或姓名" />
+    </div>
+    <div class="col-auto">
+        <label class="form-label">状态</label>
+        <select name="status" class="form-select form-select-sm">
+            <option value="">全部</option>
+            @foreach (var status in Enum.GetValues<UserStatus>())
+            {
+                <option value="@status" selected="@(Model.Status == status)">@StatusBadges.Describe(status).Text</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-primary">查询</button>
+        <a asp-action="Index" class="btn btn-sm">重置</a>
+    </div>
+</form>
+
+<div class="card">
+    @if (Model.Result.Items.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("没有符合条件的账号")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle card-table text-nowrap">
+                <thead>
+                    <tr><th>登录名</th><th>姓名</th><th>角色</th><th>状态</th><th>最后登录</th><th class="w-1"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in Model.Result.Items)
+                    {
+                        var locked = LockoutRule.IsLocked(user.LockedUntil, Model.Now);
+                        <tr>
+                            <td><code class="small">@user.Username</code></td>
+                            <td>@user.RealName</td>
+                            <td>@string.Join("、", user.RoleNames)</td>
+                            <td>
+                                <status-badge value="@user.Status" />
+                                @if (locked)
+                                {
+                                    <status-badge tone="Abnormal" text="@($"锁定（剩余 {LockoutRule.RemainingMinutes(user.LockedUntil!.Value, Model.Now)} 分钟）")" />
+                                }
+                            </td>
+                            <td><utc-time value="@user.LastLoginAt" /></td>
+                            <td>
+                                <div class="btn-list flex-nowrap">
+                                    <a asp-action="Edit" asp-route-id="@user.Id" class="btn btn-sm">编辑</a>
+                                    @if (locked)
+                                    {
+                                        <form asp-action="Unlock" asp-route-id="@user.Id" method="post" class="d-inline">
+                                            <button type="submit" class="btn btn-sm btn-outline-warning">解锁</button>
+                                        </form>
+                                    }
+                                    @if (user.Status == UserStatus.Disabled)
+                                    {
+                                        <confirm-form asp-action="SetStatus" asp-route-id="@user.Id" asp-route-status="@UserStatus.Active"
+                                                      message="@($"启用账号 {user.Username}？")" button-text="启用" button-class="btn btn-sm btn-outline-success" />
+                                    }
+                                    else
+                                    {
+                                        <confirm-form asp-action="SetStatus" asp-route-id="@user.Id" asp-route-status="@UserStatus.Disabled"
+                                                      message="@($"停用账号 {user.Username}？停用后该账号已登录的会话立即失效，也不能再登录。")" button-text="停用" />
+                                    }
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">更多</button>
+                                        <div class="dropdown-menu dropdown-menu-end">
+                                            <a asp-action="ResetPassword" asp-route-id="@user.Id" class="dropdown-item">重置密码</a>
+                                            <confirm-form asp-action="ResetTotp" asp-route-id="@user.Id" button-text="重置二次验证" button-class="dropdown-item text-danger"
+                                                          message="@($"重置 {user.Username} 的二次验证？该账号已登录的会话立即失效，下次登录时需要重新扫码绑定。")" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <partial name="_Pager" model="Model.Result" />
+    }
+</div>

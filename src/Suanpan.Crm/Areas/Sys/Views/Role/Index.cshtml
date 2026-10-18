@@ -1,0 +1,70 @@
+@model IReadOnlyList<Suanpan.Services.Sys.Rbac.Manage.Models.RoleRow>
+@{
+    ViewData["Title"] = "角色管理";
+}
+
+<div class="page-header mb-3 d-flex align-items-center">
+    <h2 class="page-title">角色管理</h2>
+    <a asp-action="Create" class="btn btn-primary ms-auto"><i class="ti ti-plus me-1"></i>新建角色</a>
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle card-table text-nowrap">
+            <thead>
+                <tr><th>角色</th><th>编码</th><th>状态</th><th class="text-end">账号数</th><th class="text-end">权限数</th><th>备注</th><th class="w-1"></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var role in Model)
+                {
+                    <tr>
+                        <td>
+                            @role.RoleName
+                            @if (role.IsBuiltin)
+                            {
+                                <status-badge tone="InProgress" text="内置" />
+                            }
+                            else if (role.IsPreset)
+                            {
+                                <status-badge tone="Neutral" text="预置" />
+                            }
+                        </td>
+                        <td><code class="small">@role.RoleCode</code></td>
+                        <td><status-badge tone="@(role.IsEnabled ? BadgeTone.Success : BadgeTone.Neutral)" text="@(role.IsEnabled ? "启用" : "停用")" /></td>
+                        <td class="text-end font-monospace">@role.UserCount</td>
+                        <td class="text-end font-monospace">@(role.IsBuiltin ? "全部" : role.PermCount.ToString())</td>
+                        <td class="text-secondary">@role.Remark</td>
+                        <td>
+                            @if (role.IsBuiltin)
+                            {
+                                <span class="text-secondary small">拥有全部权限，不可修改</span>
+                            }
+                            else
+                            {
+                                <div class="btn-list flex-nowrap">
+                                    <a asp-action="Assign" asp-route-id="@role.Id" class="btn btn-sm btn-primary">授权</a>
+                                    <a asp-action="Edit" asp-route-id="@role.Id" class="btn btn-sm">编辑</a>
+                                    @if (role.IsPreset)
+                                    {
+                                        <confirm-form asp-action="ApplyDefaults" asp-route-id="@role.Id" button-text="恢复默认授权"
+                                                      button-class="btn btn-sm btn-outline-warning"
+                                                      message="@($"把 {role.RoleName} 的授权恢复为默认设置？当前的授权会被覆盖。")" />
+                                    }
+                                    @if (role.UserCount == 0)
+                                    {
+                                        <confirm-form asp-action="Delete" asp-route-id="@role.Id" button-text="删除"
+                                                      message="@($"删除角色 {role.RoleName}？删除后不能恢复。")" />
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="btn btn-sm" disabled title="仍有账号绑定该角色，请先解除绑定">删除</button>
+                                    }
+                                </div>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
