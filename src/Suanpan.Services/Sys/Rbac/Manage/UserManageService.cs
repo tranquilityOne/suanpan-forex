@@ -240,6 +240,15 @@ public sealed class UserManageService(
         return ManageResult.Ok;
     }
 
+    public async Task<ManageResult> UnlockAsync(long userId, CancellationToken ct = default)
+    {
+        var updated = await db.SysUsers.Where(u => u.Id == userId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(u => u.LoginFailCount, 0)
+                .SetProperty(u => u.LockedUntil, (DateTime?)null), ct);
+        return updated == 0 ? ManageResult.Fail("账号不存在") : ManageResult.Ok;
+    }
+
     private async Task<string?> ValidateRolesAsync(IReadOnlyCollection<long> roleIds, CancellationToken ct)
     {
         if (roleIds.Count == 0)

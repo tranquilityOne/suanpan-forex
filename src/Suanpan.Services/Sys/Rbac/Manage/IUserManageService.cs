@@ -8,7 +8,7 @@ namespace Suanpan.Services.Sys.Rbac.Manage;
 /// <summary>
 /// 后台账号管理（sys 设计 §8.2、§9.1）。不提供删除：离职一律停用。
 /// 角色变更、启停后，该账号的权限快照立即失效；停用、重置密码、重置二次验证会刷新安全戳，已登录的会话立即失效。
-/// 解锁在 ENG-005.2 中加入。
+/// 连续登录失败被锁定的账号，管理员可以手动解锁。
 /// </summary>
 public interface IUserManageService
 {
@@ -33,4 +33,7 @@ public interface IUserManageService
 
     /// <summary>重置二次验证：清空 TOTP 密钥，下次登录时必须重新绑定</summary>
     Task<ManageResult> ResetTotpAsync(long userId, CancellationToken ct = default);
+
+    /// <summary>解锁：失败次数清零，锁定截止时间置空，可以立即登录（sys 设计 §4.3）。操作日志由调用的 action 记录</summary>
+    Task<ManageResult> UnlockAsync(long userId, CancellationToken ct = default);
 }

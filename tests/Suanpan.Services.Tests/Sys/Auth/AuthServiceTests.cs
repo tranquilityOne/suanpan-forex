@@ -9,8 +9,10 @@ using Suanpan.Data;
 using Suanpan.Infrastructure.Redis;
 using Suanpan.Services.Sys.Auth;
 using Suanpan.Services.Sys.Auth.Models;
+using Suanpan.Services.Sys.Configs;
 using Suanpan.Services.Sys.Logging;
 using Suanpan.Services.Sys.Rbac;
+using Suanpan.Services.Sys.Rbac.Manage;
 using Suanpan.Services.Sys.Security;
 using Suanpan.Services.Tests.Fixtures;
 using Xunit;
@@ -27,6 +29,7 @@ public class AuthServiceTests(PostgresFixture postgres)
 
     private const string InitialPassword = "Initial-pass-2026";
     private const string NewPassword = "Brand-new-pass-2026";
+    private const string WrongPassword = "Wrong-pass-2026";
 
     private static readonly LoginClient Client = new("203.0.113.5", "test-agent");
 
@@ -47,7 +50,7 @@ public class AuthServiceTests(PostgresFixture postgres)
         var service = Create(db);
 
         Assert.False((await service.PasswordSignInAsync(unknown, InitialPassword, Client, Ct)).Success);
-        Assert.False((await service.PasswordSignInAsync(active.Username, "Wrong-pass-2026", Client, Ct)).Success);
+        Assert.False((await service.PasswordSignInAsync(active.Username, WrongPassword, Client, Ct)).Success);
         Assert.False((await service.PasswordSignInAsync(disabled.Username, InitialPassword, Client, Ct)).Success);
 
         var logs = await LogsAsync(db, unknown, active.Username, disabled.Username);
@@ -112,7 +115,7 @@ public class AuthServiceTests(PostgresFixture postgres)
         Assert.True(await validator.ValidateAsync(user.Id, oldStamp, Ct)); // 旧安全戳已缓存
         var service = Create(db);
 
-        var wrongCurrent = await service.ChangePasswordAsync(user.Id, "Wrong-pass-2026", NewPassword, signedIn: true, Client, Ct);
+        var wrongCurrent = await service.ChangePasswordAsync(user.Id, WrongPassword, NewPassword, signedIn: true, Client, Ct);
         var changed = await service.ChangePasswordAsync(user.Id, InitialPassword, NewPassword, signedIn: true, Client, Ct);
 
         Assert.False(wrongCurrent.Success);
@@ -170,6 +173,82 @@ public class AuthServiceTests(PostgresFixture postgres)
         Assert.False(Assert.Single(await LogsAsync(db, user.Username)).IsSuccess);
     }
 
+    /// <summary>完成标准（JAN-72，FR-028 #4）：连续 5 次失败后锁定 15 分钟，锁定期间密码正确也无法登录，管理员解锁后可立即登录</summary>
+    [Fact]
+    public async Task FiveFailures_LockAccount_UntilAdminUnlocks()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var user = await AddUserAsync(db, UserStatus.Active, mustChangePassword: false, totpBound: true);
+        var service = Create(db);
+
+        for (var i = 0; i < 5; i++)
+        {
+            Assert.False((await service.PasswordSignInAsync(user.Username, WrongPassword, Client, Ct)).Success);
+        }
+
+        var whileLocked = await service.PasswordSignInAsync(user.Username, InitialPassword, Client, Ct);
+        var locked = await ReloadAsync(db, user);
+        var unlock = await UserManage(db).UnlockAsync(user.Id, Ct);
+        var afterUnlock = await service.PasswordSignInAsync(user.Username, InitialPassword, Client, Ct);
+
+        Assert.Equal((5, _time.UtcNow.UtcDateTime.AddMinutes(15)), (locked.LoginFailCount, locked.LockedUntil));
+        Assert.False(whileLocked.Success);
+        Assert.True(unlock.Success);
+        Assert.Equal(SignInStep.VerifyTotp, afterUnlock.Next);
+    }
+
+    [Fact]
+    public async Task Lock_ExpiresAfterLockDuration()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var user = await AddUserAsync(db, UserStatus.Active, mustChangePassword: false, totpBound: true);
+        var service = Create(db);
+        for (var i = 0; i < 5; i++)
+        {
+            await service.PasswordSignInAsync(user.Username, WrongPassword, Client, Ct);
+        }
+
+        _time.UtcNow += TimeSpan.FromMinutes(15);
+
+        Assert.Equal(SignInStep.VerifyTotp, (await service.PasswordSignInAsync(user.Username, InitialPassword, Client, Ct)).Next);
+    }
+
+    /// <summary>密码错误和 TOTP 错误共用一个计数；锁定后正确的验证码也不接受</summary>
+    [Fact]
+    public async Task TotpFailures_ShareTheCounterWithPassword()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var user = await AddUserAsync(db, UserStatus.Active, mustChangePassword: false, totpBound: true);
+        var service = Create(db);
+        for (var i = 0; i < 4; i++)
+        {
+            await service.PasswordSignInAsync(user.Username, WrongPassword, Client, Ct);
+        }
+
+        var wrongCode = await service.VerifyTotpAsync(user.Id, "000000", Client, Ct);
+        var rightCodeWhileLocked = await service.VerifyTotpAsync(user.Id, RfcCode, Client, Ct);
+
+        Assert.False(wrongCode.Success);
+        Assert.False(rightCodeWhileLocked.Success);
+        Assert.NotNull((await ReloadAsync(db, user)).LockedUntil);
+    }
+
+    /// <summary>登录成功时失败次数清零</summary>
+    [Fact]
+    public async Task SuccessfulSignIn_ResetsFailureCount()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var user = await AddUserAsync(db, UserStatus.Active, mustChangePassword: false, totpBound: true);
+        var service = Create(db);
+        await service.PasswordSignInAsync(user.Username, WrongPassword, Client, Ct);
+        await service.PasswordSignInAsync(user.Username, WrongPassword, Client, Ct);
+        Assert.Equal(2, (await ReloadAsync(db, user)).LoginFailCount);
+
+        await service.VerifyTotpAsync(user.Id, RfcCode, Client, Ct);
+
+        Assert.Equal(0, (await ReloadAsync(db, user)).LoginFailCount);
+    }
+
     private AuthService Create(SuanpanDbContext db, IRedisCache? redis = null) => new(
         db,
         _hasher,
@@ -179,7 +258,14 @@ public class AuthServiceTests(PostgresFixture postgres)
         new LoginLogService(db, _time),
         new SecurityStampValidator(db, _cache),
         new PermissionService(db, _cache),
+        new ConfigService(db, _cache, NullLogger<ConfigService>.Instance),
         _time);
+
+    private UserManageService UserManage(SuanpanDbContext db) => new(
+        db, _hasher, new PermissionService(db, _cache), new SecurityStampValidator(db, _cache), new StubCurrentUser(1, "admin"));
+
+    private static Task<SysUser> ReloadAsync(SuanpanDbContext db, SysUser user)
+        => db.SysUsers.AsNoTracking().SingleAsync(u => u.Id == user.Id, Ct);
 
     private async Task<SysUser> AddUserAsync(SuanpanDbContext db, UserStatus status, bool mustChangePassword, bool totpBound)
     {

@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.10（草稿） |
+| 版本 | v0.11（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -230,12 +230,13 @@ stateDiagram-v2
 
 ### 4.3 失败计数与锁定
 
-- 密码错误、TOTP 错误都使 `login_fail_count` 加 1，用一条 SQL 原子更新：`login_fail_count = login_fail_count + 1`。
+- 密码错误、登录过程中的 TOTP 错误和重放都使 `login_fail_count` 加 1。已登录后重新绑定 TOTP 时输错不计；Redis 不可用导致无法校验时不计。
 - 加 1 后达到上限（默认 5 次，配置 `security:login_max_failures`）时，同时写入 `locked_until = 当前时间 + 锁定时长`（默认 15 分钟，配置 `security:login_lock_minutes`）。
-- 锁定期间，密码正确也拒绝登录。
+- 锁定期间，密码正确也拒绝登录，提示"账号已锁定，请 N 分钟后再试"（剩余时间向上取整），不再计数。导致锁定的那次失败也直接给出这个提示。
 - 登录成功时，失败次数清零。
-- 管理员手动解锁：失败次数清零，`locked_until` 置空，并记录操作日志。
+- 管理员手动解锁：失败次数清零，`locked_until` 置空，并记录操作日志（`IUserManageService.UnlockAsync`；账号列表中只在锁定时显示解锁按钮）。
 - 锁定期满后，第一次登录失败从 1 重新计数。
+- 规则在 `Suanpan.Core/Sys/Rules/LockoutRule`。写库用比较并交换：读出当前计数和锁定时间，按规则算出新值，`UPDATE ... WHERE id = @id AND login_fail_count = @旧值 AND locked_until 与旧值相同`，没有写入（被并发的失败抢先）就重读再算。同一账号的并发失败不会丢计数，规则也只写在一处。
 
 ### 4.4 权限码生成
 
@@ -427,7 +428,7 @@ Crm 将来部署多个实例时，以上缓存需要改为分布式失效（如 
 
 ### 7.2 登录日志
 
-由 `AuthService` 在登录过程的每一步写入，成功和失败都记：密码步、TOTP 步、激活（登录过程中的强制改密码、绑定 TOTP，包括首次登录和被重置之后）、退出。`fail_reason` 记真实原因："账号不存在""账号已停用""密码错误""TOTP 错误""TOTP 重放""防重放检查失败（Redis 不可用）"，锁定在 ENG-005.2 中加入（"已锁定"）。已登录后主动改密码、重新绑定 TOTP 不是登录过程，只记操作日志。
+由 `AuthService` 在登录过程的每一步写入，成功和失败都记：密码步、TOTP 步、激活（登录过程中的强制改密码、绑定 TOTP，包括首次登录和被重置之后）、退出。`fail_reason` 记真实原因："账号不存在""账号已停用""已锁定""密码错误""TOTP 错误""TOTP 重放""防重放检查失败（Redis 不可用）"；导致锁定的那次失败记为"密码错误，账号已锁定"这样的形式。已登录后主动改密码、重新绑定 TOTP 不是登录过程，只记操作日志。
 
 ### 7.3 查询与导出
 
@@ -519,7 +520,7 @@ public interface IUserManageService
     Task<ManageResult> SetStatusAsync(long userId, UserStatus status, CancellationToken ct);
     Task<ManageResult> ResetPasswordAsync(long userId, string newPassword, CancellationToken ct);
     Task<ManageResult> ResetTotpAsync(long userId, CancellationToken ct);
-    Task<ManageResult> UnlockAsync(long userId, CancellationToken ct);                 // ENG-005.2 加入
+    Task<ManageResult> UnlockAsync(long userId, CancellationToken ct);                 // 失败次数清零、解除锁定
 }
 
 public interface IPresetRoleGrantService
@@ -697,3 +698,4 @@ public interface IConfigService
 | v0.8 | 2026-10-18 | vivo.li / Claude | ENG-004.1 实施：§5.2 默认 scheme、开发环境 Cookie、HTMX 的未登录和无权限处理；§5.5 白名单在管道中的位置、可信代理 `ForwardedHeaders:TrustedProxies`；§6.2 兜底策略要求登录、显式 `[HasPermission]` 时不自动生成；§8.1 Crm 目录；§9.1 Hangfire 面板改为端点授权，权限点由 `Sys/Job/Index` 生成；§10.1 新增环境变量；§12 管道测试的方式 |
 | v0.9 | 2026-10-18 | vivo.li / Claude | ENG-004.2 实施：§8.1 Crm 目录；§9.3 布局细节、二次确认、中文校验提示、开发环境示例页、操作者时区改为 `IOperatorTimeZone` |
 | v0.10 | 2026-10-18 | vivo.li / Claude | ENG-004.3、ENG-005.1 实施：§3.4 初始管理员的启动服务；§5.1 不能跳步、待完成 Cookie 下的限制、主动改密和重新绑定、激活后权限快照失效；§5.4 防重放保留时长、Redis 不可用时拒绝验证；§7.1、§7.2 登录日志与操作日志的分工和失败原因；§8.1 目录；§9.2 各页面的访问条件、错误页；§11 ERR-AUTH-005 |
+| v0.11 | 2026-10-18 | vivo.li / Claude | ENG-005.2 实施：§4.3 哪些失败计数、锁定提示、规则所在位置、写库用比较并交换（代替原来的单条 SQL 写法）；§7.2 锁定相关的失败原因 |
