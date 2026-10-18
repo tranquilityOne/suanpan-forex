@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.15 |
+| 版本 | v1.16 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -478,7 +478,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 - `Suanpan.Data.Tests`：审计拦截器（用 EF Core InMemory）、实体配置约定（命名、外键、类型）。不连接真实数据库。
 - `Suanpan.Services.Tests`：业务服务。用到数据库的测试连真实的 PostgreSQL 17：Testcontainers 启动临时容器，按生产方式建好三个账号，用迁移账号执行全部迁移，测试用应用账号连接（权限与线上一致）；整个程序集共用一个容器。**运行这些测试需要 Docker**（本地 Docker Desktop，CI 用 GitHub Actions 自带的 Docker）。数据库授权的测试（如 Hangfire 用应用账号建表）放在 `Database/`。
 - `Suanpan.Infrastructure.Tests`：Redis 组件（分布式锁、限流器）和事件总线（收发、重试后转入 `.failed`、延时投递）。Testcontainers 启动 Valkey 8.1 和 RabbitMQ 4.1，与线上服务端版本一致，同样需要 Docker。
-- `Suanpan.Crm.Tests`：后台的请求管道（Cookie、安全戳、默认拒绝、IP 白名单、Hangfire 面板的授权、全局过滤器）。WebApplicationFactory 在内存中启动 Crm，依赖数据库的服务和 Hangfire 存储换成假实现，不需要 Docker；登录 Cookie 用 Crm 自己的加密格式生成，经过真实的 Cookie 校验。测试用的页面放在 `Fixtures/`，只在测试中加载。
+- `Suanpan.Crm.Tests`：后台的请求管道（Cookie、安全戳、默认拒绝、IP 白名单、Hangfire 面板的授权、全局过滤器）和页面框架（布局、公共部件、中文校验提示）。WebApplicationFactory 在内存中启动 Crm，依赖数据库的服务和 Hangfire 存储换成假实现，不需要 Docker；登录 Cookie 用 Crm 自己的加密格式生成，经过真实的 Cookie 校验。测试用的页面放在 `Fixtures/`，只在测试中加载。
 - 容器夹具在第一个用到它的测试中才启动容器。xUnit 不论筛选条件都会创建程序集夹具，在 `InitializeAsync` 中启动会让只跑单元测试时也启动容器。
 - `Suanpan.Collector.Tests`：每个解析器至少有一组基于真实快照的测试样例；官方页面改版后，把新快照补进样例。
 - 每个类库对应一个测试项目（`Suanpan.{类库}.Tests`），需要测试的类库还没有测试项目时，先新建再写测试。
@@ -612,3 +612,4 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | v1.13 | 2026-10-18 | vivo.li / Claude | §7 配置项登记到 `Definitions`；§10 小数不允许千分位；§11 日志用 INSERT 直接写入 |
 | v1.14 | 2026-10-18 | vivo.li / Claude | ENG-002.6 实施：§8.2 消息基类 `IntegrationMessage`、每个接收程序一个队列、重试次数的含义、首次部署顺序；§8.1 写入必须带过期时间；§8.3 Hangfire 存储位置、只用 `AddOrUpdateUtc` 注册；§12 新增 RabbitMQ 重试配置；新增测试项目 `Suanpan.Infrastructure.Tests`（§1、§1.2、§13）；§13 容器夹具延迟启动，修正"只跑单元测试不启动容器"与实际不符的问题 |
 | v1.15 | 2026-10-18 | vivo.li / Claude | ENG-004.1 实施：§4 管道顺序加入 IP 白名单、静态资源用 `MapStaticAssets`；§5 改正会话时长（空闲 30 分钟、待完成 Cookie 10 分钟，原文是 VVPay 的值），新增根目录页面默认要求登录；§12 新增 `ForwardedHeaders:TrustedProxies`；新增测试项目 `Suanpan.Crm.Tests`（§1、§1.2、§13） |
+| v1.16 | 2026-10-18 | vivo.li / Claude | §13.1 `Suanpan.Crm.Tests` 也覆盖布局和公共部件 |

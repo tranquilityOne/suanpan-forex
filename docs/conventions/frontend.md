@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.3 |
+| 版本 | v1.4 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 后台 Suanpan.Crm 和前台 Suanpan.Portal 的页面、视图、静态资源 |
 | 依据 | data-hub PRD v1.0.0.2（DEC-014、NFR-131、§10.10）；web-portal PRD v1.0.0.2（DEC-005 ~ DEC-007、NFR-120 ~ NFR-124）；VVPay `doc/frontend.md` |
@@ -40,14 +40,15 @@
 
 | 组件 | 位置 | 用途 |
 |---|---|---|
-| Tabler 1.4（含 Bootstrap 5 体系） | `wwwroot/lib/tabler/` | 卡片、表格、徽章、表单、弹窗、下拉菜单 |
-| Tabler Icons | `wwwroot/lib/tabler-icons/` | 图标字体，写法为 `<i class="ti ti-{name}">` |
-| jQuery + jquery-validation + jquery-validation-unobtrusive | `wwwroot/lib/` | 表单客户端校验，自动沿用模型上的 DataAnnotations |
-| HTMX | `wwwroot/lib/htmx/` | 局部刷新，只用于 §4 列出的页面 |
+| Tabler 1.4.0（含 Bootstrap 5 体系） | `wwwroot/lib/tabler/` | 卡片、表格、徽章、表单、弹窗、下拉菜单；脚本的全局对象为 `tabler`（如 `tabler.Modal`） |
+| Tabler Icons 3.46.0 | `wwwroot/lib/tabler-icons/` | 图标字体，写法为 `<i class="ti ti-{name}">`；只放 woff2 字体 |
+| jQuery 3.7.1 + jquery-validation 1.21.0 + jquery-validation-unobtrusive 4.0.0 | `wwwroot/lib/jquery/`、`jquery-validation/`、`jquery-validation-unobtrusive/` | 表单客户端校验，自动沿用模型上的 DataAnnotations |
+| HTMX 2.0.11 | `wwwroot/lib/htmx/` | 局部刷新，只用于 §4 列出的页面 |
 | Chart.js | `wwwroot/lib/chartjs/` | 运营看板图表（只在看板页面加载） |
 | site.js / site.css | `wwwroot/js/`、`wwwroot/css/` | 公共脚本和少量覆写样式 |
 
 - 后台**不用 Alpine.js**：弹窗、下拉菜单用 Tabler 自带的脚本就够了。
+- `wwwroot/lib/` 下每个库只放用到的 min 文件和 LICENSE。升级时整体替换，同时更新本表和 data-hub PRD §13.2.4 的许可证登记。
 - **【与 VVPay 不同】** VVPay 把 HTMX 和 Alpine.js 列为"预留"，实际没有引入；本项目引入 HTMX，但只用在 §4 的页面。
 
 ## 3. 布局与视图组织
@@ -60,6 +61,7 @@
 - **消息统一在布局展示**：页面只写 `TempData["Message"]`（成功提示）或 `TempData["Error"]`（错误提示），不负责展示。
 - **顶栏用户菜单**：修改密码 / 二步验证 / 退出。退出用 POST 表单，防止 CSRF。
 - **布局统一加载**：`tabler.min.js`、`jquery.min.js`、`htmx.min.js`、`site.js`；页面级脚本写在 `@section Scripts` 中。
+- **布局还包括**：HTMX 出错时的错误提示区（site.js 填写）、`<confirm-form>` 共用的确认弹窗；页脚注明页面时间按哪个时区显示。
 
 ### 3.2 Areas（栏目）
 
@@ -97,10 +99,10 @@ Suanpan.Crm/
 │        ├─ Detail.cshtml                详情页
 │        ├─ _Row.cshtml                  HTMX 局部刷新用的行（如有）
 │        └─ _List.cshtml                 HTMX 局部刷新用的列表区块（如有）
-├─ Controllers/                          只放根级的 Account、Home
-├─ Models/{模块}/                         ViewModel，每个 ViewModel 一个文件
+├─ Controllers/                          只放根级的 Account、Home，以及开发环境的公共部件示例页 DevComponents
+├─ Models/{模块}/                         ViewModel，每个 ViewModel 一个文件；公共部件的参数放 Models/Shared/
 ├─ TagHelpers/                           公共标签助手（§6）
-├─ Filters/                              全局过滤器
+├─ Filters/                              过滤器（如 DevelopmentOnly）
 ├─ Auth/                                 权限约定、授权处理
 ├─ Mvc/                                  MVC 辅助（如 Request.IsHtmx()）
 ├─ Views/Shared/                         布局、公共局部视图（_Pager、_EmptyState 等）
@@ -158,6 +160,7 @@ Suanpan.Crm/
 ### 5.2 表单页
 
 - `asp-for` + `asp-validation-summary` + 字段级 `<span asp-validation-for>`；下拉框用 `asp-items`，选项在 Controller 中准备。
+- **校验提示用中文默认提示**：ViewModel 只标 `[Display(Name = "中文名")]`；`Required`、`StringLength`、`MaxLength`、`MinLength`、`Range`、`Compare`、`EmailAddress`、`Phone`、`Url`、`RegularExpression` 没写 `ErrorMessage` 时，由 `Suanpan.Crm/Mvc/ChineseValidationMessages` 统一填中文提示（如"请填写名称"），int、bool 这类值类型的隐式必填和模型绑定错误也是中文。服务端和客户端显示同一句话。只有特殊场景才在特性上单独写 `ErrorMessage`。
 - 字段说明用 `.form-text`；复杂字段单独占一行，不要把说明挤在输入框正下方影响校验提示。
 - 布尔值用 `form-check form-switch`。
 - **表单页必须引用 `_ValidationScriptsPartial`**，确保客户端校验实际生效。**【与 VVPay 不同】** VVPay 的页面没有引用这个 partial，客户端校验实际没有生效。
@@ -184,6 +187,29 @@ Suanpan.Crm/
 | `<utc-time>` | 标签助手 | 把 UTC 时间按操作者时区显示，悬停显示 UTC 原值（§7.2） |
 
 `asp-permission` 只是体验优化，权限仍以后端校验为准（data-hub BR-145）。
+
+用法（开发环境打开 `/Dev/Components` 可以看到全部部件的实际效果）：
+
+```cshtml
+@* 分页：放在列表卡片的表格之后；参数是任意 PagedResult<T> *@
+<partial name="_Pager" model="Model.Result" />
+
+@* 空状态：没有数据时代替表格；操作入口可省略 *@
+<partial name="_EmptyState" model='new EmptyStateModel("还没有数据源", "新增数据源", Url.Action("Create"))' />
+
+@* 状态徽章：枚举值的文字和颜色在 TagHelpers/StatusBadges 中登记；不对应枚举时直接指定 tone 和 text *@
+<status-badge value="@row.Status" />
+<status-badge tone="Failure" text="失败" />
+
+@* 危险操作：message 写清后果；表单里可以放其他随表单提交的字段 *@
+<confirm-form asp-action="Disable" asp-route-id="@row.Id" message="停用后该账号立即退出登录" button-text="停用" />
+
+@* 时间：库里的 UTC 时间按操作者时区显示，悬停显示 UTC 原值；format 可省略，默认 yyyy-MM-dd HH:mm *@
+<utc-time value="@row.CreatedAt" format="yyyy-MM-dd HH:mm:ss" />
+```
+
+- 新增需要显示为徽章的状态枚举时，在 `StatusBadges` 中登记它的每个值；测试会检查登记过的枚举每个值都有文字和颜色。
+- `<confirm-form>` 的地址生成不出来时直接报错，避免表单退回到提交当前页面。
 
 ## 7. 展示规则
 
@@ -362,3 +388,4 @@ Suanpan.Portal/
 | v1.1 | 2026-10-17 | vivo.li / Claude | §3.2 新增 Publish Area，Area 名与模块名统一，系统管理的 Area 名为 `Sys`；§3.3 后台目录按模块分文件夹；新增 §9.2 前台目录组织；明确约定未覆盖的情况不参考 VVPay |
 | v1.2 | 2026-10-18 | vivo.li / Claude | §7.2 CSV 导出补充时区和 CSV 注入防护 |
 | v1.3 | 2026-10-18 | vivo.li / Claude | §3.3 目录加入 `Mvc/`；§4.2 补充 HTMX 请求的未登录和无权限处理 |
+| v1.4 | 2026-10-18 | vivo.li / Claude | ENG-004.2 实施：§2 写明各库的版本和目录、只放 min 文件和 LICENSE；§3.1 布局的错误提示区和确认弹窗；§3.3 开发环境示例页、Models/Shared；§5.2 中文默认校验提示；§6 公共部件的用法 |

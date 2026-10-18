@@ -1,0 +1,18 @@
+/* 后台的少量覆写样式：以 Tabler 为准，这里只放 Tabler 覆盖不了的东西 */
+
+/* asp-validation-summary 没有错误时也会输出空容器（留给客户端校验填充），套上 alert 样式会显示成空白框 */
+.validation-summary-valid {
+    display: none;
+}
+
+/* jquery-validation-unobtrusive 使用的样式名，对齐 Tabler 的错误样式 */
+.field-validation-error {
+    display: block;
+    margin-top: .25rem;
+    color: var(--tblr-danger);
+    font-size: .875em;
+}
+
+.input-validation-error {
+    border-color: var(--tblr-danger);
+}

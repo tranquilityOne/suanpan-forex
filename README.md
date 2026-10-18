@@ -107,6 +107,8 @@ dotnet run --project src/Suanpan.Crm
 | Job | http://127.0.0.1:5300 |
 | Collector | http://127.0.0.1:5400 |
 
+Crm 在开发环境下可以打开 http://127.0.0.1:5100/Dev/Components 查看后台的布局和公共部件（不需要登录，其他环境不可用）。
+
 运行全部测试（集成测试会用 Docker 启动临时的 PostgreSQL、Valkey、RabbitMQ，需要 Docker 在运行）：
 
 ```bash

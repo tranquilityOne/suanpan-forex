@@ -1,5 +1,6 @@
 using Hangfire;
 using Suanpan.Crm.Auth;
+using Suanpan.Crm.Mvc;
 using Suanpan.Data;
 using Suanpan.Data.Interceptors;
 using Suanpan.Infrastructure;
@@ -28,10 +29,12 @@ services.AddCrmForwardedHeaders(configuration);
 services.AddCrmAuthentication(configuration, builder.Environment);
 services.AddCrmAuthorization();
 services.AddScoped<IPermissionRebuildService, PermissionRebuildService>();
+services.AddSingleton<IOperatorTimeZone, DefaultOperatorTimeZone>();
 services.AddControllersWithViews(options =>
 {
     options.Conventions.Add(new AutoPermissionConvention());
     options.Filters.AddService<OpLogActionFilter>();
+    options.UseChineseValidationMessages();
 });
 
 var app = builder.Build();

@@ -1,0 +1,106 @@
+@model Suanpan.Crm.Models.Dev.DevComponentsViewModel
+@using Suanpan.Core.Sys.Enums
+@{
+    ViewData["Title"] = "公共部件示例";
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">公共部件示例</h2>
+    <div class="text-secondary">只在开发环境可用。各部件的写法见前端约定 §6，这里是实际效果。</div>
+</div>
+
+<div class="row row-cards">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">列表：&lt;status-badge&gt;、&lt;utc-time&gt;、&lt;confirm-form&gt;、_Pager</h3></div>
+            <div class="table-responsive">
+                <table class="table table-hover table-sm align-middle card-table text-nowrap">
+                    <thead>
+                        <tr><th>编号</th><th>名称</th><th>状态</th><th>创建时间</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in Model.Rows.Items)
+                        {
+                            <tr>
+                                <td class="text-end font-monospace">@row.Id</td>
+                                <td>@row.Name</td>
+                                <td><status-badge value="@row.Status" /></td>
+                                <td><utc-time value="@row.CreatedAt" /></td>
+                                <td class="text-end">
+                                    <confirm-form asp-action="Disable" asp-route-id="@row.Id"
+                                                  message="停用后该数据不再显示在前台（示例，不会真正修改）" button-text="停用" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <partial name="_Pager" model="Model.Rows" />
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">&lt;status-badge&gt; 的六种颜色</h3></div>
+            <div class="card-body d-flex flex-wrap gap-2">
+                <status-badge tone="Success" text="成功 / 启用" />
+                <status-badge tone="InProgress" text="进行中" />
+                <status-badge tone="Attention" text="待复核" />
+                <status-badge tone="Abnormal" text="延迟" />
+                <status-badge tone="Failure" text="失败" />
+                <status-badge tone="Neutral" text="停用" />
+                <status-badge value="UserStatus.Pending" />
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">_EmptyState</h3></div>
+            <div class="card-body">
+                <partial name="_EmptyState" model='new EmptyStateModel("还没有数据源", "新增数据源", "#")' />
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">表单校验（_ValidationScriptsPartial）</h3></div>
+            <form asp-action="Form" method="post" class="card-body" novalidate>
+                <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+                <div class="mb-3">
+                    <label asp-for="Form.Name" class="form-label required"></label>
+                    <input asp-for="Form.Name" class="form-control" />
+                    <span asp-validation-for="Form.Name"></span>
+                </div>
+                <div class="mb-3">
+                    <label asp-for="Form.Quantity" class="form-label required"></label>
+                    <input asp-for="Form.Quantity" class="form-control" />
+                    <div class="form-text">1 到 100 之间的整数</div>
+                    <span asp-validation-for="Form.Quantity"></span>
+                </div>
+                <div class="mb-3">
+                    <label asp-for="Form.Email" class="form-label"></label>
+                    <input asp-for="Form.Email" class="form-control" />
+                    <span asp-validation-for="Form.Email"></span>
+                </div>
+                <div class="mb-3">
+                    <label asp-for="Form.Remark" class="form-label"></label>
+                    <textarea asp-for="Form.Remark" class="form-control" rows="2"></textarea>
+                    <span asp-validation-for="Form.Remark"></span>
+                </div>
+                <div class="mb-3">
+                    <label class="form-check form-switch">
+                        <input asp-for="Form.IsEnabled" class="form-check-input" />
+                        <span class="form-check-label">@Html.DisplayNameFor(m => m.Form.IsEnabled)</span>
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary">提交</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

@@ -10,7 +10,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 文档版本 | v1.0.0.11 |
+| 文档版本 | v1.0.0.12 |
 | 状态 | 草稿 |
 | 产品类型 | 金融（财经资讯与工具，不涉及交易与资金） |
 | 创建日期 | 2026-10-17 |
@@ -39,6 +39,7 @@
 | v1.0.0.9 | 2026-10-18 | vivo.li / Claude | 修订 | 新增测试项目 Suanpan.Services.Tests；登记 QRCoder、Testcontainers 的许可证 | Added: §13.2.4 两项组件；Changed: §10.10 解决方案结构 | §10.10、§11、§13.2.4 |
 | v1.0.0.10 | 2026-10-18 | vivo.li / Claude | 修订 | 新增测试项目 Suanpan.Infrastructure.Tests；确认 Hangfire.PostgreSql 的许可证，登记基础设施包的传递依赖 | Added: §13.2.4 两项组件；Changed: §13.2.4 四行、§13.2.7 第 3 项、§10.10 解决方案结构 | §10.10、§11、§13.2.4、§13.2.7 |
 | v1.0.0.11 | 2026-10-18 | vivo.li / Claude | 修订 | 新增测试项目 Suanpan.Crm.Tests；登记 Microsoft.AspNetCore.Mvc.Testing | Added: §13.2.4 一项组件；Changed: §10.10 解决方案结构 | §10.10、§11、§13.2.4 |
+| v1.0.0.12 | 2026-10-18 | vivo.li / Claude | 修订 | 登记后台静态库的版本；改正 jquery-validation-unobtrusive 的许可证（Apache-2.0）；HTMX 确定版本 | Changed: §13.2.4 三行 | §11、§13.2.4 |
 
 ---
 
@@ -2536,9 +2537,28 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 ## 11. 变更影响分析
 
-> 11.1 为最新一次变更；之前的变更按时间倒序列在 11.2 ~ 11.11。
+> 11.1 为最新一次变更；之前的变更按时间倒序列在 11.2 ~ 11.12。
 
-### 11.1 最新变更：CHG-011（v1.0.0.11）
+### 11.1 最新变更：CHG-012（v1.0.0.12）
+
+| 项目 | 内容 |
+|---|---|
+| 变更编号 | CHG-012 |
+| 变更类型 | 修订（v1.0.0.11 → v1.0.0.12，初稿阶段只动第 4 位） |
+| 变更描述 | 实施 ENG-004.2（JAN-66）时引入后台静态库，登记版本和许可证 |
+| 变更原因 | 后台布局和公共部件需要 Tabler、jQuery、表单校验库和 HTMX；核对许可证时发现 jquery-validation-unobtrusive 是 Apache-2.0，不是原登记的 MIT |
+| 提出人 | vivo.li |
+| 提出日期 | 2026-10-18 |
+
+**Diff 记录**
+
+- **Added**：无新组件（均为原清单中的组件）。
+- **Changed**：§13.2.4 Tabler 一行写明版本，去掉单独的 Bootstrap（已包含在 Tabler 中）；jQuery 一行拆为两行，jquery-validation-unobtrusive 的许可证改为 Apache-2.0；HTMX 写明版本 2.0.11 和许可证 0BSD。
+- **Deprecated / Removed**：无。
+
+**影响分析**：没有改动任何 FR、BR、验收标准或数据模型。许可证改正不影响使用：Apache-2.0 同样是宽松许可证，保留 LICENSE 文件即可。
+
+### 11.2 历史变更：CHG-011（v1.0.0.11）
 
 | 项目 | 内容 |
 |---|---|
@@ -2557,7 +2577,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型。Suanpan.Crm.Tests 不需要 Docker。
 
-### 11.2 历史变更：CHG-010（v1.0.0.10）
+### 11.3 历史变更：CHG-010（v1.0.0.10）
 
 | 项目 | 内容 |
 |---|---|
@@ -2576,7 +2596,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型。LGPL 组件增加一个（Hangfire.PostgreSql），使用方式与 Hangfire Core 相同，一并由法务确认。CI 运行 Suanpan.Infrastructure.Tests 需要 Docker（ENG-007）。
 
-### 11.3 历史变更：CHG-009（v1.0.0.9）
+### 11.4 历史变更：CHG-009（v1.0.0.9）
 
 | 项目 | 内容 |
 |---|---|
@@ -2595,7 +2615,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型。CI 运行 Suanpan.Services.Tests 需要 Docker（ENG-007）。
 
-### 11.4 历史变更：CHG-008（v1.0.0.8）
+### 11.5 历史变更：CHG-008（v1.0.0.8）
 
 | 项目 | 内容 |
 |---|---|
@@ -2614,7 +2634,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型。迁移命令改为以 Data 为启动项目，见数据库变更约定 v1.2。
 
-### 11.5 历史变更：CHG-007（v1.0.0.7）
+### 11.6 历史变更：CHG-007（v1.0.0.7）
 
 | 项目 | 内容 |
 |---|---|
@@ -2632,7 +2652,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型；没有新增第三方包。ENG-008（测试项目骨架）的 CI 需要同时运行 Suanpan.Shared.Tests。
 
-### 11.6 历史变更：CHG-006（v1.0.0.6）
+### 11.7 历史变更：CHG-006（v1.0.0.6）
 
 | 项目 | 内容 |
 |---|---|
@@ -2651,7 +2671,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型。ENG-008（测试项目骨架）的架构测试和 CI 需要同时覆盖 Suanpan.Data.Tests。
 
-### 11.7 历史变更：CHG-005（v1.0.0.5）
+### 11.8 历史变更：CHG-005（v1.0.0.5）
 
 | 项目 | 内容 |
 |---|---|
@@ -2670,7 +2690,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型。代码仍按 Redis 协议编写（StackExchange.Redis），不受服务端更换影响；中期前台迁回大陆时，托管缓存服务需兼容 Redis 7.2 协议（DEC-022）。受影响的工单只有 JAN-45（ENG-006.1），已按本版本实施。
 
-### 11.8 历史变更：CHG-004（v1.0.0.4）
+### 11.9 历史变更：CHG-004（v1.0.0.4）
 
 | 项目 | 内容 |
 |---|---|
@@ -2688,7 +2708,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型。今后 PRD 中 FR / ENG 的验收标准变化时，按 skr-prd 的级联规则，通过追踪表找到对应的 JAN 工单并同步其验收清单。
 
-### 11.9 历史变更：CHG-003（v1.0.0.3）
+### 11.10 历史变更：CHG-003（v1.0.0.3）
 
 | 项目 | 内容 |
 |---|---|
@@ -2707,7 +2727,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 
 **影响分析**：没有改动任何 FR、BR、验收标准或数据模型。只影响 Linear 拆单（新增 10 张工程任务单，FR-028、FR-029 的实现指向 ENG-002、ENG-004、ENG-005）和测试计划（各工程任务的完成标准）。
 
-### 11.10 历史变更：CHG-002（v1.0.0.2）
+### 11.11 历史变更：CHG-002（v1.0.0.2）
 
 **变更摘要**
 
@@ -2759,7 +2779,7 @@ suanpan-forex/                    一个仓库、一个解决方案
 | 技术方案 | Yes | 盯盘执行器、对外视图与缓存刷新、解析器框架、程序间消息；以 §10.10 为基础 | 技术负责人 | 待编写 |
 | web-portal PRD | Yes | 前台技术栈改为 ASP.NET Core MVC，数据改为直接查询对外视图 | vivo.li | 本次同步修订 |
 
-### 11.11 历史变更：CHG-001（v1.0.0.1）
+### 11.12 历史变更：CHG-001（v1.0.0.1）
 
 **变更摘要**
 
@@ -3045,9 +3065,10 @@ suanpan-forex/                    一个仓库、一个解决方案
 | RabbitMQ 4.1（服务端，含管理插件） | MPL-2.0 | 低 | DEC-022 |
 | StackExchange.Redis | MIT | 低 | 沿用 VVPay；使用 3.x（API 与 2.x 相同，默认 RESP3，Valkey 8.1 支持） |
 | RabbitMQ.Client | Apache-2.0 / MPL-2.0 双许可 | 低 | 沿用 VVPay |
-| Tabler、Tabler Icons、Bootstrap | MIT | 低 | 后台 UI，沿用 VVPay |
-| jQuery、jquery-validation、jquery-validation-unobtrusive | MIT | 低 | 后台表单校验，沿用 VVPay |
-| HTMX | 宽松许可证 | 低 | 后台按需使用，版本确定后登记 |
+| Tabler 1.4.0（含 Bootstrap 5）、Tabler Icons 3.46.0 | MIT | 低 | 后台 UI，沿用 VVPay |
+| jQuery 3.7.1、jquery-validation 1.21.0 | MIT | 低 | 后台表单校验，沿用 VVPay |
+| jquery-validation-unobtrusive 4.0.0 | Apache-2.0 | 低 | 后台表单校验（.NET Foundation），沿用 VVPay；原登记为 MIT，已改正 |
+| HTMX 2.0.11 | 0BSD | 低 | 后台按需使用（前端约定 §4.1 登记的页面） |
 | Chart.js | MIT | 低 | 看板图表（候选） |
 | AngleSharp 或 HtmlAgilityPack（HTML 解析，二选一） | MIT | 低 | |
 | Polly（重试） | BSD-3-Clause | 低 | |

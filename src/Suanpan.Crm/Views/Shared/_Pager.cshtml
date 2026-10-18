@@ -1,0 +1,33 @@
+@model IPagedResult
+@using Microsoft.AspNetCore.Http.Extensions
+@*
+    分页部件（前端约定 §6）："共 N 条 · 第 x/y 页" + 上一页、下一页，保留当前的全部筛选参数，只替换 page。
+    用法：放在列表卡片的表格之后，<partial name="_Pager" model="Model.Result" />
+*@
+@{
+    var totalPages = Math.Max(Model.TotalPages, 1);
+
+    string PageUrl(int page)
+    {
+        var query = new QueryBuilder(Context.Request.Query
+            .Where(q => !q.Key.Equals("page", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(q => q.Value.Select(v => new KeyValuePair<string, string>(q.Key, v ?? string.Empty))));
+        query.Add("page", page.ToString());
+        return Context.Request.Path + query.ToQueryString().Value;
+    }
+}
+<div class="card-footer d-flex align-items-center">
+    <p class="m-0 text-secondary">共 @Model.Total 条 · 第 @Model.Page/@totalPages 页</p>
+    <ul class="pagination m-0 ms-auto">
+        <li class="page-item @(Model.HasPrev ? "" : "disabled")">
+            <a class="page-link" href="@(Model.HasPrev ? PageUrl(Model.Page - 1) : "#")" aria-disabled="@(!Model.HasPrev)">
+                <i class="ti ti-chevron-left"></i>上一页
+            </a>
+        </li>
+        <li class="page-item @(Model.HasNext ? "" : "disabled")">
+            <a class="page-link" href="@(Model.HasNext ? PageUrl(Model.Page + 1) : "#")" aria-disabled="@(!Model.HasNext)">
+                下一页<i class="ti ti-chevron-right"></i>
+            </a>
+        </li>
+    </ul>
+</div>

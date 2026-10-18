@@ -22,8 +22,9 @@ namespace Suanpan.Crm.Tests.Fixtures;
 /// 在内存中启动 Crm（WebApplicationFactory），把依赖数据库的服务和 Hangfire 存储换成假实现：
 /// 不连数据库、Redis、RabbitMQ，不需要 Docker。每个测试新建一个，假服务的状态互不影响。
 /// 请求默认来自本机回环地址（即本机的反向代理），用请求头 X-Test-Remote-Ip 模拟其他来源。
+/// 默认用 Testing 环境；只在开发环境可用的页面传 Development。
 /// </summary>
-public sealed class CrmApp : WebApplicationFactory<Program>
+public sealed class CrmApp(string environment = "Testing") : WebApplicationFactory<Program>
 {
     public const string BootstrapIp = "198.51.100.9";
 
@@ -36,6 +37,8 @@ public sealed class CrmApp : WebApplicationFactory<Program>
     public FakePermissionService Permissions { get; } = new();
 
     public RecordingOpLogService OpLogs { get; } = new();
+
+    public FakeMenuService Menus { get; } = new();
 
     /// <summary>不自动跟随跳转，测试要断言 302 的目标</summary>
     public HttpClient CreateBrowser() => CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
@@ -56,7 +59,7 @@ public sealed class CrmApp : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseEnvironment("Testing");
+        builder.UseEnvironment(environment);
 
         // 启动时必填的配置；地址都不会真正连接
         builder.UseSetting("ConnectionStrings:Main", "Host=127.0.0.1;Port=1;Database=not_connected");
@@ -71,6 +74,7 @@ public sealed class CrmApp : WebApplicationFactory<Program>
             services.AddSingleton<IPermissionService>(Permissions);
             services.AddSingleton<ISecurityStampValidator, FakeSecurityStampValidator>();
             services.AddSingleton<IOpLogService>(OpLogs);
+            services.AddSingleton<IMenuService>(Menus);
 
             // Hangfire 面板改用空存储；IGlobalConfiguration 直接给出，不执行连接数据库的存储配置
             services.AddSingleton<IGlobalConfiguration>(GlobalConfiguration.Configuration);

@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.8（草稿） |
+| 版本 | v0.9（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -467,10 +467,11 @@ Suanpan.Services/Sys/
 Suanpan.Crm/
 ├─ Auth/          AutoPermissionConvention、AreaCatalog、IpWhitelistMiddleware、CrmAuthServiceCollectionExtensions
 │                 （Cookie、授权、可信代理）、CrmCookieEvents、IpListConfig、CurrentUserAuditActorProvider
-├─ Mvc/           HtmxRequestExtensions（Request.IsHtmx()）
-├─ Controllers/   AccountController、HomeController
+├─ Mvc/           HtmxRequestExtensions（Request.IsHtmx()）、IOperatorTimeZone、ChineseValidationMessages
+├─ Filters/       DevelopmentOnlyAttribute
+├─ Controllers/   AccountController、HomeController、DevComponentsController（开发环境示例页）
 ├─ Areas/Sys/  见 §9.1
-├─ Models/Sys/
+├─ Models/        Sys/、Shared/（EmptyStateModel）、Dev/
 └─ TagHelpers/    见 §9.3
 ```
 
@@ -590,12 +591,15 @@ public interface IConfigService
 
 | 部件 | 位置 | 说明 |
 |---|---|---|
-| 布局 | `Views/Shared/_Layout.cshtml` | Tabler 垂直导航；统一加载 Tabler、jQuery、HTMX、site.js（前端约定 §3.1）；`<body>` 上设置携带防伪令牌的 `hx-headers` |
-| 消息提示 | 布局内 | 显示 `TempData["Message"]`、`TempData["Error"]` |
+| 布局 | `Views/Shared/_Layout.cshtml` | Tabler 垂直导航；统一加载 Tabler、jQuery、HTMX、site.js（前端约定 §3.1）；`<body>` 上设置携带防伪令牌的 `hx-headers`；菜单按当前路径高亮（路径等于菜单地址，或以"菜单地址/"开头） |
+| 消息提示 | 布局内 | 显示 `TempData["Message"]`、`TempData["Error"]`；HTMX 出错时由 site.js 在同一位置提示 |
+| 二次确认 | 布局内的公共弹窗 + site.js | `<confirm-form>` 提交前弹出；带 `data-confirm` 的 HTMX 元素通过 `htmx:confirm` 事件同样弹出 |
+| 校验提示 | `Suanpan.Crm/Mvc/ChineseValidationMessages` | 常用校验特性和模型绑定错误的中文默认提示（前端约定 §5.2） |
 | 表单校验 | `Views/Shared/_ValidationScriptsPartial.cshtml` | 先加载 jquery-validation，再加载 unobtrusive；表单页通过 `@section Scripts` 引用 |
-| 公共部件 | `Views/Shared/`、`TagHelpers/` | `_Pager`、`_EmptyState`、`<status-badge>`、`<confirm-form>`、`asp-permission`、`<utc-time>`（前端约定 §6） |
+| 公共部件 | `Views/Shared/`、`TagHelpers/` | `_Pager`、`_EmptyState`、`<status-badge>`、`<confirm-form>`、`asp-permission`（ENG-005.3）、`<utc-time>`（前端约定 §6） |
+| 示例页 | `/Dev/Components`（`DevComponentsController`） | 只在 Development 环境可用（其他环境 404），允许匿名访问；展示全部公共部件和一个带校验的表单，也是部件用法的参考 |
 | HTMX 辅助 | `Suanpan.Crm/Mvc/` | `Request.IsHtmx()` 扩展方法；site.js 中统一处理 `htmx:responseError`，并在 `htmx.onLoad` 中重新解析表单校验 |
-| 操作者时区 | `<utc-time>` | 第一阶段统一按 Asia/Shanghai 显示；按账号设置时区作为后续扩展 |
+| 操作者时区 | `IOperatorTimeZone`（`Suanpan.Crm/Mvc/`） | `<utc-time>` 和导出都通过它取时区；第一阶段固定为 Asia/Shanghai，按账号设置时区作为后续扩展 |
 
 ---
 
@@ -684,3 +688,4 @@ public interface IConfigService
 | v0.6 | 2026-10-18 | vivo.li / Claude | ENG-002.4 实施：§4.1 明确"最后一个管理员"按未停用（含待激活）计数，启用只能从停用恢复；§6.5 权限快照的缓存键带版本号；§8.1 Rbac 拆出 Manage 子目录，Core 增加 Constants 和 PermCodePattern；§8.2 补充接口 |
 | v0.7 | 2026-10-18 | vivo.li / Claude | ENG-002.5 实施：§7.1 日志用 INSERT 直接写入；§7.3 导出的时区和 CSV 注入防护；§8.2 配置服务接口；§9.1 配置按键编辑、新增"恢复默认值"；§10.2 配置项登记到 `SysConfigKeys.Definitions` |
 | v0.8 | 2026-10-18 | vivo.li / Claude | ENG-004.1 实施：§5.2 默认 scheme、开发环境 Cookie、HTMX 的未登录和无权限处理；§5.5 白名单在管道中的位置、可信代理 `ForwardedHeaders:TrustedProxies`；§6.2 兜底策略要求登录、显式 `[HasPermission]` 时不自动生成；§8.1 Crm 目录；§9.1 Hangfire 面板改为端点授权，权限点由 `Sys/Job/Index` 生成；§10.1 新增环境变量；§12 管道测试的方式 |
+| v0.9 | 2026-10-18 | vivo.li / Claude | ENG-004.2 实施：§8.1 Crm 目录；§9.3 布局细节、二次确认、中文校验提示、开发环境示例页、操作者时区改为 `IOperatorTimeZone` |

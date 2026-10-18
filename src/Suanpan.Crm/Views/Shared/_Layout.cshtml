@@ -1,0 +1,181 @@
+@using System.Security.Claims
+@using System.Text.Json
+@using Microsoft.AspNetCore.Antiforgery
+@using Suanpan.Crm.Mvc
+@using Suanpan.Services.Sys.Rbac
+@using Suanpan.Services.Sys.Rbac.Models
+@using Suanpan.Shared.Auth
+@inject IMenuService MenuService
+@inject IAntiforgery Antiforgery
+@inject IOperatorTimeZone OperatorTimeZone
+@{
+    // 菜单由权限数据驱动（sys 设计 §6.4）：只显示当前账号有权限的"目录 → 菜单"
+    IReadOnlyList<MenuNode> menus = [];
+    if (User.Identity?.IsAuthenticated == true
+        && long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var currentUserId))
+    {
+        menus = await MenuService.GetUserMenusAsync(currentUserId, Context.RequestAborted);
+    }
+
+    var currentPath = Context.Request.Path.Value ?? "/";
+    var displayName = User.FindFirstValue(SuanpanClaimTypes.RealName) ?? User.Identity?.Name ?? "";
+
+    // HTMX 请求通过请求头带上防伪令牌（前端约定 §4.2）
+    var htmxHeaders = JsonSerializer.Serialize(new Dictionary<string, string?>
+    {
+        ["RequestVerificationToken"] = Antiforgery.GetAndStoreTokens(Context).RequestToken,
+    });
+
+    // 当前路径等于菜单地址，或以"菜单地址/"开头时高亮
+    bool IsActive(string? url) => url is not null
+        && (currentPath.Equals(url, StringComparison.OrdinalIgnoreCase)
+            || currentPath.StartsWith(url + "/", StringComparison.OrdinalIgnoreCase));
+}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - 数据中台</title>
+    <link rel="stylesheet" href="~/lib/tabler/css/tabler.min.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/lib/tabler-icons/tabler-icons.min.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body hx-headers="@htmxHeaders">
+    <div class="page">
+        <aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark">
+            <div class="container-fluid">
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#sidebar-menu" aria-label="展开菜单">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <h1 class="navbar-brand navbar-brand-autodark">
+                    <a href="/" class="text-decoration-none"><i class="ti ti-chart-candle me-1"></i>数据中台</a>
+                </h1>
+                <div class="collapse navbar-collapse" id="sidebar-menu">
+                    <ul class="navbar-nav pt-lg-3">
+                        <li class="nav-item @(currentPath == "/" ? "active" : "")">
+                            <a class="nav-link" href="/">
+                                <span class="nav-link-icon"><i class="ti ti-home"></i></span>
+                                <span class="nav-link-title">首页</span>
+                            </a>
+                        </li>
+                        @foreach (var directory in menus)
+                        {
+                            var groupActive = directory.Children.Any(menu => IsActive(menu.Url));
+                            <li class="nav-item dropdown @(groupActive ? "active" : "")">
+                                <a class="nav-link dropdown-toggle @(groupActive ? "show" : "")" href="#navbar-@directory.Id"
+                                   data-bs-toggle="dropdown" data-bs-auto-close="false" role="button"
+                                   aria-expanded="@(groupActive ? "true" : "false")">
+                                    <span class="nav-link-icon"><i class="ti ti-@(directory.Icon ?? "folder")"></i></span>
+                                    <span class="nav-link-title">@directory.Name</span>
+                                </a>
+                                <div class="dropdown-menu @(groupActive ? "show" : "")">
+                                    @foreach (var menu in directory.Children)
+                                    {
+                                        <a class="dropdown-item @(IsActive(menu.Url) ? "active" : "")" href="@(menu.Url ?? "#")">
+                                            @if (menu.Icon is not null)
+                                            {
+                                                <i class="ti ti-@menu.Icon me-2"></i>
+                                            }
+                                            @menu.Name
+                                        </a>
+                                    }
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </aside>
+
+        <div class="page-wrapper">
+            <header class="navbar navbar-expand-md d-print-none">
+                <div class="container-fluid">
+                    <div class="navbar-nav flex-row order-md-last ms-auto">
+                        @if (User.Identity?.IsAuthenticated == true)
+                        {
+                            <div class="nav-item dropdown">
+                                <a href="#" class="nav-link d-flex lh-1 p-0 px-2" data-bs-toggle="dropdown" aria-label="用户菜单">
+                                    <span class="avatar avatar-sm bg-blue-lt">@(displayName.Length > 0 ? displayName[..1] : "?")</span>
+                                    <div class="d-none d-xl-block ps-2">
+                                        <div>@displayName</div>
+                                        <div class="mt-1 small text-secondary">@User.Identity.Name</div>
+                                    </div>
+                                </a>
+                                <div class="dropdown-menu dropdown-menu-end dropdown-menu-arrow">
+                                    <a class="dropdown-item" href="/Account/ChangePassword"><i class="ti ti-lock me-2"></i>修改密码</a>
+                                    <a class="dropdown-item" href="/Account/TwoFactorSetup"><i class="ti ti-shield-lock me-2"></i>二次验证</a>
+                                    <div class="dropdown-divider"></div>
+                                    <form action="/Account/Logout" method="post">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="dropdown-item"><i class="ti ti-logout me-2"></i>退出登录</button>
+                                    </form>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </header>
+
+            <div class="page-body">
+                <div class="container-fluid">
+                    @* 消息统一在这里展示：页面只写 TempData["Message"] / TempData["Error"]（前端约定 §3.1） *@
+                    @if (TempData["Message"] is string message)
+                    {
+                        <div class="alert alert-success alert-dismissible" role="alert">
+                            <i class="ti ti-check me-2"></i>@message
+                            <a class="btn-close" data-bs-dismiss="alert" aria-label="关闭"></a>
+                        </div>
+                    }
+                    @if (TempData["Error"] is string error)
+                    {
+                        <div class="alert alert-danger alert-dismissible" role="alert">
+                            <i class="ti ti-alert-circle me-2"></i>@error
+                            <a class="btn-close" data-bs-dismiss="alert" aria-label="关闭"></a>
+                        </div>
+                    }
+                    @* HTMX 请求出错时由 site.js 显示 *@
+                    <div id="page-error" class="alert alert-danger d-none" role="alert">
+                        <i class="ti ti-alert-circle me-2"></i><span data-error-message></span>
+                    </div>
+                    @RenderBody()
+                </div>
+            </div>
+
+            <footer class="footer footer-transparent d-print-none">
+                <div class="container-fluid text-secondary small">
+                    数据中台 · 页面时间按 @OperatorTimeZone.TimeZone.Id 显示
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    @* <confirm-form> 共用的二次确认弹窗，由 site.js 控制 *@
+    <div class="modal modal-blur fade" id="confirm-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <div class="modal-status bg-danger"></div>
+                <div class="modal-body text-center py-4">
+                    <i class="ti ti-alert-triangle text-danger mb-2" style="font-size: 2.5rem"></i>
+                    <h3>请确认</h3>
+                    <div class="text-secondary" data-confirm-message></div>
+                </div>
+                <div class="modal-footer">
+                    <div class="w-100">
+                        <div class="row">
+                            <div class="col"><button type="button" class="btn w-100" data-bs-dismiss="modal">取消</button></div>
+                            <div class="col"><button type="button" class="btn btn-danger w-100" data-confirm-ok>确定</button></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="~/lib/tabler/js/tabler.min.js" asp-append-version="true"></script>
+    <script src="~/lib/jquery/jquery.min.js" asp-append-version="true"></script>
+    <script src="~/lib/htmx/htmx.min.js" asp-append-version="true"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

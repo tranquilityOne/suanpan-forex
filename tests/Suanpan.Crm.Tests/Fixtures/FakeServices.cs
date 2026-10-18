@@ -6,6 +6,7 @@ using Suanpan.Services.Sys.Configs.Models;
 using Suanpan.Services.Sys.Logging;
 using Suanpan.Services.Sys.Logging.Models;
 using Suanpan.Services.Sys.Rbac;
+using Suanpan.Services.Sys.Rbac.Models;
 using Suanpan.Services.Sys.Security;
 using Suanpan.Shared.Mvc;
 using Suanpan.Shared.Paging;
@@ -70,6 +71,17 @@ public sealed class FakePermissionService : IPermissionService
     public void InvalidateAll()
     {
     }
+}
+
+/// <summary>按账号 id 返回预设的菜单树</summary>
+public sealed class FakeMenuService : IMenuService
+{
+    private readonly Dictionary<long, IReadOnlyList<MenuNode>> _menus = [];
+
+    public void Set(long userId, params MenuNode[] directories) => _menus[userId] = directories;
+
+    public Task<IReadOnlyList<MenuNode>> GetUserMenusAsync(long userId, CancellationToken ct = default)
+        => Task.FromResult(_menus.GetValueOrDefault(userId, []));
 }
 
 /// <summary>只有 <see cref="ValidStamp"/> 视为与库中一致</summary>
