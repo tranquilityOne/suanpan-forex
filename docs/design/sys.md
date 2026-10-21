@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.17（草稿） |
+| 版本 | v0.19（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -234,6 +234,7 @@ stateDiagram-v2
 - 加 1 后达到上限（默认 5 次，配置 `security:login_max_failures`）时，同时写入 `locked_until = 当前时间 + 锁定时长`（默认 15 分钟，配置 `security:login_lock_minutes`）。
 - 锁定期间，密码正确也拒绝登录，提示"账号已锁定，请 N 分钟后再试"（剩余时间向上取整），不再计数。导致锁定的那次失败也直接给出这个提示。
 - 登录成功时，失败次数清零。
+- 锁定记入登录日志（BR-140）：导致锁定的那次失败，失败原因写为"<原因>，账号已锁定"（如"密码错误，账号已锁定"）；锁定期间的登录尝试写为"已锁定"。锁定由登录尝试自动触发，没有操作人，不写操作日志。
 - 管理员手动解锁：失败次数清零，`locked_until` 置空，并记录操作日志（`IUserManageService.UnlockAsync`；账号列表中只在锁定时显示解锁按钮）。
 - 锁定期满后，第一次登录失败从 1 重新计数。
 - 规则在 `Suanpan.Core/Sys/Rules/LockoutRule`。写库用比较并交换：读出当前计数和锁定时间，按规则算出新值，`UPDATE ... WHERE id = @id AND login_fail_count = @旧值 AND locked_until 与旧值相同`，没有写入（被并发的失败抢先）就重读再算。同一账号的并发失败不会丢计数，规则也只写在一处。
@@ -672,9 +673,9 @@ public interface IConfigService
 |---|---|
 | FR-028 #1 未绑定 TOTP 无法进入功能页 | Crm 管道测试：待完成 Cookie 访问任意 Area 页面被重定向 |
 | FR-028 #2 非白名单 IP 被拒 | Crm 管道测试：开关打开时，非白名单 IP 访问返回 403；应急 IP 放行；不可信来源伪造 `X-Forwarded-For` 无效 |
-| FR-028 #3 后端拒绝越权 | 集成测试：编辑角色直接 POST 系统管理栏目的写操作，返回 403 |
+| FR-028 #3 后端拒绝越权 | Crm 管道测试 `BackendAuthorizationTests`：能打开列表页的账号直接 POST 没有授权的写操作、请求导出，在进入 action 之前被拒绝且不留操作日志；Area 内所有 action 都要求权限码、没有允许匿名访问的 |
 | FR-028 #4 连续 5 次锁定 15 分钟，管理员解锁 | 单元测试 `LockoutRule`（第 4、5、6 次的状态，期满后重新计数）；集成测试：锁定期间密码正确也拒绝，解锁后可登录 |
-| FR-028 #5 不能停用最后一个管理员 | 单元测试 `UserStatusRule` |
+| FR-028 #5 不能停用最后一个管理员 | 单元测试 `UserStatusRule`；集成测试 `UserManageServiceTests.Disable_RejectsLastAdmin`、`Update_CannotRemoveAdminRoleFromLastAdmin` |
 | FR-028 #6 新页面默认拒绝 | Crm 管道测试：测试用的 Area Controller，没有对应权限码的账号被拒绝 |
 | FR-028 #7 无权限的按钮不显示 | 标签助手单元测试 `PermissionTagHelperTests`：有权限、无权限、管理员三种情况；`AreaCatalogTests.PermCodesUsedInViewsExist` 检查视图里的权限码都存在 |
 | FR-029 #1 写操作有日志 | 集成测试：执行一次写操作后查询 `sys_op_log` |
@@ -721,3 +722,5 @@ public interface IConfigService
 | v0.15 | 2026-10-21 | vivo.li / Claude | ENG-005.3 实施：§6.6 写明 `CurrentPermissions`、标签助手的执行顺序、多个权限码时在视图里判断、表单页按钮不用标、视图权限码的检查；§8.1 Crm 目录；§12 FR-028 #7 的测试方式 |
 | v0.16 | 2026-10-21 | vivo.li / Claude | ENG-005.4 实施：§3.3 应用账号也不能清空日志表；§7.1 写入失败的告警级别和对象、`IAlertService` 与 `AlertLevel` 的位置、M1 的实现如何替换、告警失败和客户端断开的处理；§12 FR-029 #3、#5 的测试方式 |
 | v0.17 | 2026-10-21 | vivo.li / Claude | ENG-002.7 实施：§2 记录全仓核对结果；§12 新增冒烟测试 |
+| v0.18 | 2026-10-21 | vivo.li / Claude | FR-028 验收（JAN-42）：§12 第 3 条改为实际的 Crm 管道测试（原写的集成测试不存在），第 5 条补充服务层测试 |
+| v0.19 | 2026-10-21 | vivo.li / Claude | 随 data-hub PRD v1.0.0.14（BR-140、BR-146）：§4.3 写明锁定记入登录日志、解锁记入操作日志 |
