@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.16（草稿） |
+| 版本 | v0.17（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -36,7 +36,7 @@
 
 ## 2. 与 VVPay 的差异（迁移清单）
 
-迁移时逐条对照，标"去掉"的不迁移，标"改为"的迁移后修改。
+迁移时逐条对照，标"去掉"的不迁移，标"改为"的迁移后修改。ENG-002.7 已全仓核对：标"去掉"的条目在代码、配置和迁移中均无残留，也没有支付、商户、代理相关代码和 VVPay 命名。
 
 | 项目 | VVPay 现状 | 本项目 | 依据 | 任务 |
 |---|---|---|---|---|
@@ -682,6 +682,7 @@ public interface IConfigService
 | FR-029 #3 日志表不可改删 | 集成测试 `LogTablePermissionTests`：用 `suanpan_app` 账号对两张日志表执行 UPDATE、DELETE、TRUNCATE，预期权限不足（42501） |
 | FR-029 #4 导出被记录 | Crm 管道测试 `OpLogControllerTests`：导出返回 CSV、筛选条件绑定正确、写入一条导出的操作日志；`AreaCatalogTests` 检查 Area 内所有 POST 和导出都标了 `[OpLog]` |
 | FR-029 #5 日志写入失败不影响业务 | 单元测试 `OpLogActionFilterTests`：模拟 `IOpLogService` 抛异常，action 结果不变，发出"重要"告警；告警本身抛异常也不影响请求 |
+| ENG-002 冒烟测试 | 集成测试 `SysSmokeTests`：管理员建号 → 首次登录改密码并绑定 TOTP → 再次登录（密码 + TOTP）→ 权限判断只放行授予的权限码 → 写操作经过滤器写入 `sys_op_log` |
 | 其他 | `PasswordPolicy`、`PermCodeHelper`（含 snake_case 转换）、预置授权的通配规则匹配：单元测试 |
 
 ---
@@ -719,3 +720,4 @@ public interface IConfigService
 | v0.14 | 2026-10-21 | vivo.li / Claude | 随 data-hub PRD v1.0.0.13（BR-140）：§4.2 和与 VVPay 的差异表，密码最短长度由 12 位改为 8 位 |
 | v0.15 | 2026-10-21 | vivo.li / Claude | ENG-005.3 实施：§6.6 写明 `CurrentPermissions`、标签助手的执行顺序、多个权限码时在视图里判断、表单页按钮不用标、视图权限码的检查；§8.1 Crm 目录；§12 FR-028 #7 的测试方式 |
 | v0.16 | 2026-10-21 | vivo.li / Claude | ENG-005.4 实施：§3.3 应用账号也不能清空日志表；§7.1 写入失败的告警级别和对象、`IAlertService` 与 `AlertLevel` 的位置、M1 的实现如何替换、告警失败和客户端断开的处理；§12 FR-029 #3、#5 的测试方式 |
+| v0.17 | 2026-10-21 | vivo.li / Claude | ENG-002.7 实施：§2 记录全仓核对结果；§12 新增冒烟测试 |
