@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.19（草稿） |
+| 版本 | v0.20（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -426,7 +426,7 @@ Crm 将来部署多个实例时，以上缓存需要改为分布式失效（如 
 4. 从 `[HasPermission]` 元数据中取权限码，从当前用户的权限快照中取角色编码，从参数中取 `reason` 字段。
 5. 写入 `sys_op_log`。
 
-**脱敏**：参数名包含以下任一词（不区分大小写）的字段，值替换为 `***`：`password`、`pwd`、`secret`、`token`、`totp`、`apikey`、`api_key`、`privatekey`、`private_key`、`credential`、`encryptionkey`。不要加入单独的 `key`、`code`，否则会误伤 `config_key`、`perm_code` 这类正常字段（VVPay 的经验）。
+**脱敏**：参数名包含以下任一词（不区分大小写）的字段，值替换为 `***`：`password`、`pwd`、`secret`、`token`、`totp`、`apikey`、`api_key`、`privatekey`、`private_key`、`credential`、`encryptionkey`。不要加入单独的 `key`、`code`，否则会误伤 `config_key`、`perm_code` 这类正常字段（VVPay 的经验）。因此绑定二次验证时提交的 6 位验证码会以明文记录：它是一次性的，30 秒后失效且有防重放，不算凭据（FR-029 验收时确认）；TOTP 密钥本身照常脱敏。
 
 **写入方式**：操作日志和登录日志都用一条参数化的 `INSERT` 直接写入，不经过 EF 的变更跟踪。业务操作失败时上下文里可能留有未保存的改动，若用 `SaveChanges` 写日志，这些改动会随日志一起保存。超长字段截断到列的长度上限。
 
@@ -678,7 +678,7 @@ public interface IConfigService
 | FR-028 #5 不能停用最后一个管理员 | 单元测试 `UserStatusRule`；集成测试 `UserManageServiceTests.Disable_RejectsLastAdmin`、`Update_CannotRemoveAdminRoleFromLastAdmin` |
 | FR-028 #6 新页面默认拒绝 | Crm 管道测试：测试用的 Area Controller，没有对应权限码的账号被拒绝 |
 | FR-028 #7 无权限的按钮不显示 | 标签助手单元测试 `PermissionTagHelperTests`：有权限、无权限、管理员三种情况；`AreaCatalogTests.PermCodesUsedInViewsExist` 检查视图里的权限码都存在 |
-| FR-029 #1 写操作有日志 | 集成测试：执行一次写操作后查询 `sys_op_log` |
+| FR-029 #1 写操作有日志 | 约定测试 `AreaCatalogTests.WriteAndExportActionsAreProtectedAndOpLogged`：Area 内所有 POST 都标了 `[OpLog]`；单元测试 `OpLogActionFilterTests`：记录的字段；集成测试 `SysSmokeTests`：写操作经过滤器写入 `sys_op_log` 后能查到 |
 | FR-029 #2 凭据脱敏 | `SensitiveDataMasker` 单元测试：覆盖每个敏感词，且 `config_key`、`perm_code` 不被误伤 |
 | FR-029 #3 日志表不可改删 | 集成测试 `LogTablePermissionTests`：用 `suanpan_app` 账号对两张日志表执行 UPDATE、DELETE、TRUNCATE，预期权限不足（42501） |
 | FR-029 #4 导出被记录 | Crm 管道测试 `OpLogControllerTests`：导出返回 CSV、筛选条件绑定正确、写入一条导出的操作日志；`AreaCatalogTests` 检查 Area 内所有 POST 和导出都标了 `[OpLog]` |
@@ -724,3 +724,4 @@ public interface IConfigService
 | v0.17 | 2026-10-21 | vivo.li / Claude | ENG-002.7 实施：§2 记录全仓核对结果；§12 新增冒烟测试 |
 | v0.18 | 2026-10-21 | vivo.li / Claude | FR-028 验收（JAN-42）：§12 第 3 条改为实际的 Crm 管道测试（原写的集成测试不存在），第 5 条补充服务层测试 |
 | v0.19 | 2026-10-21 | vivo.li / Claude | 随 data-hub PRD v1.0.0.14（BR-140、BR-146）：§4.3 写明锁定记入登录日志、解锁记入操作日志 |
+| v0.20 | 2026-10-21 | vivo.li / Claude | FR-029 验收（JAN-43）：§7.1 写明一次性 TOTP 验证码不算凭据、不脱敏；§12 第 1 条改为实际承担的测试 |
