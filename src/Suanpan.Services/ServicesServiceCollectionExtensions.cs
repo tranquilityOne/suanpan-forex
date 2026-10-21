@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Suanpan.Services.Common.Alerts;
 using Suanpan.Services.Sys.Auth;
 using Suanpan.Services.Sys.Configs;
 using Suanpan.Services.Sys.Logging;
@@ -25,6 +26,9 @@ public static class ServicesServiceCollectionExtensions
 
         services.AddHttpContextAccessor();
         services.TryAddSingleton<ICurrentUser, HttpContextCurrentUser>();
+
+        // 告警：M1 只写 Error 日志，Ops 模块（FR-025）完成后在此之前注册真正的实现
+        services.TryAddSingleton<IAlertService, LoggingAlertService>();
 
         // Sys：安全组件
         services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();

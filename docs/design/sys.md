@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.15（草稿） |
+| 版本 | v0.16（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -187,7 +187,7 @@
 写在迁移里（`migrationBuilder.Sql`），对应后端约定 §6.7 和数据库变更约定 §2.3：
 
 - `sys_` 表的读写权限来自第一个迁移中设置的默认授权，不需要逐表授权。
-- 创建 `sys_op_log`、`sys_login_log` 的迁移中，撤销 `suanpan_app` 对这两张表的 `UPDATE`、`DELETE` 权限，只保留 `INSERT`、`SELECT`（BR-148）。
+- 创建 `sys_op_log`、`sys_login_log` 的迁移中，撤销 `suanpan_app` 对这两张表的 `UPDATE`、`DELETE` 权限，只保留 `INSERT`、`SELECT`（BR-148）。默认授权本来就不含 `TRUNCATE`，应用账号也不能清空这两张表。
 - `suanpan_portal` 对所有 `sys_` 表无任何权限。
 
 ### 3.4 初始化数据
@@ -429,7 +429,12 @@ Crm 将来部署多个实例时，以上缓存需要改为分布式失效（如 
 
 **写入方式**：操作日志和登录日志都用一条参数化的 `INSERT` 直接写入，不经过 EF 的变更跟踪。业务操作失败时上下文里可能留有未保存的改动，若用 `SaveChanges` 写日志，这些改动会随日志一起保存。超长字段截断到列的长度上限。
 
-**写入失败**（BR-151）：不影响业务请求的结果；记录 Error 级日志，并调用告警接口 `IAlertService`。告警接口由 Ops 模块（FR-025，M2）实现；M1 阶段先提供一个只写 Error 日志的空实现。
+**写入失败**（BR-151）：不影响业务请求的结果；记录 Error 级日志，并发出"重要"级别、对象为"操作日志"的告警。
+
+- 告警接口 `IAlertService`（`Suanpan.Services/Common/Alerts/`）对应告警事件 EV-015：级别、对象、内容；级别枚举 `AlertLevel`（`Suanpan.Core/Ops/Enums/`：紧急、重要、一般，BR-129）。
+- 渠道、接收人、30 分钟聚合等由 Ops 模块（FR-025，M2）的实现负责。M1 阶段注册的是只写 Error 日志的 `LoggingAlertService`（`TryAddSingleton`）；Ops 模块在它之前注册自己的实现即可替换。
+- 告警本身失败（如渠道不可用）同样只记 Error 日志，不影响已经完成的业务请求。
+- 业务执行完后，写日志时取权限快照、写入、告警都不随客户端断开而取消，避免因断开产生误报。
 
 **哪些 action 要标 `[OpLog]`**：所有写操作（新增、修改、删除、状态变更、授权、重置、解锁、重建、导出、手动触发）。查询类 action 不标。登录、输入验证码、退出不标，它们写登录日志；改密码、绑定 TOTP 是账号变更，另标 `[OpLog]`。
 
@@ -674,9 +679,9 @@ public interface IConfigService
 | FR-028 #7 无权限的按钮不显示 | 标签助手单元测试 `PermissionTagHelperTests`：有权限、无权限、管理员三种情况；`AreaCatalogTests.PermCodesUsedInViewsExist` 检查视图里的权限码都存在 |
 | FR-029 #1 写操作有日志 | 集成测试：执行一次写操作后查询 `sys_op_log` |
 | FR-029 #2 凭据脱敏 | `SensitiveDataMasker` 单元测试：覆盖每个敏感词，且 `config_key`、`perm_code` 不被误伤 |
-| FR-029 #3 日志表不可改删 | 用 `suanpan_app` 账号执行 UPDATE、DELETE，预期失败 |
+| FR-029 #3 日志表不可改删 | 集成测试 `LogTablePermissionTests`：用 `suanpan_app` 账号对两张日志表执行 UPDATE、DELETE、TRUNCATE，预期权限不足（42501） |
 | FR-029 #4 导出被记录 | Crm 管道测试 `OpLogControllerTests`：导出返回 CSV、筛选条件绑定正确、写入一条导出的操作日志；`AreaCatalogTests` 检查 Area 内所有 POST 和导出都标了 `[OpLog]` |
-| FR-029 #5 日志写入失败不影响业务 | 单元测试：模拟 `IOpLogService` 抛异常，action 结果不变，告警接口被调用 |
+| FR-029 #5 日志写入失败不影响业务 | 单元测试 `OpLogActionFilterTests`：模拟 `IOpLogService` 抛异常，action 结果不变，发出"重要"告警；告警本身抛异常也不影响请求 |
 | 其他 | `PasswordPolicy`、`PermCodeHelper`（含 snake_case 转换）、预置授权的通配规则匹配：单元测试 |
 
 ---
@@ -713,3 +718,4 @@ public interface IConfigService
 | v0.13 | 2026-10-18 | vivo.li / Claude | ENG-004.5 实施：§7.3 日期筛选的换算、模块和动作的下拉选项、`ActionName` 参数名、导出用 `formaction` 并边查边写、超过 10 万行时提示；§8.1 Crm 目录；§9.1 写操作和导出由约定测试检查，配置页列出代码中已不用的配置项、其他程序的生效延迟，白名单页显示开关和当前 IP，日志详情，任务面板入口 `/Sys/Job`；§12 FR-029 #4 的测试方式 |
 | v0.14 | 2026-10-21 | vivo.li / Claude | 随 data-hub PRD v1.0.0.13（BR-140）：§4.2 和与 VVPay 的差异表，密码最短长度由 12 位改为 8 位 |
 | v0.15 | 2026-10-21 | vivo.li / Claude | ENG-005.3 实施：§6.6 写明 `CurrentPermissions`、标签助手的执行顺序、多个权限码时在视图里判断、表单页按钮不用标、视图权限码的检查；§8.1 Crm 目录；§12 FR-028 #7 的测试方式 |
+| v0.16 | 2026-10-21 | vivo.li / Claude | ENG-005.4 实施：§3.3 应用账号也不能清空日志表；§7.1 写入失败的告警级别和对象、`IAlertService` 与 `AlertLevel` 的位置、M1 的实现如何替换、告警失败和客户端断开的处理；§12 FR-029 #3、#5 的测试方式 |

@@ -3,7 +3,9 @@ using System.Reflection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Logging;
+using Suanpan.Core.Ops.Enums;
 using Suanpan.Core.Sys.Entities;
+using Suanpan.Services.Common.Alerts;
 using Suanpan.Services.Sys.Rbac;
 using Suanpan.Shared.Auth;
 using Suanpan.Shared.Mvc;
@@ -13,12 +15,13 @@ namespace Suanpan.Services.Sys.Logging;
 /// <summary>
 /// 操作日志过滤器（sys 设计 §7.1）：Crm 全局注册，只处理标了 [OpLog] 的 action。
 /// 采集脱敏后的请求参数、权限码、操作人当时的角色、名为 reason 的参数、结果、耗时、IP、TraceId。
-/// 日志写入失败不影响业务请求，只记 Error 日志（告警在 ENG-005.4 加入）。
+/// 日志写入失败不影响业务请求：记 Error 日志并发出"重要"告警（BR-151）；告警本身失败也只记日志。
 /// </summary>
 public sealed class OpLogActionFilter(
     IOpLogService opLogService,
     IPermissionService permissionService,
     ICurrentUser currentUser,
+    IAlertService alertService,
     ILogger<OpLogActionFilter> logger) : IAsyncActionFilter
 {
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
@@ -42,8 +45,9 @@ public sealed class OpLogActionFilter(
             var (isSuccess, errorMsg) = ResolveResult(context, executed);
             var http = context.HttpContext;
             var userId = currentUser.UserId;
+            // 业务已执行完，日志不随客户端断开而取消
             var roles = userId is { } id
-                ? string.Join(',', (await permissionService.GetSnapshotAsync(id, http.RequestAborted)).RoleCodes)
+                ? string.Join(',', (await permissionService.GetSnapshotAsync(id, CancellationToken.None)).RoleCodes)
                 : string.Empty;
 
             await opLogService.AddAsync(new SysOpLog
@@ -69,6 +73,20 @@ public sealed class OpLogActionFilter(
         catch (Exception ex)
         {
             logger.LogError(ex, "操作日志写入失败：{Module}/{Action}", opLog.Module, opLog.Action);
+            await RaiseWriteFailureAlertAsync(opLog, ex);
+        }
+    }
+
+    private async Task RaiseWriteFailureAlertAsync(OpLogAttribute opLog, Exception error)
+    {
+        try
+        {
+            await alertService.RaiseAsync(
+                AlertLevel.Important, "操作日志", $"操作日志写入失败：{opLog.Module}/{opLog.Action}，{error.Message}", CancellationToken.None);
+        }
+        catch (Exception alertError)
+        {
+            logger.LogError(alertError, "操作日志写入失败的告警发送失败：{Module}/{Action}", opLog.Module, opLog.Action);
         }
     }
 

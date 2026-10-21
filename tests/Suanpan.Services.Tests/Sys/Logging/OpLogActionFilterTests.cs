@@ -6,7 +6,9 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging.Abstractions;
+using Suanpan.Core.Ops.Enums;
 using Suanpan.Core.Sys.Entities;
+using Suanpan.Services.Common.Alerts;
 using Suanpan.Services.Sys.Logging;
 using Suanpan.Services.Sys.Logging.Models;
 using Suanpan.Services.Sys.Rbac;
@@ -21,6 +23,7 @@ namespace Suanpan.Services.Tests.Sys.Logging;
 public class OpLogActionFilterTests
 {
     private readonly RecordingOpLogService _logs = new();
+    private readonly RecordingAlertService _alerts = new();
 
     [Fact]
     public async Task ActionWithoutOpLog_WritesNothing()
@@ -52,6 +55,7 @@ public class OpLogActionFilterTests
         Assert.True(log.IsSuccess);
         Assert.Contains("\"userId\":7", log.RequestParams);
         Assert.DoesNotContain("plain-secret", log.RequestParams);
+        Assert.Empty(_alerts.Raised);
     }
 
     [Fact]
@@ -88,10 +92,24 @@ public class OpLogActionFilterTests
         Assert.Equal("boom", log.ErrorMsg);
     }
 
+    /// <summary>完成标准（JAN-67，FR-029 验收第 5 条，BR-151）：写入失败时业务正常完成，并发出"重要"告警</summary>
     [Fact]
-    public async Task WriteFailure_DoesNotAffectTheRequest()
+    public async Task WriteFailure_DoesNotAffectTheRequest_AndRaisesImportantAlert()
     {
         _logs.ThrowOnAdd = true;
+
+        var exception = await Record.ExceptionAsync(() => RunAsync(CreateContext()));
+
+        Assert.Null(exception);
+        Assert.Equal(AlertLevel.Important, Assert.Single(_alerts.Raised));
+    }
+
+    /// <summary>告警渠道本身出错时，同样不能让已经完成的业务请求报错</summary>
+    [Fact]
+    public async Task AlertFailure_AlsoDoesNotAffectTheRequest()
+    {
+        _logs.ThrowOnAdd = true;
+        _alerts.ThrowOnRaise = true;
 
         var exception = await Record.ExceptionAsync(() => RunAsync(CreateContext()));
 
@@ -102,7 +120,7 @@ public class OpLogActionFilterTests
     {
         var filter = new OpLogActionFilter(
             _logs, new StubPermissionService(["editor", "viewer"]), new StubCurrentUser(42, "zhangsan"),
-            NullLogger<OpLogActionFilter>.Instance);
+            _alerts, NullLogger<OpLogActionFilter>.Instance);
         var executed = new ActionExecutedContext(context, [], context.Controller) { Exception = actionException };
 
         await filter.OnActionExecutionAsync(context, () => Task.FromResult(executed));
@@ -163,6 +181,24 @@ public class OpLogActionFilterTests
 
         public Task<int> ExportAsync(OpLogQuery query, Stream output, TimeZoneInfo timeZone, CancellationToken ct = default)
             => throw new NotSupportedException();
+    }
+
+    private sealed class RecordingAlertService : IAlertService
+    {
+        public List<AlertLevel> Raised { get; } = [];
+
+        public bool ThrowOnRaise { get; set; }
+
+        public Task RaiseAsync(AlertLevel level, string subject, string message, CancellationToken ct = default)
+        {
+            if (ThrowOnRaise)
+            {
+                throw new InvalidOperationException("告警渠道不可用");
+            }
+
+            Raised.Add(level);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class StubPermissionService(IReadOnlyList<string> roleCodes) : IPermissionService
