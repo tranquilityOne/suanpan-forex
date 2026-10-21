@@ -6,17 +6,17 @@ namespace Suanpan.Core.Tests.Sys.Rules;
 public class PasswordPolicyTests
 {
     [Fact]
-    public void Validate_AcceptsLongPasswordWithLettersAndDigits()
+    public void Validate_AcceptsEightCharactersWithLettersAndDigits()
     {
-        Assert.Null(PasswordPolicy.Validate("abcdefghij12"));
+        Assert.Null(PasswordPolicy.Validate("abcdef12"));
     }
 
     [Theory]
     [InlineData(null)]
-    [InlineData("abcdefghi12")]   // 11 位
+    [InlineData("abcdef1")]   // 7 位
     public void Validate_RejectsShortPassword(string? password)
     {
-        Assert.Equal("密码至少 12 位", PasswordPolicy.Validate(password));
+        Assert.Equal("密码至少 8 位", PasswordPolicy.Validate(password));
     }
 
     [Theory]
