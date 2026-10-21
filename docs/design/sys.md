@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.14（草稿） |
+| 版本 | v0.15（草稿） |
 | 日期 | 2026-10-17 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
@@ -403,7 +403,13 @@ Crm 将来部署多个实例时，以上缓存需要改为分布式失效（如 
 
 ### 6.6 按权限隐藏按钮（BR-152）
 
-标签助手 `asp-permission`（`Suanpan.Crm/TagHelpers/`）：当前用户的权限快照中没有指定权限码时，不输出该元素；管理员总是输出。写法：`<a asp-permission="sys:user:edit" ...>`。这只影响显示，后端校验照常进行。
+标签助手 `asp-permission`（`Suanpan.Crm/TagHelpers/PermissionTagHelper`）：当前用户的权限快照中没有指定权限码时，不输出该元素；管理员总是输出；未登录时不输出。写法：`<a asp-permission="sys:user:edit" ...>`。这只影响显示，后端校验照常进行。
+
+- 判断由按请求注册的 `CurrentPermissions`（`Suanpan.Crm/Auth/`）完成，一次请求只取一次权限快照。
+- 标签助手在同一元素的其他标签助手之后执行，可以直接写在 `<confirm-form>`、`<form>` 上：`<confirm-form>` 会重新生成标签，先执行的话隐藏会被覆盖。
+- 一个元素要看多个权限码时（如"更多"下拉菜单，里面有一项能用就显示），视图里 `@inject CurrentPermissions` 后用 `HasAsync` 判断。
+- 表单页的"保存"按钮不用标：打开表单页和提交用的是同一个权限码。
+- 系统管理栏目的列表页按钮全部按权限隐藏。视图里写的权限码由 `AreaCatalogTests.PermCodesUsedInViewsExist` 检查，必须是代码生成的权限码：写错时按钮对所有非管理员隐藏，管理员却照常看得到，不容易发现。
 
 ---
 
@@ -475,7 +481,7 @@ Suanpan.Services/Sys/
                   IpWhitelistMatcher、QrCodeHelper
 
 Suanpan.Crm/
-├─ Auth/          AutoPermissionConvention、AreaCatalog、IpWhitelistMiddleware、CrmAuthServiceCollectionExtensions
+├─ Auth/          AutoPermissionConvention、AreaCatalog、CurrentPermissions、IpWhitelistMiddleware、CrmAuthServiceCollectionExtensions
 │                 （Cookie、授权、可信代理）、CrmCookieEvents、IpListConfig、CurrentUserAuditActorProvider
 ├─ Mvc/           HtmxRequestExtensions（Request.IsHtmx()）、IOperatorTimeZone、ChineseValidationMessages、
 │                 DateRangeFilter（日期筛选换算为 UTC 区间）、CsvDownload（CSV 下载的响应头）
@@ -665,7 +671,7 @@ public interface IConfigService
 | FR-028 #4 连续 5 次锁定 15 分钟，管理员解锁 | 单元测试 `LockoutRule`（第 4、5、6 次的状态，期满后重新计数）；集成测试：锁定期间密码正确也拒绝，解锁后可登录 |
 | FR-028 #5 不能停用最后一个管理员 | 单元测试 `UserStatusRule` |
 | FR-028 #6 新页面默认拒绝 | Crm 管道测试：测试用的 Area Controller，没有对应权限码的账号被拒绝 |
-| FR-028 #7 无权限的按钮不显示 | 标签助手单元测试：有权限、无权限、管理员三种情况 |
+| FR-028 #7 无权限的按钮不显示 | 标签助手单元测试 `PermissionTagHelperTests`：有权限、无权限、管理员三种情况；`AreaCatalogTests.PermCodesUsedInViewsExist` 检查视图里的权限码都存在 |
 | FR-029 #1 写操作有日志 | 集成测试：执行一次写操作后查询 `sys_op_log` |
 | FR-029 #2 凭据脱敏 | `SensitiveDataMasker` 单元测试：覆盖每个敏感词，且 `config_key`、`perm_code` 不被误伤 |
 | FR-029 #3 日志表不可改删 | 用 `suanpan_app` 账号执行 UPDATE、DELETE，预期失败 |
@@ -706,3 +712,4 @@ public interface IConfigService
 | v0.12 | 2026-10-18 | vivo.li / Claude | ENG-004.4 实施：§6.3 写明图标、排序、启停也以代码为准，页面修改到下次重建为止，重建结果列出重新启用的权限码（原文只写了名称、层级、路由，与实现不一致）；§8.1 Areas/Sys 与 Models 目录；§9.1 重置密码改为表单页、修改权限点的说明 |
 | v0.13 | 2026-10-18 | vivo.li / Claude | ENG-004.5 实施：§7.3 日期筛选的换算、模块和动作的下拉选项、`ActionName` 参数名、导出用 `formaction` 并边查边写、超过 10 万行时提示；§8.1 Crm 目录；§9.1 写操作和导出由约定测试检查，配置页列出代码中已不用的配置项、其他程序的生效延迟，白名单页显示开关和当前 IP，日志详情，任务面板入口 `/Sys/Job`；§12 FR-029 #4 的测试方式 |
 | v0.14 | 2026-10-21 | vivo.li / Claude | 随 data-hub PRD v1.0.0.13（BR-140）：§4.2 和与 VVPay 的差异表，密码最短长度由 12 位改为 8 位 |
+| v0.15 | 2026-10-21 | vivo.li / Claude | ENG-005.3 实施：§6.6 写明 `CurrentPermissions`、标签助手的执行顺序、多个权限码时在视图里判断、表单页按钮不用标、视图权限码的检查；§8.1 Crm 目录；§12 FR-028 #7 的测试方式 |

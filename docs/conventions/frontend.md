@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.7 |
+| 版本 | v1.8 |
 | 日期 | 2026-10-17 |
 | 适用范围 | 后台 Suanpan.Crm 和前台 Suanpan.Portal 的页面、视图、静态资源 |
 | 依据 | data-hub PRD v1.0.0.2（DEC-014、NFR-131、§10.10）；web-portal PRD v1.0.0.2（DEC-005 ~ DEC-007、NFR-120 ~ NFR-124）；VVPay `doc/frontend.md` |
@@ -188,7 +188,12 @@ Suanpan.Crm/
 | `asp-permission` | 标签助手（属性） | 当前用户没有指定权限码时不输出该元素，如 `<a asp-permission="calendar:event:edit">`（data-hub BR-152） |
 | `<utc-time>` | 标签助手 | 把 UTC 时间按操作者时区显示，悬停显示 UTC 原值（§7.2） |
 
-`asp-permission` 只是体验优化，权限仍以后端校验为准（data-hub BR-145）。
+`asp-permission` 只是体验优化，权限仍以后端校验为准（data-hub BR-145）。写法要点：
+
+- 可以写在任何元素上，包括 `<confirm-form>` 和 `<form>`。
+- 列表页的新增、编辑、删除等操作按钮都要标；表单页的"保存"按钮不用标，打开表单页和提交用的是同一个权限码。
+- 一个元素要看多个权限码时（如下拉菜单里有一项能用就显示），视图里 `@inject CurrentPermissions Permissions`，再用 `await Permissions.HasAsync("权限码")` 判断。
+- 权限码照抄 sys 设计 §9.1 等文档；写错的权限码会被 `Suanpan.Crm.Tests` 的约定测试发现。
 
 用法（开发环境打开 `/Dev/Components` 可以看到全部部件的实际效果）：
 
@@ -394,3 +399,4 @@ Suanpan.Portal/
 | v1.5 | 2026-10-18 | vivo.li / Claude | §3.1 账号页面使用 `_LayoutAccount` |
 | v1.6 | 2026-10-18 | vivo.li / Claude | ENG-004.5 实施：§5.1 筛选区的导出按钮用 `formaction` 提交筛选表单；§7.2 CSV 导出用 `CsvDownload` 设置响应头、边查边写，导出 action 以 `Export` 开头并标 `[OpLog]` |
 | v1.7 | 2026-10-21 | vivo.li / Claude | §5.1 新增标题区写法：标题靠左，带按钮时用 `row` / `col` / `col-auto`，不在 `page-header` 上加 `align-items-center`（会让标题居中） |
+| v1.8 | 2026-10-21 | vivo.li / Claude | ENG-005.3 实施：§6 `asp-permission` 的写法要点（可用于 `confirm-form`、表单页按钮不用标、多个权限码时注入 `CurrentPermissions` 判断、权限码由约定测试检查） |

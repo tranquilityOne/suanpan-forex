@@ -1,8 +1,11 @@
 @model UserListViewModel
 @using Suanpan.Core.Sys.Enums
 @using Suanpan.Core.Sys.Rules
+@inject CurrentPermissions Permissions
 @{
     ViewData["Title"] = "账号管理";
+    // “更多”菜单里有一项能用就显示菜单，一项都不能用时连菜单一起隐藏
+    var canUseMore = await Permissions.HasAsync("sys:user:reset_password") || await Permissions.HasAsync("sys:user:reset_totp");
 }
 
 <div class="page-header mb-3">
@@ -11,7 +14,7 @@
             <h2 class="page-title">账号管理</h2>
         </div>
         <div class="col-auto">
-            <a asp-action="Create" class="btn btn-primary"><i class="ti ti-plus me-1"></i>新建账号</a>
+            <a asp-action="Create" asp-permission="sys:user:create" class="btn btn-primary"><i class="ti ti-plus me-1"></i>新建账号</a>
         </div>
     </div>
 </div>
@@ -67,31 +70,35 @@
                             <td><utc-time value="@user.LastLoginAt" /></td>
                             <td>
                                 <div class="btn-list flex-nowrap">
-                                    <a asp-action="Edit" asp-route-id="@user.Id" class="btn btn-sm">编辑</a>
+                                    <a asp-action="Edit" asp-route-id="@user.Id" asp-permission="sys:user:edit" class="btn btn-sm">编辑</a>
                                     @if (locked)
                                     {
-                                        <form asp-action="Unlock" asp-route-id="@user.Id" method="post" class="d-inline">
+                                        <form asp-action="Unlock" asp-route-id="@user.Id" asp-permission="sys:user:unlock" method="post" class="d-inline">
                                             <button type="submit" class="btn btn-sm btn-outline-warning">解锁</button>
                                         </form>
                                     }
                                     @if (user.Status == UserStatus.Disabled)
                                     {
-                                        <confirm-form asp-action="SetStatus" asp-route-id="@user.Id" asp-route-status="@UserStatus.Active"
+                                        <confirm-form asp-action="SetStatus" asp-route-id="@user.Id" asp-route-status="@UserStatus.Active" asp-permission="sys:user:set_status"
                                                       message="@($"启用账号 {user.Username}？")" button-text="启用" button-class="btn btn-sm btn-outline-success" />
                                     }
                                     else
                                     {
-                                        <confirm-form asp-action="SetStatus" asp-route-id="@user.Id" asp-route-status="@UserStatus.Disabled"
+                                        <confirm-form asp-action="SetStatus" asp-route-id="@user.Id" asp-route-status="@UserStatus.Disabled" asp-permission="sys:user:set_status"
                                                       message="@($"停用账号 {user.Username}？停用后该账号已登录的会话立即失效，也不能再登录。")" button-text="停用" />
                                     }
-                                    <div class="dropdown">
-                                        <button class="btn btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">更多</button>
-                                        <div class="dropdown-menu dropdown-menu-end">
-                                            <a asp-action="ResetPassword" asp-route-id="@user.Id" class="dropdown-item">重置密码</a>
-                                            <confirm-form asp-action="ResetTotp" asp-route-id="@user.Id" button-text="重置二次验证" button-class="dropdown-item text-danger"
-                                                          message="@($"重置 {user.Username} 的二次验证？该账号已登录的会话立即失效，下次登录时需要重新扫码绑定。")" />
+                                    @if (canUseMore)
+                                    {
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">更多</button>
+                                            <div class="dropdown-menu dropdown-menu-end">
+                                                <a asp-action="ResetPassword" asp-route-id="@user.Id" asp-permission="sys:user:reset_password" class="dropdown-item">重置密码</a>
+                                                <confirm-form asp-action="ResetTotp" asp-route-id="@user.Id" asp-permission="sys:user:reset_totp"
+                                                              button-text="重置二次验证" button-class="dropdown-item text-danger"
+                                                              message="@($"重置 {user.Username} 的二次验证？该账号已登录的会话立即失效，下次登录时需要重新扫码绑定。")" />
+                                            </div>
                                         </div>
-                                    </div>
+                                    }
                                 </div>
                             </td>
                         </tr>

@@ -60,6 +60,10 @@ public sealed class FakePermissionService : IPermissionService
     public void Grant(long userId, params string[] permCodes)
         => _snapshots[userId] = new PermissionSnapshot(false, ["tester"], new HashSet<string>(permCodes, StringComparer.Ordinal));
 
+    /// <summary>管理员：快照中没有具体权限码，靠 IsSuperAdmin 放行</summary>
+    public void GrantSuperAdmin(long userId)
+        => _snapshots[userId] = new PermissionSnapshot(true, ["super_admin"], new HashSet<string>(StringComparer.Ordinal));
+
     public Task<PermissionSnapshot> GetSnapshotAsync(long userId, CancellationToken ct = default)
         => Task.FromResult(_snapshots.GetValueOrDefault(userId, PermissionSnapshot.Empty));
 

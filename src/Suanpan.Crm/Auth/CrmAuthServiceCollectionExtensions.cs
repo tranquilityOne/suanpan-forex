@@ -56,6 +56,7 @@ public static class CrmAuthServiceCollectionExtensions
         services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
         services.AddAuthorization(options =>
             options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
+        services.AddScoped<CurrentPermissions>();
 
         return services;
     }

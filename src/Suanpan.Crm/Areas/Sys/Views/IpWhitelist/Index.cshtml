@@ -1,6 +1,9 @@
 @model IpWhitelistListViewModel
+@inject CurrentPermissions Permissions
 @{
     ViewData["Title"] = "IP 白名单";
+    // 没有系统配置权限时，“系统配置”只显示文字，不给链接
+    var canOpenConfig = await Permissions.HasAsync("sys:config:index");
 }
 
 <div class="page-header mb-3">
@@ -9,7 +12,7 @@
             <h2 class="page-title">IP 白名单</h2>
         </div>
         <div class="col-auto">
-            <a asp-action="Create" class="btn btn-primary"><i class="ti ti-plus me-1"></i>新增</a>
+            <a asp-action="Create" asp-permission="sys:ip_whitelist:create" class="btn btn-primary"><i class="ti ti-plus me-1"></i>新增</a>
         </div>
     </div>
 </div>
@@ -24,7 +27,7 @@
         {
             <span>白名单<strong>未开启</strong>：所有地址都可以访问后台，下列条目暂不生效。</span>
         }
-        <span>开关在<a asp-controller="Config" asp-action="Index">系统配置</a>中修改。你当前的 IP：<code>@(Model.CurrentIp ?? "未知")</code>。改动 30 秒内生效。</span>
+        <span>开关在<a asp-controller="Config" asp-action="Index" asp-permission="sys:config:index">系统配置</a>@(canOpenConfig ? null : "系统配置")中修改。你当前的 IP：<code>@(Model.CurrentIp ?? "未知")</code>。改动 30 秒内生效。</span>
     </div>
 </div>
 
@@ -50,8 +53,8 @@
                             <td><utc-time value="@(item.UpdatedAt ?? item.CreatedAt)" /></td>
                             <td>
                                 <div class="btn-list flex-nowrap">
-                                    <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm">编辑</a>
-                                    <confirm-form asp-action="Delete" asp-route-id="@item.Id" button-text="删除"
+                                    <a asp-action="Edit" asp-route-id="@item.Id" asp-permission="sys:ip_whitelist:edit" class="btn btn-sm">编辑</a>
+                                    <confirm-form asp-action="Delete" asp-route-id="@item.Id" asp-permission="sys:ip_whitelist:delete" button-text="删除"
                                                   message="@($"删除 {item.IpValue}？白名单开启时，来自该地址的请求将不能访问后台。")" />
                                 </div>
                             </td>

@@ -59,7 +59,7 @@
     <div class="col-auto">
         <button type="submit" class="btn btn-sm btn-primary">查询</button>
         <a asp-action="Index" class="btn btn-sm">重置</a>
-        <button type="submit" formaction="@Url.Action("Export")" class="btn btn-sm"><i class="ti ti-download me-1"></i>导出 CSV</button>
+        <button type="submit" formaction="@Url.Action("Export")" asp-permission="sys:op_log:export" class="btn btn-sm"><i class="ti ti-download me-1"></i>导出 CSV</button>
     </div>
 </form>
 

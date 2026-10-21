@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
@@ -13,7 +14,7 @@ using Xunit;
 namespace Suanpan.Crm.Tests.Auth;
 
 /// <summary>栏目清单和 Area 内页面的约定（sys 设计 §6.2、§9.1）</summary>
-public class AreaCatalogTests
+public partial class AreaCatalogTests
 {
     /// <summary>权限树重建只为栏目清单中的 Area 建目录；漏登记的 Area，页面不会出现在权限树和菜单中</summary>
     [Fact]
@@ -56,12 +57,29 @@ public class AreaCatalogTests
             "sys:job:index",
         ];
 
-        var codes = AreaActions(app)
-            .SelectMany(d => d.EndpointMetadata.OfType<HasPermissionAttribute>())
-            .Select(p => p.Policy![HasPermissionAttribute.PolicyPrefix.Length..])
-            .ToHashSet();
+        var codes = GeneratedPermCodes(app);
 
         Assert.All(documented, code => Assert.Contains(code, codes));
+    }
+
+    /// <summary>
+    /// 视图里按权限隐藏按钮用的权限码（asp-permission、CurrentPermissions.HasAsync）必须是代码生成的权限码。
+    /// 写错时按钮对所有非管理员都隐藏，管理员却照常看得到，不容易发现。
+    /// </summary>
+    [Fact]
+    public async Task PermCodesUsedInViewsExist()
+    {
+        await using var app = new CrmApp();
+        var codes = GeneratedPermCodes(app);
+        var crmDir = Path.Combine(RepositoryRoot(), "src", "Suanpan.Crm");
+
+        var used = Directory.EnumerateFiles(crmDir, "*.cshtml", SearchOption.AllDirectories)
+            .SelectMany(file => ViewPermCode().Matches(File.ReadAllText(file))
+                .Select(m => (File: Path.GetRelativePath(crmDir, file), Code: m.Groups["code"].Value)))
+            .ToList();
+
+        Assert.NotEmpty(used);
+        Assert.All(used, u => Assert.True(codes.Contains(u.Code), $"{u.File} 中的权限码 {u.Code} 不存在"));
     }
 
     /// <summary>
@@ -88,6 +106,30 @@ public class AreaCatalogTests
 
     private static bool IsPost(ControllerActionDescriptor action)
         => action.EndpointMetadata.OfType<IActionHttpMethodProvider>().Any(p => p.HttpMethods.Contains("POST"));
+
+    private static HashSet<string> GeneratedPermCodes(CrmApp app)
+        => AreaActions(app)
+            .Where(d => d.ControllerTypeInfo.Assembly == typeof(Program).Assembly)
+            .SelectMany(d => d.EndpointMetadata.OfType<HasPermissionAttribute>())
+            .Select(p => p.Policy![HasPermissionAttribute.PolicyPrefix.Length..])
+            .ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>从测试程序所在目录往上找到放 Suanpan.sln 的仓库根目录</summary>
+    private static string RepositoryRoot()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "Suanpan.sln")))
+            {
+                return dir.FullName;
+            }
+        }
+
+        throw new InvalidOperationException("找不到仓库根目录（Suanpan.sln）");
+    }
+
+    [GeneratedRegex(@"(?:asp-permission=""|HasAsync\("")(?<code>[^""]+)""")]
+    private static partial Regex ViewPermCode();
 
     private static IEnumerable<ControllerActionDescriptor> AreaActions(CrmApp app)
         => app.Services.GetRequiredService<IActionDescriptorCollectionProvider>().ActionDescriptors.Items

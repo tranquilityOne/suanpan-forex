@@ -56,6 +56,20 @@
 
     <div class="col-md-6">
         <div class="card">
+            <div class="card-header"><h3 class="card-title">asp-permission</h3></div>
+            <div class="card-body">
+                <p class="text-secondary">当前账号有对应权限码时才显示；管理员都能看到。</p>
+                <div class="btn-list">
+                    <a href="#" asp-permission="sys:user:create" class="btn btn-primary">新建账号（sys:user:create）</a>
+                    <confirm-form asp-action="Disable" asp-route-id="1" asp-permission="sys:role:delete"
+                                  message="停用第 1 条示例数据？（开发环境示例）" button-text="删除（sys:role:delete）" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
             <div class="card-header"><h3 class="card-title">_EmptyState</h3></div>
             <div class="card-body">
                 <partial name="_EmptyState" model='new EmptyStateModel("还没有数据源", "新增数据源", "#")' />

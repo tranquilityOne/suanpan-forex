@@ -45,16 +45,16 @@
                                 <div class="btn-list flex-nowrap">
                                     @if (row.IsDefined)
                                     {
-                                        <a asp-action="Edit" asp-route-key="@row.Key" class="btn btn-sm">修改</a>
+                                        <a asp-action="Edit" asp-route-key="@row.Key" asp-permission="sys:config:edit" class="btn btn-sm">修改</a>
                                     }
                                     @if (!row.IsDefined)
                                     {
-                                        <confirm-form asp-action="Reset" asp-route-key="@row.Key" button-text="删除"
+                                        <confirm-form asp-action="Reset" asp-route-key="@row.Key" asp-permission="sys:config:reset" button-text="删除"
                                                       message="@($"删除代码中已不再使用的配置项 {row.Key}？")" />
                                     }
                                     else if (row.Value is not null)
                                     {
-                                        <confirm-form asp-action="Reset" asp-route-key="@row.Key" button-text="恢复默认值"
+                                        <confirm-form asp-action="Reset" asp-route-key="@row.Key" asp-permission="sys:config:reset" button-text="恢复默认值"
                                                       button-class="btn btn-sm btn-outline-warning"
                                                       message="@($"把 {row.Key} 恢复为默认值 {row.DefaultValue}？")" />
                                     }
