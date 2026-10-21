@@ -5,9 +5,15 @@
     ViewData["Title"] = "账号管理";
 }
 
-<div class="page-header mb-3 d-flex align-items-center">
-    <h2 class="page-title">账号管理</h2>
-    <a asp-action="Create" class="btn btn-primary ms-auto"><i class="ti ti-plus me-1"></i>新建账号</a>
+<div class="page-header mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col">
+            <h2 class="page-title">账号管理</h2>
+        </div>
+        <div class="col-auto">
+            <a asp-action="Create" class="btn btn-primary"><i class="ti ti-plus me-1"></i>新建账号</a>
+        </div>
+    </div>
 </div>
 
 <form method="get" class="row g-2 align-items-end mb-3">

@@ -11,14 +11,16 @@
     };
 }
 
-<div class="page-header mb-3 d-flex align-items-center">
-    <div>
-        <h2 class="page-title">权限点</h2>
-        <div class="text-secondary">权限点由代码生成：新增页面后点“从代码重建”，菜单和权限码自动出现；代码中已删除的页面会被停用。页面上的修改只到下次重建为止。</div>
-    </div>
-    <div class="ms-auto">
-        <confirm-form asp-action="Rebuild" button-text="从代码重建" button-class="btn btn-primary"
-                      message="按代码重新生成权限树：名称、层级、路由、图标、排序都以代码为准覆盖，页面上停用的权限点会重新启用，代码中已不存在的权限码会被停用。已有的授权不受影响。" />
+<div class="page-header mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col">
+            <h2 class="page-title">权限点</h2>
+            <div class="text-secondary">权限点由代码生成：新增页面后点“从代码重建”，菜单和权限码自动出现；代码中已删除的页面会被停用。页面上的修改只到下次重建为止。</div>
+        </div>
+        <div class="col-auto">
+            <confirm-form asp-action="Rebuild" button-text="从代码重建" button-class="btn btn-primary"
+                          message="按代码重新生成权限树：名称、层级、路由、图标、排序都以代码为准覆盖，页面上停用的权限点会重新启用，代码中已不存在的权限码会被停用。已有的授权不受影响。" />
+        </div>
     </div>
 </div>
 
