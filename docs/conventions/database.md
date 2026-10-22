@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.3 |
+| 版本 | v1.4 |
 | 日期 | 2026-10-17 |
 | 适用范围 | PostgreSQL 中表结构、视图、索引、授权、预置数据的编写、校验与上线 |
 | 依据 | data-hub PRD：DEC-009（PostgreSQL）、DEC-015（EF Core Migrations）、NFR-132、NFR-090、BR-119、BR-121、BR-148 |
@@ -116,9 +116,9 @@ dotnet ef migrations add <名称> --context SuanpanDbContext --project src/Suanp
 
 | 类型 | 方式 | 示例 |
 |---|---|---|
-| 固定不变、与环境无关的数据 | 实体配置中的 `HasData`，随迁移写入 | 4 个预置角色 |
+| 固定不变、与环境无关的数据 | 实体配置中的 `HasData`，随迁移写入。实体含复合类型（如中英文文本 `BilingualText`）时，`HasData` 会丢掉复合类型的值（EF Core 10），改为在迁移中手写 `InsertData` | 4 个预置角色；货币、经济体 |
 | 依赖环境变量的数据 | 程序启动时的种子服务，只在表为空时执行 | 初始管理员 |
-| 运营维护的数据 | 后台录入或 CSV 导入，不进迁移 | 指标字典、数据源 |
+| 运营维护的数据 | 后台录入。首批数据经业务确认后，可以用一个只执行一次的数据迁移导入（`INSERT ... ON CONFLICT DO NOTHING`），之后只在后台维护，迁移不再改动 | 指标字典（首批指标，基础数据设计 §2.4）、数据源 |
 
 ### 3.5 本地执行迁移
 
@@ -260,3 +260,4 @@ deploy/sql/
 | v1.1 | 2026-10-17 | vivo.li / Claude | §2.2 补充本地开发环境的建库和建账号方式 |
 | v1.2 | 2026-10-18 | vivo.li / Claude | ENG-003.2 实施：`dotnet ef` 改用本地工具，Data 自己作为启动项目（设计时工厂），命令统一加 `--context SuanpanDbContext`；新增 §3.5 本地执行迁移（`ConnectionStrings:Migrator`）；§3.1 预置数据的审计字段；§2.1、§6 明确本地和 CI 都用 `suanpan_migrator` 执行 |
 | v1.3 | 2026-10-18 | vivo.li / Claude | ENG-002.6 实施：§2.4 写明 Hangfire 用应用账号连接，授权由测试验证 |
+| v1.4 | 2026-10-22 | vivo.li / Claude | FR-005.1 实施：§3.4 含复合类型的实体改为在迁移中手写 `InsertData`；运营维护数据的首批数据可用一次性数据迁移导入（基础数据设计评审结论） |

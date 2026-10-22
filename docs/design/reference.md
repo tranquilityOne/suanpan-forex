@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.4 |
+| 版本 | v0.5 |
 | 日期 | 2026-10-22 |
 | 状态 | 已评审（2026-10-22，vivo.li） |
 | 覆盖 | FR-005 经济体与货币管理、FR-006 指标字典管理（指标与数据源的映射只定表结构） |
@@ -117,7 +117,7 @@
 
 | 数据 | 方式 | 说明 |
 |---|---|---|
-| 9 种货币 | 实体配置中的 `HasData`，随迁移写入（数据库变更约定 §3.4） | USD、EUR、GBP、JPY、CNY、CHF、CAD、AUD、NZD |
+| 9 种货币 | 随迁移写入：在迁移中手写 `InsertData`。不用 `HasData`：它会丢掉复合类型（中英文文本）的值（数据库变更约定 §3.4） | USD、EUR、GBP、JPY、CNY、CHF、CAD、AUD、NZD |
 | 10 个经济体 | 同上 | 见下表；`created_by` 为 `migration`，`created_at` 为固定时间 |
 | 首批指标（约 50 个，PRD §10.9） | 编辑确认后，用一个只执行一次的数据迁移导入（§8 第 2 项） | 用 `INSERT ... ON CONFLICT (code) DO NOTHING`，不用 `HasData`：指标上线后会在后台修改，`HasData` 的种子数据一变，迁移就会覆盖后台的修改 |
 
@@ -153,6 +153,7 @@
 
 - 合法的时区：能用 `TimeZoneInfo.TryFindSystemTimeZoneById` 找到的 IANA 名称（ERR-REF-003）。.NET 在 Windows 上也能识别 IANA 名称，开发环境和 Linux 部署环境行为一致。
 - 页面下拉框的选项：取系统时区，转成 IANA 名称后去重排序，按 `/` 前的大区分组。Linux 上是完整的 IANA 列表；Windows 开发环境只有一百多个主要时区，够开发使用。
+- 部署环境需要时区数据：Linux 上 .NET 从系统的 IANA 时区库（tzdata）读取，编写 Dockerfile（JAN-52）时要用带 tzdata 的基础镜像。
 - 时区换算（当地时间 → UTC，含夏令时）不在本模块，见 ENG-008.3（JAN-61）。
 
 ### 3.3 经济体与货币的保存
@@ -364,3 +365,4 @@ Suanpan.Crm/
 | v0.2 | 2026-10-21 | vivo.li / Claude | 评审：§8 改为评审结论（6 项均按建议执行），同步 PRD v1.0.0.15（Q-008、BR-026、BR-029、BR-153、§8.1.2 发布机构） |
 | v0.3 | 2026-10-22 | vivo.li / Claude | §3.7 中英文文本：存储仍按两列，代码中用 `BilingualText` 封装，以后增加语言时只改存储；§2、§5.1 同步 |
 | v0.4 | 2026-10-22 | vivo.li / Claude | 评审通过；§10 按 FR 拆成 6 个子任务（原按层拆分的前三项各涉及两个 FR，Linear 子任务只能挂在一个父工单下），回填 Linear 工单号 |
+| v0.5 | 2026-10-22 | vivo.li / Claude | FR-005.1 实施：§2.4 货币、经济体的预置数据改为在迁移中手写 `InsertData`（`HasData` 会丢掉中英文文本）；§3.2 部署环境需要 tzdata |

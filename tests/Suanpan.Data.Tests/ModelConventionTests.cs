@@ -50,7 +50,7 @@ public partial class ModelConventionTests
     public void EnumColumns_AreSmallint(string contextName)
     {
         var violations = BuildModel(contextName).GetEntityTypes()
-            .SelectMany(e => e.GetProperties())
+            .SelectMany(AllProperties)
             .Where(p => (Nullable.GetUnderlyingType(p.ClrType) ?? p.ClrType).IsEnum && p.GetColumnType() != "smallint")
             .Select(p => $"{p.DeclaringType.DisplayName()}.{p.Name}：{p.GetColumnType()}")
             .ToList();
@@ -94,7 +94,7 @@ public partial class ModelConventionTests
 
             yield return (owner, store.Name);
 
-            foreach (var property in entityType.GetProperties())
+            foreach (var property in AllProperties(entityType))
             {
                 if (property.GetColumnName(store) is { } column)
                 {
@@ -116,6 +116,10 @@ public partial class ModelConventionTests
             }
         }
     }
+
+    /// <summary>实体自身的属性，加上复合类型（如中英文文本）拆出的属性</summary>
+    private static IEnumerable<IProperty> AllProperties(ITypeBase type)
+        => type.GetProperties().Concat(type.GetComplexProperties().SelectMany(c => AllProperties(c.ComplexType)));
 
     private static IModel BuildModel(string contextName)
     {
