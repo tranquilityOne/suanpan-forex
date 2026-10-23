@@ -40,9 +40,12 @@ public partial class AreaCatalogTests
         Assert.All(controllers, type => Assert.NotNull(type.GetCustomAttribute<PermMenuAttribute>()));
     }
 
-    /// <summary>系统管理栏目的权限码与 sys 设计 §9.1 一致（权限码由 Area、Controller、Action 名自动生成，改名会改变权限码）</summary>
+    /// <summary>
+    /// 各栏目的权限码与模块设计文档一致：系统管理见 sys 设计 §9.1，基础数据见基础数据设计 §6
+    /// （权限码由 Area、Controller、Action 名自动生成，改名会改变权限码）
+    /// </summary>
     [Fact]
-    public async Task SysPagesHaveDocumentedPermCodes()
+    public async Task PagesHaveDocumentedPermCodes()
     {
         await using var app = new CrmApp();
         string[] documented =
@@ -55,6 +58,8 @@ public partial class AreaCatalogTests
             "sys:ip_whitelist:index", "sys:ip_whitelist:create", "sys:ip_whitelist:edit", "sys:ip_whitelist:delete",
             "sys:op_log:index", "sys:op_log:export", "sys:login_log:index", "sys:login_log:export",
             "sys:job:index",
+            "reference:economy:index", "reference:economy:create", "reference:economy:edit", "reference:economy:set_status", "reference:economy:delete",
+            "reference:currency:index", "reference:currency:create", "reference:currency:edit", "reference:currency:set_status", "reference:currency:delete",
         ];
 
         var codes = GeneratedPermCodes(app);
@@ -107,7 +112,8 @@ public partial class AreaCatalogTests
     private static bool IsPost(ControllerActionDescriptor action)
         => action.EndpointMetadata.OfType<IActionHttpMethodProvider>().Any(p => p.HttpMethods.Contains("POST"));
 
-    private static HashSet<string> GeneratedPermCodes(CrmApp app)
+    /// <summary>代码生成的全部权限码（不含测试中加载的探针页面）</summary>
+    internal static HashSet<string> GeneratedPermCodes(CrmApp app)
         => AreaActions(app)
             .Where(d => d.ControllerTypeInfo.Assembly == typeof(Program).Assembly)
             .SelectMany(d => d.EndpointMetadata.OfType<HasPermissionAttribute>())

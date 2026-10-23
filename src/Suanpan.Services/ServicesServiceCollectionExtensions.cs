@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Suanpan.Services.Common.Alerts;
+using Suanpan.Services.Reference.Currencies;
+using Suanpan.Services.Reference.Economies;
 using Suanpan.Services.Sys.Auth;
 using Suanpan.Services.Sys.Configs;
 using Suanpan.Services.Sys.Logging;
@@ -56,6 +58,10 @@ public static class ServicesServiceCollectionExtensions
         services.AddScoped<ILoginLogService, LoginLogService>();
         services.AddScoped<OpLogActionFilter>();
         services.AddScoped<IConfigService, ConfigService>();
+
+        // Reference：基础数据
+        services.AddScoped<ICurrencyService, CurrencyService>();
+        services.AddScoped<IEconomyService, EconomyService>();
 
         return services;
     }

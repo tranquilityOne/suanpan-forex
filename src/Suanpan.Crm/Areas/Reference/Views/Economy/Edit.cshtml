@@ -1,0 +1,69 @@
+@model EconomyEditViewModel
+@{
+    // 编辑页的地址带编码（/Edit/{code}），新增页没有
+    var isNew = ViewContext.RouteData.Values["id"] is null;
+    ViewData["Title"] = isNew ? "新增经济体" : "编辑经济体";
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">@ViewData["Title"]</h2>
+</div>
+
+<div class="card" style="max-width: 40rem">
+    <form asp-action="@(isNew ? "Create" : "Edit")" asp-route-id="@(isNew ? null : Model.Code)" method="post" class="card-body">
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        <div class="mb-3">
+            <label asp-for="Code" class="form-label required"></label>
+            @if (isNew)
+            {
+                <input asp-for="Code" class="form-control font-monospace text-uppercase" maxlength="2" autocomplete="off" />
+                <div class="form-text">2 个大写字母（ISO 3166-1），如 US；欧元区用 EA；创建后不能修改</div>
+                <span asp-validation-for="Code"></span>
+            }
+            else
+            {
+                <div class="form-control-plaintext"><code>@Model.Code</code></div>
+            }
+        </div>
+        <div class="mb-3">
+            <label asp-for="NameZh" class="form-label required"></label>
+            <input asp-for="NameZh" class="form-control" placeholder="如：美国" />
+            <span asp-validation-for="NameZh"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="NameEn" class="form-label required"></label>
+            <input asp-for="NameEn" class="form-control" placeholder="如：United States" />
+            <span asp-validation-for="NameEn"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="CurrencyCode" class="form-label required"></label>
+            <select asp-for="CurrencyCode" asp-items="Model.CurrencyOptions" class="form-select">
+                <option value="">请选择</option>
+            </select>
+            <div class="form-text">只能选择启用的货币</div>
+            <span asp-validation-for="CurrencyCode"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="TimeZone" class="form-label required"></label>
+            <select asp-for="TimeZone" asp-items="Model.TimeZoneOptions" class="form-select">
+                <option value="">请选择</option>
+            </select>
+            <div class="form-text">IANA 时区，按大区分组；用于把当地发布时间换算成 UTC（含夏令时）</div>
+            <span asp-validation-for="TimeZone"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Sort" class="form-label"></label>
+            <input asp-for="Sort" class="form-control" style="max-width: 10rem" />
+            <div class="form-text">数字小的排在前面</div>
+            <span asp-validation-for="Sort"></span>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">保存</button>
+            <a asp-action="Index" class="btn">取消</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

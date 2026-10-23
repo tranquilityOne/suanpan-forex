@@ -1,0 +1,47 @@
+@model CurrencyEditViewModel
+@{
+    // 编辑页的地址带编码（/Edit/{code}），新增页没有
+    var isNew = ViewContext.RouteData.Values["id"] is null;
+    ViewData["Title"] = isNew ? "新增货币" : "编辑货币";
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">@ViewData["Title"]</h2>
+</div>
+
+<div class="card" style="max-width: 40rem">
+    <form asp-action="@(isNew ? "Create" : "Edit")" asp-route-id="@(isNew ? null : Model.Code)" method="post" class="card-body">
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        <div class="mb-3">
+            <label asp-for="Code" class="form-label required"></label>
+            @if (isNew)
+            {
+                <input asp-for="Code" class="form-control font-monospace text-uppercase" maxlength="3" autocomplete="off" />
+                <div class="form-text">3 个大写字母（ISO 4217），如 USD；创建后不能修改</div>
+                <span asp-validation-for="Code"></span>
+            }
+            else
+            {
+                <div class="form-control-plaintext"><code>@Model.Code</code></div>
+            }
+        </div>
+        <div class="mb-3">
+            <label asp-for="NameZh" class="form-label required"></label>
+            <input asp-for="NameZh" class="form-control" placeholder="如：美元" />
+            <span asp-validation-for="NameZh"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="NameEn" class="form-label required"></label>
+            <input asp-for="NameEn" class="form-control" placeholder="如：US Dollar" />
+            <span asp-validation-for="NameEn"></span>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">保存</button>
+            <a asp-action="Index" class="btn">取消</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

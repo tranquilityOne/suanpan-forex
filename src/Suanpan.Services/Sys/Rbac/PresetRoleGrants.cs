@@ -12,8 +12,9 @@ public static class PresetRoleGrants
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> Patterns =
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
         {
-            [RoleCodes.Engineer] = [],
-            [RoleCodes.Editor] = [],
-            [RoleCodes.Viewer] = [],
+            // 基础数据：基础数据设计 §6.1
+            [RoleCodes.Engineer] = ["reference:*:index", "reference:*:details", "reference:indicator_source:*"],
+            [RoleCodes.Editor] = ["reference:*:index", "reference:*:details", "reference:economy:*", "reference:currency:*", "reference:indicator:*"],
+            [RoleCodes.Viewer] = ["reference:*:index", "reference:*:details"],
         };
 }

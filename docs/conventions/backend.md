@@ -2,8 +2,8 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.21 |
-| 日期 | 2026-10-17 |
+| 版本 | v1.22 |
+| 日期 | 2026-10-23 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
 | 相关约定 | [前端技术约定](frontend.md)、[数据库变更约定](database.md) |
@@ -346,7 +346,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 沿用 VVPay：
 
 - Controller 保持精简，业务逻辑一律放进 Service。
-- 管理操作返回 `ManageResult`（成功或错误，Controller 转成 ModelState 或 TempData）；分页查询返回 `PagedResult<T>`。
+- 管理操作返回 `ManageResult`（成功或错误，Controller 转成 ModelState 或 TempData）；分页查询返回 `PagedResult<T>`。错误属于某个输入项时（如编码重复、时区非法），服务用 `ManageResult.Fail(提示, nameof(XxxInput.字段))` 带上字段名，Controller 写 `ModelState.AddModelError(result.Field ?? string.Empty, result.Error!)`，提示显示在对应输入框下；ViewModel 的属性名与输入模型保持一致。
 - 查询条件用 `record XxxQuery(...)`，列表行投影用 `record XxxRow(...)`。
 - 配置键用 static class 集中定义常量，通过 `IConfigService.GetXxxAsync(key, 默认值)` 读取：键不存在时用代码默认值，`sys_config` 中有值时覆盖。默认值也定义为常量，并把配置项登记到该类的 `Definitions`（类型、默认值、分组、说明），系统配置页面才能显示和修改（参考 `SysConfigKeys`）。
 
@@ -622,3 +622,4 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | v1.19 | 2026-10-21 | vivo.li / Claude | §13.3 示例中的密码长度随 BR-140 改为 8 位 |
 | v1.20 | 2026-10-21 | vivo.li / Claude | ENG-005.4 实施：§11 新增告警的调用方式（`IAlertService`、`AlertLevel`，调用处捕获告警异常） |
 | v1.21 | 2026-10-22 | vivo.li / Claude | §6.3 新增中英文内容的存储和代码写法：每种语言一列，实体中用 `BilingualText` 封装 |
+| v1.22 | 2026-10-23 | vivo.li / Claude | §7 `ManageResult` 增加 `Field`：错误属于某个输入项时，提示显示在对应输入框下（FR-005.2 实施） |

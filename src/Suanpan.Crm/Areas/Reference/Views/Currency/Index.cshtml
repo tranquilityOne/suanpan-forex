@@ -1,0 +1,68 @@
+@model IReadOnlyList<Suanpan.Services.Reference.Currencies.Models.CurrencyRow>
+@{
+    ViewData["Title"] = "货币";
+}
+
+<div class="page-header mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col">
+            <h2 class="page-title">货币</h2>
+        </div>
+        <div class="col-auto">
+            <a asp-action="Create" asp-permission="reference:currency:create" class="btn btn-primary"><i class="ti ti-plus me-1"></i>新增货币</a>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    @if (Model.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("还没有货币")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle card-table text-nowrap">
+                <thead>
+                    <tr><th>编码</th><th>中文名称</th><th>英文名称</th><th class="text-end">经济体数</th><th>状态</th><th class="w-1"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var currency in Model)
+                    {
+                        <tr>
+                            <td><code>@currency.Code</code></td>
+                            <td>@currency.Name.Zh</td>
+                            <td>@currency.Name.En</td>
+                            <td class="text-end font-monospace">@currency.EconomyCount</td>
+                            <td><status-badge tone="@(currency.IsEnabled ? BadgeTone.Success : BadgeTone.Neutral)" text="@(currency.IsEnabled ? "启用" : "停用")" /></td>
+                            <td>
+                                <div class="btn-list flex-nowrap">
+                                    <a asp-action="Edit" asp-route-id="@currency.Code" asp-permission="reference:currency:edit" class="btn btn-sm">编辑</a>
+                                    @if (currency.IsEnabled)
+                                    {
+                                        <confirm-form asp-action="SetStatus" asp-route-id="@currency.Code" asp-route-enabled="false" asp-permission="reference:currency:set_status"
+                                                      message="@($"停用货币 {currency.Code}？停用后不能再被新选用，已使用它的经济体不受影响。")" button-text="停用" />
+                                    }
+                                    else
+                                    {
+                                        <confirm-form asp-action="SetStatus" asp-route-id="@currency.Code" asp-route-enabled="true" asp-permission="reference:currency:set_status"
+                                                      message="@($"启用货币 {currency.Code}？")" button-text="启用" button-class="btn btn-sm btn-outline-success" />
+                                    }
+                                    @if (currency.EconomyCount == 0)
+                                    {
+                                        <confirm-form asp-action="Delete" asp-route-id="@currency.Code" asp-permission="reference:currency:delete" button-text="删除"
+                                                      message="@($"删除货币 {currency.Code}？删除后不能恢复。")" />
+                                    }
+                                    else
+                                    {
+                                        <button type="button" asp-permission="reference:currency:delete" class="btn btn-sm" disabled title="有经济体使用该货币，不能删除，可以停用">删除</button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
