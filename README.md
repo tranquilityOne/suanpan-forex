@@ -92,6 +92,7 @@ dotnet user-secrets list --project src/Suanpan.Crm
 |---|---|---|
 | `Security:BootstrapAllowedIps` | 后台 IP 白名单的应急放行 IP，逗号分隔 | 可选 |
 | `ForwardedHeaders:TrustedProxies` | 可信的反向代理，逗号分隔的 IP 或 CIDR；本地直接访问时不用设置 | 部署到反向代理后面时 |
+| `Auth:SkipTotpInDevelopment` | 设为 `true` 后，已绑定二次验证的账号登录时不用输入验证码；只在开发环境生效，其他环境忽略 | 可选，本地开发 |
 
 ### 3. 编译和运行
 
@@ -114,7 +115,13 @@ dotnet run --project src/Suanpan.Crm
 
 Crm 在开发环境下可以打开 http://127.0.0.1:5100/Dev/Components 查看后台的布局和公共部件（不需要登录，其他环境不可用）。
 
-首次登录后台：用 `Seed:AdminUsername`、`Seed:AdminPassword` 登录，按提示设置新密码，再用手机上的验证器 App（如 Microsoft Authenticator）扫码绑定二次验证。之后每次登录都要输入验证码。登录时的验证码防重放依赖 Redis，Redis 连不上时无法登录。
+首次登录后台：用 `Seed:AdminUsername`、`Seed:AdminPassword` 登录，按提示设置新密码，再用手机上的验证器 App（如 Microsoft Authenticator）扫码绑定二次验证。之后每次登录都要输入验证码；本地开发嫌麻烦时，可以设置 `Auth:SkipTotpInDevelopment`：
+
+```bash
+dotnet user-secrets set "Auth:SkipTotpInDevelopment" "true" --project src/Suanpan.Crm
+```
+
+设置后已绑定的账号输完密码直接进入后台，登录日志记为"跳过 TOTP"；首次登录的改密码、绑定二次验证照常进行。登录时的验证码防重放依赖 Redis，Redis 连不上时无法登录。
 
 运行全部测试（集成测试会用 Docker 启动临时的 PostgreSQL、Valkey、RabbitMQ，需要 Docker 在运行）：
 

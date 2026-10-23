@@ -2,8 +2,8 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.20（草稿） |
-| 日期 | 2026-10-17 |
+| 版本 | v0.21（草稿） |
+| 日期 | 2026-10-23 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
 | 依据 | data-hub PRD v1.0.0.3；后端约定 v1.1；前端约定 v1.1 |
@@ -165,7 +165,7 @@
 | `id` | bigint，PK，自增 | |
 | `username` | varchar(64) | 输入的登录名（账号不存在时也记录） |
 | `user_id` | bigint，可空 | |
-| `stage` | smallint | 1 密码、2 TOTP、3 激活、4 退出 |
+| `stage` | smallint | 1 密码、2 TOTP、3 激活、4 退出、5 跳过 TOTP（开发环境，§5.1） |
 | `is_success` | boolean | |
 | `fail_reason` | varchar(128)，可空 | 内部记录的真实原因（页面上统一提示，见 §5.1） |
 | `ip` | varchar(64)，可空 | |
@@ -291,6 +291,10 @@ sequenceDiagram
 - 已完成登录（正式 Cookie）的人可以主动改密码（须输入当前密码）、重新绑定 TOTP。完成后刷新安全戳并用新安全戳重签当前 Cookie：本会话不受影响，其他设备上的会话失效。
 - 待激活账号绑定 TOTP 成功后变为"启用"，并让它的权限快照失效（待激活时是空快照）。
 - 登录过程中的页面底部可以"放弃登录"（POST 退出）；`returnUrl` 在各步骤之间传递，只接受本站地址。
+- **开发环境跳过验证码**（本地开发用，2026-10-23 vivo.li 确认）：Development 环境并且配置 `Auth:SkipTotpInDevelopment` 为 `true` 时，下一步是"输入验证码"的账号（已绑定 TOTP、不需要改密码）输完密码直接完成登录。
+  - 改密码、绑定 TOTP 照常进行：新账号要靠绑定 TOTP 激活。
+  - 照常记录最后登录时间、失败次数清零；登录日志的步骤记为"跳过 TOTP"（`stage` = 5）。
+  - 开关由 Crm 的 `TotpSkipSwitch` 判断。其他环境即使配置了也不生效，启动时记一条警告；开关打开时启动也记一条警告。部署环境仍按 BR-140 强制二次验证。
 
 ### 5.2 Cookie
 
@@ -725,3 +729,4 @@ public interface IConfigService
 | v0.18 | 2026-10-21 | vivo.li / Claude | FR-028 验收（JAN-42）：§12 第 3 条改为实际的 Crm 管道测试（原写的集成测试不存在），第 5 条补充服务层测试 |
 | v0.19 | 2026-10-21 | vivo.li / Claude | 随 data-hub PRD v1.0.0.14（BR-140、BR-146）：§4.3 写明锁定记入登录日志、解锁记入操作日志 |
 | v0.20 | 2026-10-21 | vivo.li / Claude | FR-029 验收（JAN-43）：§7.1 写明一次性 TOTP 验证码不算凭据、不脱敏；§12 第 1 条改为实际承担的测试 |
+| v0.21 | 2026-10-23 | vivo.li / Claude | §5.1 新增开发环境跳过 TOTP 验证码（`Auth:SkipTotpInDevelopment`）；§3 登录日志的 `stage` 增加 5 跳过 TOTP |

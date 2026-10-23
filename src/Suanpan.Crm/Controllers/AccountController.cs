@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Suanpan.Core.Sys.Enums;
+using Suanpan.Crm.Auth;
 using Suanpan.Crm.Models.Account;
 using Suanpan.Services.Sys.Auth;
 using Suanpan.Services.Sys.Auth.Models;
@@ -18,8 +19,9 @@ namespace Suanpan.Crm.Controllers;
 /// 密码通过后签发待完成 Cookie，全部完成后才签发正式 Cookie；中间每一步都按账号当前的状态跳转，不能跳步。
 /// 已登录后也可以主动改密码、重新绑定 TOTP：完成后用新的安全戳重签当前 Cookie，本会话不受影响，其他设备上的会话失效。
 /// 登录、验证码、退出只写登录日志；改密码、绑定 TOTP 是账号变更，另记操作日志。
+/// 开发环境开启 <see cref="TotpSkipSwitch"/> 时，已绑定账号到了输入验证码这一步直接完成登录。
 /// </summary>
-public sealed class AccountController(IAuthService authService) : Controller
+public sealed class AccountController(IAuthService authService, TotpSkipSwitch totpSkip) : Controller
 {
     private const string SignedInOrPending = AuthSchemes.Crm + "," + AuthSchemes.CrmPending;
 
@@ -47,7 +49,7 @@ public sealed class AccountController(IAuthService authService) : Controller
 
         await HttpContext.SignOutAsync(AuthSchemes.Crm);
         await SignInAsync(AuthSchemes.CrmPending, result.User!);
-        return GoTo(result.Next, model.ReturnUrl);
+        return await ContinueAsync(result, model.ReturnUrl, ct);
     }
 
     [Authorize(AuthenticationSchemes = SignedInOrPending)]
@@ -96,7 +98,7 @@ public sealed class AccountController(IAuthService authService) : Controller
         }
 
         await SignInAsync(AuthSchemes.CrmPending, result.User!);
-        return GoTo(result.Next, model.ReturnUrl);
+        return await ContinueAsync(result, model.ReturnUrl, ct);
     }
 
     [Authorize(AuthenticationSchemes = SignedInOrPending)]
@@ -202,6 +204,21 @@ public sealed class AccountController(IAuthService authService) : Controller
         }
 
         return progress.Next == step ? null : GoTo(progress.Next, returnUrl);
+    }
+
+    /// <summary>
+    /// 密码或强制改密码之后进入下一步。下一步是输入验证码、并且开发环境开启了跳过时，直接完成登录；
+    /// 跳过失败（如账号刚被锁定）时照常进入验证码页。账号取自上一步的结果：本次请求刚签发的 Cookie 要到下一次请求才生效
+    /// </summary>
+    private async Task<IActionResult> ContinueAsync(AuthResult previous, string? returnUrl, CancellationToken ct)
+    {
+        if (previous.Next == SignInStep.VerifyTotp && totpSkip.Enabled
+            && await authService.SkipTotpAsync(previous.User!.Id, Client, ct) is { Success: true } skipped)
+        {
+            return await CompleteSignInAsync(skipped.User!, returnUrl);
+        }
+
+        return GoTo(previous.Next, returnUrl);
     }
 
     private IActionResult GoTo(SignInStep next, string? returnUrl) => next switch

@@ -37,6 +37,12 @@ public interface IAuthService
     /// <summary>最后一步：输入 TOTP 验证码，通过后由调用方签发正式 Cookie</summary>
     Task<AuthResult> VerifyTotpAsync(long userId, string code, LoginClient client, CancellationToken ct = default);
 
+    /// <summary>
+    /// 开发环境跳过最后一步（sys 设计 §5.1）：只在下一步就是输入验证码时允许，即账号已绑定 TOTP、不需要改密码；
+    /// 照常记录登录时间、失败次数清零，登录日志的步骤记为"跳过 TOTP"。是否允许跳过由 Crm 按环境和配置判断，这里不判断
+    /// </summary>
+    Task<AuthResult> SkipTotpAsync(long userId, LoginClient client, CancellationToken ct = default);
+
     /// <summary>退出：写登录日志</summary>
     Task LogoutAsync(long userId, string username, LoginClient client, CancellationToken ct = default);
 }

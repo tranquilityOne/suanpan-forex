@@ -14,4 +14,7 @@ public enum LoginStage : short
 
     /// <summary>退出</summary>
     Logout = 4,
+
+    /// <summary>开发环境跳过 TOTP 验证码（配置 Auth:SkipTotpInDevelopment，sys 设计 §5.1）</summary>
+    TotpSkipped = 5,
 }

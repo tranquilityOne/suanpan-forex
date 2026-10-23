@@ -69,6 +69,9 @@ public sealed class FakeAuthService(FakeSecurityStampValidator stamps) : IAuthSe
     public Task<AuthResult> VerifyTotpAsync(long userId, string code, LoginClient client, CancellationToken ct = default)
         => Task.FromResult(code == Code ? Ok(_accounts[userId], SignInStep.Completed) : AuthResult.Fail("验证码错误"));
 
+    public Task<AuthResult> SkipTotpAsync(long userId, LoginClient client, CancellationToken ct = default)
+        => Task.FromResult(_accounts[userId].Next == SignInStep.VerifyTotp ? Ok(_accounts[userId], SignInStep.Completed) : AuthResult.Fail("请按登录步骤操作"));
+
     public Task LogoutAsync(long userId, string username, LoginClient client, CancellationToken ct = default)
     {
         LoggedOut.Add(username);

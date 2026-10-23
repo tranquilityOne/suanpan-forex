@@ -19,6 +19,7 @@ public static class CrmAuthServiceCollectionExtensions
     /// 两个 Cookie：正式登录（空闲超时 Auth:IdleTimeoutMinutes，默认 30 分钟，滑动）和待完成（10 分钟，不滑动）。
     /// 都是 HttpOnly、SameSite=Lax；Development 环境跟随请求（本地 http 也能登录），其他环境一律 Secure（BR-142）。
     /// 默认 scheme 为正式登录，所以待完成 Cookie 访问业务页面会被当作未登录。
+    /// 开发环境可以跳过 TOTP 验证码，见 <see cref="TotpSkipSwitch"/>。
     /// </summary>
     public static IServiceCollection AddCrmAuthentication(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
@@ -43,6 +44,7 @@ public static class CrmAuthServiceCollectionExtensions
                 options.ExpireTimeSpan = PendingLifetime;
                 options.SlidingExpiration = false;
             });
+        services.AddSingleton(TotpSkipSwitch.From(configuration, environment));
 
         return services;
     }

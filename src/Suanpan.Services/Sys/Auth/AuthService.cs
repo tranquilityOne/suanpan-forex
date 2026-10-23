@@ -212,6 +212,30 @@ public sealed class AuthService(
         return AuthResult.Ok(user, SignInStep.Completed);
     }
 
+    public async Task<AuthResult> SkipTotpAsync(long userId, LoginClient client, CancellationToken ct = default)
+    {
+        var user = await FindUsableAsync(userId, ct);
+        if (user is null)
+        {
+            return AuthResult.Fail(AccountUnavailable);
+        }
+
+        if (NextStep(user) != SignInStep.VerifyTotp)
+        {
+            return AuthResult.Fail(StepNotAllowed);
+        }
+
+        if (await RejectIfLockedAsync(user, LoginStage.TotpSkipped, client, ct) is { } locked)
+        {
+            return locked;
+        }
+
+        RecordSignIn(user, client);
+        await db.SaveChangesAsync(ct);
+        await LogAsync(user.Username, user.Id, LoginStage.TotpSkipped, null, client, ct);
+        return AuthResult.Ok(user, SignInStep.Completed);
+    }
+
     public Task LogoutAsync(long userId, string username, LoginClient client, CancellationToken ct = default)
         => LogAsync(username, userId, LoginStage.Logout, null, client, ct);
 

@@ -159,6 +159,39 @@ public class AuthServiceTests(PostgresFixture postgres)
         Assert.All(logs, log => Assert.Equal(LoginStage.Totp, log.Stage));
     }
 
+    /// <summary>开发环境跳过验证码（sys 设计 §5.1）：照常完成登录，登录日志记为"跳过 TOTP"</summary>
+    [Fact]
+    public async Task SkipTotp_CompletesSignInAndLogsTheSkippedStage()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var user = await AddUserAsync(db, UserStatus.Active, mustChangePassword: false, totpBound: true);
+        var service = Create(db);
+        await service.PasswordSignInAsync(user.Username, WrongPassword, Client, Ct);
+
+        var result = await service.SkipTotpAsync(user.Id, Client, Ct);
+
+        Assert.Equal(SignInStep.Completed, result.Next);
+        var saved = await ReloadAsync(db, user);
+        Assert.Equal((0, _time.GetUtcNow().UtcDateTime), (saved.LoginFailCount, saved.LastLoginAt));
+        var log = (await LogsAsync(db, user.Username)).Last();
+        Assert.Equal((LoginStage.TotpSkipped, true), (log.Stage, log.IsSuccess));
+    }
+
+    /// <summary>只跳过验证码：还要改密码或尚未绑定 TOTP 的账号不能跳过</summary>
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public async Task SkipTotp_RejectsAccountsNotAtTheLastStep(bool mustChangePassword, bool totpBound)
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var user = await AddUserAsync(db, UserStatus.Pending, mustChangePassword, totpBound);
+
+        var result = await Create(db).SkipTotpAsync(user.Id, Client, Ct);
+
+        Assert.False(result.Success);
+        Assert.Null((await ReloadAsync(db, user)).LastLoginAt);
+    }
+
     /// <summary>Redis 不可用时无法确认验证码是否用过，拒绝验证</summary>
     [Fact]
     public async Task VerifyTotp_RejectsWhenRedisUnavailable()

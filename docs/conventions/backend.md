@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.23 |
+| 版本 | v1.24 |
 | 日期 | 2026-10-23 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -469,6 +469,7 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | `Security:BootstrapAllowedIps` | 后台 IP 白名单的应急放行 IP，逗号分隔 | ✓ | | | |
 | `Seed:AdminUsername`、`Seed:AdminPassword` | 初始管理员（sys 设计 §3.4） | ✓ | | | |
 | `Auth:IdleTimeoutMinutes` | 后台会话空闲超时，默认 30 | ✓ | | | |
+| `Auth:SkipTotpInDevelopment` | 本地开发用：为 `true` 时已绑定 TOTP 的账号登录不输入验证码；只在 Development 环境生效，其他环境忽略（sys 设计 §5.1） | ✓ | | | |
 | `ForwardedHeaders:TrustedProxies` | 可信的反向代理，逗号分隔的 IP 或 CIDR；为空时只信任本机回环地址。只采信这些地址传来的 `X-Forwarded-For`（sys 设计 §5.5） | ✓ | | | |
 
 ---
@@ -624,3 +625,4 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | v1.21 | 2026-10-22 | vivo.li / Claude | §6.3 新增中英文内容的存储和代码写法：每种语言一列，实体中用 `BilingualText` 封装 |
 | v1.22 | 2026-10-23 | vivo.li / Claude | §7 `ManageResult` 增加 `Field`：错误属于某个输入项时，提示显示在对应输入框下（FR-005.2 实施） |
 | v1.23 | 2026-10-23 | vivo.li / Claude | §6.3 可空的中英文内容用 `HasOptionalBilingualColumns` 映射（FR-006.1 实施） |
+| v1.24 | 2026-10-23 | vivo.li / Claude | §12 配置键增加 `Auth:SkipTotpInDevelopment`（开发环境跳过 TOTP 验证码） |

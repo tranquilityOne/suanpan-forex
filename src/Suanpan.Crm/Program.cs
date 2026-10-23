@@ -42,6 +42,16 @@ services.AddControllersWithViews(options =>
 
 var app = builder.Build();
 
+var totpSkip = app.Services.GetRequiredService<TotpSkipSwitch>();
+if (totpSkip.Enabled)
+{
+    app.Logger.LogWarning("开发环境已开启 {Key}：已绑定 TOTP 的账号登录时不需要输入验证码", TotpSkipSwitch.ConfigKey);
+}
+else if (totpSkip.Ignored)
+{
+    app.Logger.LogWarning("{Key} 只在开发环境生效，当前环境 {Environment} 已忽略，登录仍需输入验证码", TotpSkipSwitch.ConfigKey, app.Environment.EnvironmentName);
+}
+
 // 必须最前：之后的 IP 白名单、操作日志取到的才是真实客户端 IP
 app.UseForwardedHeaders();
 if (!app.Environment.IsDevelopment())

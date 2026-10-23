@@ -81,6 +81,7 @@ public sealed class LoginLogService(SuanpanDbContext db, TimeProvider timeProvid
         LoginStage.Totp => "TOTP",
         LoginStage.Activation => "激活",
         LoginStage.Logout => "退出",
+        LoginStage.TotpSkipped => "跳过 TOTP（开发环境）",
         _ => stage.ToString(),
     };
 }
