@@ -28,6 +28,7 @@ public static class ReferenceDisplayNames
         [IndicatorUnit.Persons] = new("人", "Persons"),
         [IndicatorUnit.ThousandPersons] = new("千人", "Thousand Persons"),
         [IndicatorUnit.HundredMillionUsd] = new("亿美元", "USD 100 Million"),
+        [IndicatorUnit.ThousandUnits] = new("千个", "Thousand Units"),
 
         [ReleaseFrequency.Weekly] = new("周", "Weekly"),
         [ReleaseFrequency.Monthly] = new("月", "Monthly"),
