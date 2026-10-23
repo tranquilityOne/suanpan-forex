@@ -30,6 +30,7 @@ public class ServicesServiceCollectionExtensionsTests
             .AddLogging()
             .AddSuanpanData(configuration, "test")
             .AddSuanpanRedis(configuration)
+            .AddSuanpanCollectHttp(configuration)
             .AddSuanpanServices();
 
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });

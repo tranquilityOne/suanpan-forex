@@ -41,7 +41,7 @@ public partial class AreaCatalogTests
     }
 
     /// <summary>
-    /// 各栏目的权限码与模块设计文档一致：系统管理见 sys 设计 §9.1，基础数据见基础数据设计 §6
+    /// 各栏目的权限码与模块设计文档一致：系统管理见 sys 设计 §9.1，基础数据见基础数据设计 §6，数据采集见采集设计 §8.1
     /// （权限码由 Area、Controller、Action 名自动生成，改名会改变权限码）
     /// </summary>
     [Fact]
@@ -62,6 +62,8 @@ public partial class AreaCatalogTests
             "reference:currency:index", "reference:currency:create", "reference:currency:edit", "reference:currency:set_status", "reference:currency:delete",
             "reference:indicator:index", "reference:indicator:detail", "reference:indicator:create", "reference:indicator:edit",
             "reference:indicator:set_status", "reference:indicator:delete",
+            "collect:source:index", "collect:source:detail", "collect:source:create", "collect:source:edit",
+            "collect:source:set_status", "collect:source:delete", "collect:source:test",
         ];
 
         var codes = GeneratedPermCodes(app);

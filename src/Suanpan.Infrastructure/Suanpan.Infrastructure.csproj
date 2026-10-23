@@ -8,6 +8,8 @@
     <PackageReference Include="Hangfire.AspNetCore" />
     <PackageReference Include="Hangfire.Core" />
     <PackageReference Include="Hangfire.PostgreSql" />
+    <!-- 采集用的命名 HttpClient（IHttpClientFactory） -->
+    <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Newtonsoft.Json" />
     <PackageReference Include="Npgsql" />
     <PackageReference Include="RabbitMQ.Client" />

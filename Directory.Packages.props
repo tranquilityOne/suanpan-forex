@@ -21,6 +21,7 @@
     <PackageVersion Include="Hangfire.AspNetCore" Version="1.8.25" />
     <PackageVersion Include="Hangfire.Core" Version="1.8.25" />
     <PackageVersion Include="Hangfire.PostgreSql" Version="1.21.1" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.13" />
     <!-- Hangfire.Core 传递引用的 Newtonsoft.Json 11.0.1 有已知漏洞（NU1903），显式提升；项目代码不直接使用 -->
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
     <!-- Hangfire.PostgreSql 只要求 Npgsql 6.0.11 以上；固定为 EF Core 提供程序使用的版本，各项目一致 -->

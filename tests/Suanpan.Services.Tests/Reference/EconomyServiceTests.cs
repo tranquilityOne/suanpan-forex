@@ -1,3 +1,5 @@
+using Suanpan.Core.Collect.Entities;
+using Suanpan.Core.Collect.Enums;
 using Suanpan.Data;
 using Suanpan.Services.Reference.Currencies;
 using Suanpan.Services.Reference.Currencies.Models;
@@ -111,6 +113,28 @@ public class EconomyServiceTests(PostgresFixture postgres)
         Assert.False(result.Success);
         Assert.Contains(indicator, result.Error);
         Assert.NotNull(await service.GetAsync("QH", Ct));
+    }
+
+    /// <summary>经济体被数据源引用时同样不能删除，提示中列出数据源（采集设计 §3.1）</summary>
+    [Fact]
+    public async Task Delete_RejectsEconomyWithDataSources()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var service = new EconomyService(db);
+        await service.CreateAsync(new EconomyInput("QL", "测试国", "Testland", "USD", NewYork, 900), Ct);
+        var source = TestData.Unique("源");
+        db.DataSources.Add(new DataSource
+        {
+            Name = source, Agency = "测试机构", EconomyCode = "QL", Type = DataSourceType.OfficialWeb, BaseUrl = "https://example.org",
+            RateLimit = 1, RateLimitUnit = RateLimitUnit.PerSecond, ComplianceClass = ComplianceClass.GovernmentPublic,
+            TermsUrl = "https://example.org/terms", RobotsResult = RobotsResult.Allowed,
+        });
+        await db.SaveChangesAsync(Ct);
+
+        var result = await service.DeleteAsync("QL", Ct);
+
+        Assert.False(result.Success);
+        Assert.Contains(source, result.Error);
     }
 
     [Fact]

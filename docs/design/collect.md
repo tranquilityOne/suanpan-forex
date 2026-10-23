@@ -2,11 +2,11 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.4 |
+| 版本 | v0.5 |
 | 日期 | 2026-10-23 |
 | 状态 | 已评审（2026-10-23，vivo.li；§11 第 7 项的联系邮箱待提供） |
 | 覆盖 | FR-001 数据源管理、FR-002 采集任务配置与调度；盯盘（FR-003）、快照与重新解析（FR-004）只定接入位置 |
-| 依据 | data-hub PRD v1.0.0.17（FR-001、FR-002、BR-001 ~ BR-012、§8.1.2、§10.8、§13.1.2、DEC-012、DEC-016、DEC-017、DEC-020）；后端约定 v1.26（§1.2、§7、§8、§9）；前端约定 v1.9；数据库变更约定；sys 设计（§6 权限、§7 操作日志）；基础数据设计（§2.1 指标与数据源的映射） |
+| 依据 | data-hub PRD v1.0.0.18（FR-001、FR-002、BR-001 ~ BR-012、§8.1.2、§10.8、§13.1.2、DEC-012、DEC-016、DEC-017、DEC-020）；后端约定 v1.27（§1.2、§7、§8、§9、§12）；前端约定 v1.9；数据库变更约定；sys 设计（§6 权限、§7 操作日志）；基础数据设计（§2.1 指标与数据源的映射） |
 
 > 本文只写"怎么实现"。需求、业务规则和验收标准以 PRD 为准，这里引用编号，不复述。
 > 实现偏离本文时，在同一个 PR 里更新本文。
@@ -134,7 +134,7 @@
 - **保存**：名称、所属机构、基础地址、条款链接必填；基础地址和条款链接必须是 http 或 https 的绝对地址；频率上限为正整数；超时 1 ~ 120 秒；需要凭据时凭据不能为空（新建时必须填写，修改时留空表示不变，ERR-SRC-004）。
 - **启用**：合规类别为"待确认"或 robots.txt 为"不允许"时拒绝（BR-002，ERR-SRC-001）。已启用的数据源把合规类别改为"待确认"、robots.txt 改为"不允许"时，同样拒绝保存，提示先停用（否则会绕过启用时的检查）。
 - **凭据**（BR-004）：保存前用 `ISecretProtector` 加密；页面只显示"已设置"或"未设置"，不显示任何字符；修改时输入框为空表示保留原值，要更换就输入完整的新值；"清除凭据"单独一个勾选项。凭据只在 Collector 发请求时解密，不写日志。表单字段名包含 `Credential`，操作日志自动脱敏（sys 设计 §7.1）。
-- **删除**：被任务引用的不能删除，提示中列出任务名（BR-006，ERR-SRC-003）；以后加入的引用方（指标与数据源的映射 JAN-79、新闻）同样检查。
+- **删除**：被任务引用的不能删除，提示中列出任务名（BR-006，ERR-SRC-003）；以后加入的引用方（指标与数据源的映射 JAN-79、新闻）同样检查。采集任务的表在 FR-002.1（JAN-82）中建立，这项检查随它一起实现。
 - **实现**：`DataSourceRule.Validate(DataSource)` 校验保存，`DataSourceRule.ValidateCanEnable(DataSource)` 校验启用，都返回第一条错误 `FieldError(Field, Message)`。凭据按保存后的值判断：服务先把"留空不改""清除"处理成最终的密文再校验。超时的默认值和范围是 `DataSourceRule` 的常量。
 - **数据源引用经济体**：经济体被数据源引用时也不能删除，`EconomyService.DeleteAsync` 在 FR-001.2（JAN-81）中补充这项检查。
 
@@ -289,7 +289,7 @@ Job 每天执行一次 `collect-run-cleanup`：删除 `queued_at` 早于保留�
 
 ### 5.4 HTTP 客户端
 
-- `Suanpan.Infrastructure/Http/` 注册采集用的命名 HttpClient：User-Agent 取配置 `Collect:UserAgent`（如 `SuanpanForexBot/1.0 (+mailto:联系邮箱)`，§11 第 7 项），不自动跟随跨域名的跳转，自动解压。
+- `Suanpan.Infrastructure/Http/` 注册采集用的命名 HttpClient（`AddSuanpanCollectHttp`，客户端名 `CollectHttp.ClientName`）：User-Agent 取配置 `Collect:UserAgent`（如 `SuanpanForexBot/1.0 (+mailto:联系邮箱)`，§11 第 7 项；邮箱确定之前默认值为 `SuanpanForexBot/1.0`），自动解压；跳转由 `SameHostRedirectHandler` 处理，只跟随同一主机内的跳转（最多 5 次），跳到别的域名时把跳转响应原样返回。依赖 `Microsoft.Extensions.Http`（PRD §13.2.4）。
 - 超时不在 HttpClient 上设固定值，每次请求按数据源的 `timeout_seconds` 用 `CancellationTokenSource` 控制。
 - Crm 的连通性测试（§8.1）复用同一个客户端，超时固定 10 秒（PRD FR-001 异常流程），同样经过频率限制。
 
@@ -345,7 +345,7 @@ Suanpan.Crm/
 
 | 接口 | 方法 | 说明 |
 |---|---|---|
-| `IDataSourceService` | `QueryAsync`、`GetAsync(id)`、`GetOptionsAsync`、`CreateAsync`、`UpdateAsync`、`SetEnabledAsync`、`DeleteAsync`、`TestAsync(id)` | `TestAsync` 返回状态码、耗时、前 500 个字符的响应片段 |
+| `IDataSourceService` | `GetListAsync`、`GetAsync(id)`、`GetOptionsAsync`、`CreateAsync`、`UpdateAsync(id, input)`、`SetEnabledAsync`、`DeleteAsync`、`TestAsync(id)` | 数据源不多，列表不分页；`TestAsync` 返回状态码、耗时、前 500 个字符的响应片段 |
 | `ICollectTaskService` | `QueryAsync`、`GetAsync(id)`、`CreateAsync`、`UpdateAsync`、`SetEnabledAsync`、`DeleteAsync`、`PreviewSchedule(cron, timeZone)` | `PreviewSchedule` 返回下 3 次执行时间 |
 | `ICollectRunService` | `QueryAsync(CollectRunQuery)`、`GetAsync(id)`、`EnqueueAsync(taskId, trigger, scheduledFor, triggeredBy)` | `EnqueueAsync` 创建运行记录并发布消息，Job 和 Crm 共用；`CollectRunQuery` 按任务、数据源、状态、时间筛选，分页 |
 
@@ -370,7 +370,7 @@ Suanpan.Crm/
 | 数据源 | `/Collect/Source` | `collect:source:index` | 列：名称、机构、经济体、类型、频率上限、合规类别、robots.txt、状态、任务数 |
 | 数据源详情 | `/Collect/Source/Detail/{id}` | `collect:source:detail` | 只读；凭据只显示"已设置 / 未设置" |
 | 新增 / 编辑数据源 | `/Collect/Source/Create`、`/Edit/{id}` | `collect:source:create` / `edit` | 字段分组：基本信息、访问方式（类型、基础地址、频率上限、超时、凭据）、合规信息。启用不在表单中，在列表上单独操作 |
-| 连通性测试 | POST | `collect:source:test` | 在详情页执行，停用的数据源也可以测试（启用前先测，PRD FR-001 主流程第 2 步），robots.txt 为"不允许"的不发请求；结果显示在页面上（状态码、耗时、响应片段按纯文本显示）；失败不影响保存（ERR-SRC-002） |
+| 连通性测试 | POST | `collect:source:test` | 在详情页执行，停用的数据源也可以测试（启用前先测，PRD FR-001 主流程第 2 步），robots.txt 为"不允许"的不发请求；结果经 TempData 带回详情页（状态码、耗时、响应片段按纯文本显示）；失败时写 `TempData["Error"]`，操作日志记为失败；失败不影响保存（ERR-SRC-002） |
 | 启用 / 停用、删除数据源 | POST | `collect:source:set_status` / `delete` | 二次确认；启用时校验 BR-002；停用时提示"它下面的任务将停止执行" |
 | 采集任务 | `/Collect/Task` | `collect:task:index` | 筛选：数据源、目标数据类型、状态；列：名称、数据源、解析器、目标数据类型、cron 和下次执行时间（操作者时区）、最近一次运行的状态、启用状态 |
 | 新增 / 编辑任务 | `/Collect/Task/Create`、`/Edit/{id}` | `collect:task:create` / `edit` | 解析器下拉框按适配器分组；选了解析器后显示目标数据类型；cron 输入框旁边显示下 3 次执行时间 |
@@ -514,3 +514,4 @@ JAN-79（指标与数据源的映射）在 FR-001.2（JAN-81）完成后可以�
 | v0.2 | 2026-10-23 | vivo.li / Claude | 评审：§11 改为评审结论（13 项均按建议执行，第 7 项的联系邮箱待提供）；同步 PRD v1.0.0.17（FR-001、FR-002、BR-154、BR-155、§8.1.2）和后端约定 v1.25（§8.2 消息清单） |
 | v0.3 | 2026-10-23 | vivo.li / Claude | 评审通过；§13 回填 Linear 工单号（JAN-80 ~ JAN-85） |
 | v0.4 | 2026-10-23 | vivo.li / Claude | FR-001.1 实施：§2.2 增加 `ix_col_source_economy_code`（经济体被数据源引用时不能删除）；§3.1 补充规则的接口 |
+| v0.5 | 2026-10-23 | vivo.li / Claude | FR-001.2 实施：§5.4 HttpClient 的注册和跳转处理、User-Agent 的默认值；§7.2 数据源服务的方法名；§8.1 连通性测试的结果展示。数据源被采集任务引用时不能删除的检查随 FR-002.1（JAN-82）建表后实现 |

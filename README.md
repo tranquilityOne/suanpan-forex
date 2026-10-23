@@ -92,6 +92,7 @@ dotnet user-secrets list --project src/Suanpan.Crm
 |---|---|---|
 | `Security:BootstrapAllowedIps` | 后台 IP 白名单的应急放行 IP，逗号分隔 | 可选 |
 | `ForwardedHeaders:TrustedProxies` | 可信的反向代理，逗号分隔的 IP 或 CIDR；本地直接访问时不用设置 | 部署到反向代理后面时 |
+| `Collect:UserAgent` | 采集和连通性测试请求的 User-Agent，带项目名和联系邮箱；默认 `SuanpanForexBot/1.0` | 可选 |
 | `Auth:SkipTotpInDevelopment` | 设为 `true` 后，已绑定二次验证的账号登录时不用输入验证码；只在开发环境生效，其他环境忽略 | 可选，本地开发 |
 
 ### 3. 编译和运行

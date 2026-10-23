@@ -32,4 +32,26 @@ public class PresetRoleGrantsTests
 
         Assert.Equal(expected.Split(' ').Order(StringComparer.Ordinal), granted.Order(StringComparer.Ordinal));
     }
+
+    /// <summary>
+    /// 采集设计 §8.3：采集工程师维护数据源；编辑和只读只能查看（快照页面加入后也不会被自动授权）。
+    /// 任务、运行记录的页面加入后（JAN-83）补充到这里
+    /// </summary>
+    [Theory]
+    [InlineData(RoleCodes.Engineer,
+        "collect:source:index collect:source:detail collect:source:create collect:source:edit "
+        + "collect:source:set_status collect:source:delete collect:source:test")]
+    [InlineData(RoleCodes.Editor, "collect:source:index collect:source:detail")]
+    [InlineData(RoleCodes.Viewer, "collect:source:index collect:source:detail")]
+    public async Task CollectGrantsMatchDesign(string roleCode, string expected)
+    {
+        await using var app = new CrmApp();
+        var patterns = PresetRoleGrants.Patterns[roleCode];
+
+        var granted = AreaCatalogTests.GeneratedPermCodes(app)
+            .Where(code => code.StartsWith("collect:", StringComparison.Ordinal))
+            .Where(code => patterns.Any(pattern => PermCodePattern.IsMatch(pattern, code)));
+
+        Assert.Equal(expected.Split(' ').Order(StringComparer.Ordinal), granted.Order(StringComparer.Ordinal));
+    }
 }

@@ -20,9 +20,16 @@ public sealed class EconomyService(SuanpanDbContext db) : IEconomyService
             .GroupBy(i => i.EconomyCode)
             .Select(g => new { Code = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Code, x => x.Count, ct);
+        var sourceCounts = await db.DataSources
+            .Where(s => s.EconomyCode != null)
+            .GroupBy(s => s.EconomyCode!)
+            .Select(g => new { Code = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Code, x => x.Count, ct);
 
         return economies
-            .Select(e => new EconomyRow(e.Code, e.Name, e.CurrencyCode, e.TimeZone, e.Sort, e.IsEnabled, indicatorCounts.GetValueOrDefault(e.Code)))
+            .Select(e => new EconomyRow(
+                e.Code, e.Name, e.CurrencyCode, e.TimeZone, e.Sort, e.IsEnabled,
+                indicatorCounts.GetValueOrDefault(e.Code), sourceCounts.GetValueOrDefault(e.Code)))
             .ToList();
     }
 
@@ -119,7 +126,12 @@ public sealed class EconomyService(SuanpanDbContext db) : IEconomyService
             .OrderBy(i => i.Code)
             .Select(i => i.Code)
             .ToListAsync(ct);
-        if (ReferenceUsage.DescribeOrNull(("指标", indicators)) is { } usage)
+        var sources = await db.DataSources.AsNoTracking()
+            .Where(s => s.EconomyCode == economy.Code)
+            .OrderBy(s => s.Name)
+            .Select(s => s.Name)
+            .ToListAsync(ct);
+        if (ReferenceUsage.DescribeOrNull(("指标", indicators), ("数据源", sources)) is { } usage)
         {
             return ManageResult.Fail(usage);
         }

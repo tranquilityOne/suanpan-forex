@@ -68,6 +68,9 @@ public static class DataSourceRule
             : null;
     }
 
+    /// <summary>频率上限的计数窗口（BR-003）：次/秒为 1 秒，次/分为 1 分钟</summary>
+    public static TimeSpan RateLimitWindow(RateLimitUnit unit) => unit == RateLimitUnit.PerMinute ? TimeSpan.FromMinutes(1) : TimeSpan.FromSeconds(1);
+
     private static FieldError? RequiredText(string? value, string field, string label)
         => string.IsNullOrWhiteSpace(value) ? new(field, $"请填写{label}") : null;
 

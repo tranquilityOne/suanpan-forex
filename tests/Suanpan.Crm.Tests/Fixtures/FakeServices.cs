@@ -1,7 +1,10 @@
 using System.Collections.Concurrent;
 using System.Net;
+using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Reference.Entities;
 using Suanpan.Core.Sys.Entities;
+using Suanpan.Services.Collect.Sources;
+using Suanpan.Services.Collect.Sources.Models;
 using Suanpan.Services.Reference.Indicators;
 using Suanpan.Services.Reference.Indicators.Models;
 using Suanpan.Services.Sys.Auth;
@@ -162,4 +165,30 @@ public sealed class FakeIndicatorService : IIndicatorService
     public Task<ManageResult> SetEnabledAsync(string code, bool enabled, CancellationToken ct = default) => throw new NotSupportedException();
 
     public Task<ManageResult> DeleteAsync(string code, CancellationToken ct = default) => throw new NotSupportedException();
+}
+
+/// <summary>新增时记下输入并返回成功</summary>
+public sealed class FakeDataSourceService : IDataSourceService
+{
+    public List<DataSourceInput> Created { get; } = [];
+
+    public Task<ManageResult> CreateAsync(DataSourceInput input, CancellationToken ct = default)
+    {
+        Created.Add(input);
+        return Task.FromResult(ManageResult.Ok);
+    }
+
+    public Task<IReadOnlyList<DataSourceRow>> GetListAsync(CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<DataSource?> GetAsync(long id, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<IReadOnlyList<DataSource>> GetOptionsAsync(CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<ManageResult> UpdateAsync(long id, DataSourceInput input, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<ManageResult> SetEnabledAsync(long id, bool enabled, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<ManageResult> DeleteAsync(long id, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<DataSourceTestResult> TestAsync(long id, CancellationToken ct = default) => throw new NotSupportedException();
 }

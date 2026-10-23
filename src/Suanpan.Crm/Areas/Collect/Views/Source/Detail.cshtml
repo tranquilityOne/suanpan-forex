@@ -1,0 +1,118 @@
+@model DataSourceDetailViewModel
+@using Suanpan.Core.Collect.Enums
+@{
+    var source = Model.Source;
+    ViewData["Title"] = $"数据源 {source.Name}";
+    var result = Model.TestResult;
+}
+
+<div class="page-header mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col">
+            <h2 class="page-title">@source.Name</h2>
+            <div class="text-secondary">@source.Agency</div>
+        </div>
+        <div class="col-auto">
+            <div class="btn-list">
+                <a asp-action="Edit" asp-route-id="@source.Id" asp-permission="collect:source:edit" class="btn btn-primary">编辑</a>
+                <a asp-action="Index" class="btn">返回列表</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-body">
+                <h3 class="card-title">基本信息</h3>
+                <dl class="row mb-4">
+                    <dt class="col-sm-4">状态</dt>
+                    <dd class="col-sm-8"><status-badge tone="@(source.IsEnabled ? BadgeTone.Success : BadgeTone.Neutral)" text="@(source.IsEnabled ? "启用" : "停用")" /></dd>
+                    <dt class="col-sm-4">经济体</dt>
+                    <dd class="col-sm-8">@if (source.EconomyCode is not null) { <code>@source.EconomyCode</code> <span>@Model.EconomyName</span> } else { <span class="text-secondary">—</span> }</dd>
+                    <dt class="col-sm-4">类型</dt>
+                    <dd class="col-sm-8">@CollectDisplayNames.Get(source.Type)</dd>
+                </dl>
+
+                <h3 class="card-title">访问方式</h3>
+                <dl class="row mb-4">
+                    <dt class="col-sm-4">基础地址</dt>
+                    <dd class="col-sm-8 text-break"><a href="@source.BaseUrl" target="_blank" rel="noopener noreferrer">@source.BaseUrl</a></dd>
+                    <dt class="col-sm-4">请求频率上限</dt>
+                    <dd class="col-sm-8"><span class="font-monospace">@source.RateLimit</span> @CollectDisplayNames.Get(source.RateLimitUnit)</dd>
+                    <dt class="col-sm-4">请求超时</dt>
+                    <dd class="col-sm-8"><span class="font-monospace">@source.TimeoutSeconds</span> 秒</dd>
+                    <dt class="col-sm-4">凭据</dt>
+                    <dd class="col-sm-8">@(source.CredentialRequired ? "需要" : "不需要")，@(source.Credential is null ? "未设置" : "已设置")</dd>
+                </dl>
+
+                <h3 class="card-title">合规信息</h3>
+                <dl class="row mb-4">
+                    <dt class="col-sm-4">合规类别</dt>
+                    <dd class="col-sm-8">@CollectDisplayNames.Get(source.ComplianceClass)</dd>
+                    <dt class="col-sm-4">条款链接</dt>
+                    <dd class="col-sm-8 text-break"><a href="@source.TermsUrl" target="_blank" rel="noopener noreferrer">@source.TermsUrl</a></dd>
+                    <dt class="col-sm-4">robots.txt 检查结果</dt>
+                    <dd class="col-sm-8">@CollectDisplayNames.Get(source.RobotsResult)</dd>
+                </dl>
+
+                @if (!string.IsNullOrEmpty(source.Remark))
+                {
+                    <h3 class="card-title">备注</h3>
+                    <p style="white-space: pre-line">@source.Remark</p>
+                }
+
+                <div class="text-secondary small">
+                    创建：@source.CreatedBy <utc-time value="@source.CreatedAt" />
+                    @if (source.UpdatedAt is not null)
+                    {
+                        <span class="ms-3">最后修改：@source.UpdatedBy <utc-time value="@source.UpdatedAt" /></span>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-body">
+                <h3 class="card-title">连通性测试</h3>
+                <p class="text-secondary">按基础地址发起一次 GET 请求，超时 10 秒，计入这个数据源的请求频率；失败不影响保存。</p>
+                @if (source.RobotsResult == RobotsResult.Disallowed)
+                {
+                    <div class="text-secondary">robots.txt 不允许采集，不发请求。</div>
+                }
+                else
+                {
+                    <form asp-action="Test" asp-route-id="@source.Id" asp-permission="collect:source:test" method="post">
+                        <button type="submit" class="btn btn-outline-primary"><i class="ti ti-plug-connected me-1"></i>测试连通性</button>
+                    </form>
+                }
+
+                @if (result is not null)
+                {
+                    <hr />
+                    <dl class="row mb-2">
+                        <dt class="col-sm-4">结果</dt>
+                        <dd class="col-sm-8"><status-badge tone="@(result.Success ? BadgeTone.Success : BadgeTone.Failure)" text="@(result.Success ? "成功" : "失败")" /></dd>
+                        <dt class="col-sm-4">状态码</dt>
+                        <dd class="col-sm-8 font-monospace">@(result.StatusCode?.ToString() ?? "—")</dd>
+                        <dt class="col-sm-4">耗时</dt>
+                        <dd class="col-sm-8"><span class="font-monospace">@result.ElapsedMs</span> 毫秒</dd>
+                        @if (result.Error is not null)
+                        {
+                            <dt class="col-sm-4">原因</dt>
+                            <dd class="col-sm-8 text-break">@result.Error</dd>
+                        }
+                    </dl>
+                    @if (!string.IsNullOrEmpty(result.Snippet))
+                    {
+                        <div class="form-label">响应开头（纯文本）</div>
+                        <pre class="bg-body-tertiary p-2 small text-wrap text-break" style="max-height: 20rem; overflow: auto">@result.Snippet</pre>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+</div>

@@ -24,6 +24,7 @@ services.AddScoped<IAuditActorProvider, CurrentUserAuditActorProvider>();
 services.AddSuanpanData(configuration, "crm");
 services.AddSuanpanServices();
 services.AddSuanpanRedis(configuration);
+services.AddSuanpanCollectHttp(configuration);
 services.AddSuanpanEventBus(configuration, "crm");
 services.AddSuanpanHangfire(configuration, runServer: false);
 

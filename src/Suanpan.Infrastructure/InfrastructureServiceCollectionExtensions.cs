@@ -1,9 +1,12 @@
+using System.Net;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using StackExchange.Redis;
+using Suanpan.Infrastructure.Http;
 using Suanpan.Infrastructure.Messaging;
 using Suanpan.Infrastructure.Redis;
 using Suanpan.Shared.Messages;
@@ -35,6 +38,30 @@ public static class InfrastructureServiceCollectionExtensions
         services.TryAddSingleton<IRedisCache, RedisCache>();
         services.TryAddSingleton<IDistributedLock, RedisDistributedLock>();
         services.TryAddSingleton<IRateLimiter, RedisRateLimiter>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// 注册采集用的命名 HttpClient <see cref="CollectHttp.ClientName"/>（采集设计 §5.4）：User-Agent 取配置 Collect:UserAgent（BR-005），
+    /// 自动解压，只跟随同一主机内的跳转。超时不在这里设置：调用方按数据源的超时用 CancellationToken 控制。
+    /// </summary>
+    public static IServiceCollection AddSuanpanCollectHttp(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.Configure<CollectHttpOptions>(configuration.GetSection(CollectHttpOptions.SectionName));
+        services.AddTransient<SameHostRedirectHandler>();
+        services.AddHttpClient(CollectHttp.ClientName, (provider, client) =>
+            {
+                var userAgent = provider.GetRequiredService<IOptions<CollectHttpOptions>>().Value.UserAgent;
+                client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", userAgent);
+                client.Timeout = Timeout.InfiniteTimeSpan;
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                AutomaticDecompression = DecompressionMethods.All,
+            })
+            .AddHttpMessageHandler<SameHostRedirectHandler>();
 
         return services;
     }

@@ -51,14 +51,14 @@
                                         <confirm-form asp-action="SetStatus" asp-route-id="@economy.Code" asp-route-enabled="true" asp-permission="reference:economy:set_status"
                                                       message="@($"启用经济体 {economy.Code}？")" button-text="启用" button-class="btn btn-sm btn-outline-success" />
                                     }
-                                    @if (economy.IndicatorCount == 0)
+                                    @if (!economy.IsReferenced)
                                     {
                                         <confirm-form asp-action="Delete" asp-route-id="@economy.Code" asp-permission="reference:economy:delete" button-text="删除"
                                                       message="@($"删除经济体 {economy.Code}？删除后不能恢复。")" />
                                     }
                                     else
                                     {
-                                        <button type="button" asp-permission="reference:economy:delete" class="btn btn-sm" disabled title="有指标属于该经济体，不能删除，可以停用">删除</button>
+                                        <button type="button" asp-permission="reference:economy:delete" class="btn btn-sm" disabled title="有指标或数据源属于该经济体，不能删除，可以停用">删除</button>
                                     }
                                 </div>
                             </td>

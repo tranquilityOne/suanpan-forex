@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Suanpan.Services.Collect.Sources;
 using Suanpan.Services.Reference.Indicators;
 using Suanpan.Services.Sys.Auth;
 using Suanpan.Services.Sys.Configs;
@@ -42,6 +43,8 @@ public sealed class CrmApp(string environment = "Testing") : WebApplicationFacto
     public FakeMenuService Menus { get; } = new();
 
     public FakeIndicatorService Indicators { get; } = new();
+
+    public FakeDataSourceService DataSources { get; } = new();
 
     public FakeSecurityStampValidator Stamps { get; } = new();
 
@@ -91,6 +94,7 @@ public sealed class CrmApp(string environment = "Testing") : WebApplicationFacto
             services.AddSingleton<IOpLogService>(OpLogs);
             services.AddSingleton<IMenuService>(Menus);
             services.AddSingleton<IIndicatorService>(Indicators);
+            services.AddSingleton<IDataSourceService>(DataSources);
 
             // Hangfire 面板改用空存储；IGlobalConfiguration 直接给出，不执行连接数据库的存储配置
             services.AddSingleton<IGlobalConfiguration>(GlobalConfiguration.Configuration);

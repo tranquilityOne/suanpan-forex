@@ -1,0 +1,138 @@
+@model DataSourceEditViewModel
+@{
+    // 编辑页的地址带 id（/Edit/{id}），新增页没有
+    var isNew = ViewContext.RouteData.Values["id"] is null;
+    ViewData["Title"] = isNew ? "新增数据源" : "编辑数据源";
+    var options = Model.Options!;
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">@ViewData["Title"]</h2>
+</div>
+
+<div class="card" style="max-width: 60rem">
+    <form asp-action="@(isNew ? "Create" : "Edit")" asp-route-id="@(isNew ? null : ViewContext.RouteData.Values["id"])" method="post" class="card-body" autocomplete="off">
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        @if (isNew)
+        {
+            <div class="alert alert-info">新建的数据源为停用状态。保存后在详情页测试连通性，确认合规信息后在列表上启用。</div>
+        }
+
+        <h3 class="card-title">基本信息</h3>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="Name" class="form-label required"></label>
+                <input asp-for="Name" class="form-control" placeholder="如：BLS 官网" />
+                <span asp-validation-for="Name"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="Agency" class="form-label required"></label>
+                <input asp-for="Agency" class="form-control" placeholder="如：美国劳工统计局" />
+                <span asp-validation-for="Agency"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="EconomyCode" class="form-label"></label>
+                <select asp-for="EconomyCode" asp-items="options.Economies" class="form-select">
+                    <option value="">不限</option>
+                </select>
+                <span asp-validation-for="EconomyCode"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="Type" class="form-label required"></label>
+                <select asp-for="Type" asp-items="options.Types" class="form-select">
+                    <option value="">请选择</option>
+                </select>
+                <span asp-validation-for="Type"></span>
+            </div>
+        </div>
+
+        <h3 class="card-title mt-2">访问方式</h3>
+        <div class="mb-3">
+            <label asp-for="BaseUrl" class="form-label required"></label>
+            <input asp-for="BaseUrl" class="form-control font-monospace" placeholder="https://" />
+            <div class="form-text">http 或 https 的完整地址；连通性测试请求这个地址</div>
+            <span asp-validation-for="BaseUrl"></span>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="RateLimit" class="form-label required"></label>
+                <div class="input-group">
+                    <input asp-for="RateLimit" class="form-control" min="1" />
+                    <select asp-for="RateLimitUnit" asp-items="options.RateLimitUnits" class="form-select" style="max-width: 8rem">
+                        <option value="">单位</option>
+                    </select>
+                </div>
+                <div class="form-text">所有采集任务和盯盘对这个数据源的请求合计不超过它（BR-003）</div>
+                <span asp-validation-for="RateLimit"></span>
+                <span asp-validation-for="RateLimitUnit"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="TimeoutSeconds" class="form-label required"></label>
+                <input asp-for="TimeoutSeconds" class="form-control" style="max-width: 10rem" />
+                <div class="form-text">单次请求的超时，@DataSourceRule.MinTimeoutSeconds ~ @DataSourceRule.MaxTimeoutSeconds 秒</div>
+                <span asp-validation-for="TimeoutSeconds"></span>
+            </div>
+        </div>
+        <div class="mb-2">
+            <label class="form-check form-switch">
+                <input asp-for="CredentialRequired" class="form-check-input" />
+                <span class="form-check-label">需要凭据（如 API Key）</span>
+            </label>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Credential" class="form-label"></label>
+            <input asp-for="Credential" class="form-control font-monospace" autocomplete="new-password"
+                   placeholder="@(options.HasCredential ? "已设置，留空表示不变" : "未设置")" />
+            <div class="form-text">加密保存，保存后只显示是否已设置；要更换就输入完整的新值</div>
+            @if (options.HasCredential)
+            {
+                <label class="form-check mt-2">
+                    <input asp-for="ClearCredential" class="form-check-input" />
+                    <span class="form-check-label">清除已保存的凭据</span>
+                </label>
+            }
+            <span asp-validation-for="Credential"></span>
+        </div>
+
+        <h3 class="card-title mt-2">合规信息</h3>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="ComplianceClass" class="form-label required"></label>
+                <select asp-for="ComplianceClass" asp-items="options.ComplianceClasses" class="form-select">
+                    <option value="">请选择</option>
+                </select>
+                <div class="form-text">"待确认"的数据源不能启用（BR-002）</div>
+                <span asp-validation-for="ComplianceClass"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="RobotsResult" class="form-label required"></label>
+                <select asp-for="RobotsResult" asp-items="options.RobotsResults" class="form-select">
+                    <option value="">请选择</option>
+                </select>
+                <div class="form-text">"不允许"的数据源不能启用，也不做连通性测试</div>
+                <span asp-validation-for="RobotsResult"></span>
+            </div>
+        </div>
+        <div class="mb-3">
+            <label asp-for="TermsUrl" class="form-label required"></label>
+            <input asp-for="TermsUrl" class="form-control font-monospace" placeholder="https://" />
+            <div class="form-text">数据源的使用条款或版权说明页面</div>
+            <span asp-validation-for="TermsUrl"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Remark" class="form-label"></label>
+            <textarea asp-for="Remark" class="form-control" rows="2"></textarea>
+            <span asp-validation-for="Remark"></span>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">保存</button>
+            <a asp-action="@(isNew ? "Index" : "Detail")" asp-route-id="@(isNew ? null : ViewContext.RouteData.Values["id"])" class="btn">取消</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
