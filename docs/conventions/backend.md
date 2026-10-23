@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.24 |
+| 版本 | v1.25 |
 | 日期 | 2026-10-23 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -390,8 +390,7 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 
 | 消息 | 类型 | 发送方 | 接收方 | 用途 |
 |---|---|---|---|---|
-| `CollectTaskDueCommand` | 指令 | Job | Collector | 定时采集到点（PRD FR-002） |
-| `CollectTriggerCommand` | 指令 | Crm | Collector | 手动触发采集 |
+| `CollectRunCommand` | 指令 | Job、Crm、Collector | Collector | 执行一条采集运行记录：定时到点、手动触发都先由发送方创建运行记录再下发；Collector 重试时延时发给自己（PRD FR-002，采集设计 §4、§7.3） |
 | `ReparseCommand` | 指令 | Crm | Collector | 重新解析快照（PRD FR-004） |
 | `EventReleasedEvent` | 事件 | Collector、Crm | Job | 公布值入库（EV-004），触发快讯生成 |
 | `EventHeldForReviewEvent` | 事件 | Collector | Job | 事件进入待复核（EV-005），触发告警 |
@@ -626,3 +625,4 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | v1.22 | 2026-10-23 | vivo.li / Claude | §7 `ManageResult` 增加 `Field`：错误属于某个输入项时，提示显示在对应输入框下（FR-005.2 实施） |
 | v1.23 | 2026-10-23 | vivo.li / Claude | §6.3 可空的中英文内容用 `HasOptionalBilingualColumns` 映射（FR-006.1 实施） |
 | v1.24 | 2026-10-23 | vivo.li / Claude | §12 配置键增加 `Auth:SkipTotpInDevelopment`（开发环境跳过 TOTP 验证码） |
+| v1.25 | 2026-10-23 | vivo.li / Claude | §8.2 消息清单：`CollectTaskDueCommand`、`CollectTriggerCommand` 合并为 `CollectRunCommand`（采集设计评审） |
