@@ -9,4 +9,6 @@ public partial class SuanpanDbContext
     public DbSet<Currency> Currencies => Set<Currency>();
 
     public DbSet<Economy> Economies => Set<Economy>();
+
+    public DbSet<Indicator> Indicators => Set<Indicator>();
 }

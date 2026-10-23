@@ -151,6 +151,178 @@ namespace Suanpan.Data.Migrations
                     b.ToTable("ref_economy", (string)null);
                 });
 
+            modelBuilder.Entity("Suanpan.Core.Reference.Entities.Indicator", b =>
+                {
+                    b.Property<string>("Code")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("code");
+
+                    b.Property<short>("Category")
+                        .HasColumnType("smallint")
+                        .HasColumnName("category");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("CurrencyCode")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character(3)")
+                        .HasColumnName("currency_code")
+                        .IsFixedLength();
+
+                    b.Property<short>("Decimals")
+                        .HasColumnType("smallint")
+                        .HasColumnName("decimals");
+
+                    b.Property<TimeOnly>("DefaultReleaseTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("default_release_time");
+
+                    b.Property<short>("Direction")
+                        .HasColumnType("smallint")
+                        .HasColumnName("direction");
+
+                    b.Property<string>("EconomyCode")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character(2)")
+                        .HasColumnName("economy_code")
+                        .IsFixedLength();
+
+                    b.Property<decimal>("FlatTolerance")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("flat_tolerance");
+
+                    b.Property<short>("Frequency")
+                        .HasColumnType("smallint")
+                        .HasColumnName("frequency");
+
+                    b.Property<short>("Importance")
+                        .HasColumnType("smallint")
+                        .HasColumnName("importance");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_enabled");
+
+                    b.Property<decimal?>("RangeMax")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("range_max");
+
+                    b.Property<decimal?>("RangeMin")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("range_min");
+
+                    b.Property<decimal?>("SigmaN")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("sigma_n");
+
+                    b.Property<short>("Unit")
+                        .HasColumnType("smallint")
+                        .HasColumnName("unit");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("updated_by");
+
+                    b.Property<short>("ValueType")
+                        .HasColumnType("smallint")
+                        .HasColumnName("value_type");
+
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "Agency", "Suanpan.Core.Reference.Entities.Indicator.Agency#BilingualText", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<string>("En")
+                                .IsRequired()
+                                .HasMaxLength(128)
+                                .HasColumnType("character varying(128)")
+                                .HasColumnName("agency_en");
+
+                            b1.Property<string>("Zh")
+                                .IsRequired()
+                                .HasMaxLength(64)
+                                .HasColumnType("character varying(64)")
+                                .HasColumnName("agency_zh");
+                        });
+
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "Description", "Suanpan.Core.Reference.Entities.Indicator.Description#BilingualText", b1 =>
+                        {
+                            b1.Property<string>("En")
+                                .IsRequired()
+                                .HasColumnType("text")
+                                .HasColumnName("description_en");
+
+                            b1.Property<string>("Zh")
+                                .IsRequired()
+                                .HasColumnType("text")
+                                .HasColumnName("description_zh");
+                        });
+
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "Name", "Suanpan.Core.Reference.Entities.Indicator.Name#BilingualText", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<string>("En")
+                                .IsRequired()
+                                .HasMaxLength(128)
+                                .HasColumnType("character varying(128)")
+                                .HasColumnName("name_en");
+
+                            b1.Property<string>("Zh")
+                                .IsRequired()
+                                .HasMaxLength(64)
+                                .HasColumnType("character varying(64)")
+                                .HasColumnName("name_zh");
+                        });
+
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "ShortName", "Suanpan.Core.Reference.Entities.Indicator.ShortName#BilingualText", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<string>("En")
+                                .IsRequired()
+                                .HasMaxLength(64)
+                                .HasColumnType("character varying(64)")
+                                .HasColumnName("short_name_en");
+
+                            b1.Property<string>("Zh")
+                                .IsRequired()
+                                .HasMaxLength(32)
+                                .HasColumnType("character varying(32)")
+                                .HasColumnName("short_name_zh");
+                        });
+
+                    b.HasKey("Code")
+                        .HasName("pk_ref_indicator");
+
+                    b.HasIndex("CurrencyCode")
+                        .HasDatabaseName("ix_ref_indicator_currency_code");
+
+                    b.HasIndex("EconomyCode")
+                        .HasDatabaseName("ix_ref_indicator_economy_code");
+
+                    b.ToTable("ref_indicator", (string)null);
+                });
+
             modelBuilder.Entity("Suanpan.Core.Sys.Entities.SysConfig", b =>
                 {
                     b.Property<int>("Id")

@@ -2,11 +2,11 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.6 |
+| 版本 | v0.7 |
 | 日期 | 2026-10-23 |
 | 状态 | 已评审（2026-10-22，vivo.li） |
 | 覆盖 | FR-005 经济体与货币管理、FR-006 指标字典管理（指标与数据源的映射只定表结构） |
-| 依据 | data-hub PRD v1.0.0.15；web-portal PRD（FR-005 指标详情页，BR-015、BR-017）；后端约定 v1.22；前端约定 v1.8；数据库变更约定 |
+| 依据 | data-hub PRD v1.0.0.15；web-portal PRD（FR-005 指标详情页，BR-015、BR-017）；后端约定 v1.23；前端约定 v1.8；数据库变更约定 |
 
 > 本文只写"怎么实现"。需求、业务规则和验收标准以 PRD 为准，这里引用编号，不复述。
 > 实现偏离本文时，在同一个 PR 里更新本文。
@@ -166,6 +166,8 @@
 - 新增：编码格式正确、以经济体开头、不重复（ERR-IND-001）；经济体和货币必须存在且启用；必填字段齐全（BR-030）；小数位 0 ~ 6；持平容差 ≥ 0；上下限都填时下限 ≤ 上限。
 - 修改：编码和经济体不可改。**影响方向变化时必须填写理由**（BR-031，ERR-IND-002）：表单上有"修改理由"字段，服务端判断方向是否变化；理由由操作日志过滤器写入 `sys_op_log.reason`（sys 设计 §7.1 按名为 `Reason` 的属性采集），审计日志可查（FR-006 验收第 2 条）。不另建方向变更历史表（PRD DEC-018：操作日志只记请求参数）。
 - 数值类型为"区间"的指标，日历事件同时存上下限（BR-032），本表只记类型。
+- 实现：`IndicatorRule.Validate(Indicator)` 校验上面的字段规则，返回第一条错误 `IndicatorRuleError(Field, Message)`，`Field` 为表单字段名（中英文字段为属性名加 `Zh` / `En`，如 `NameZh`），服务转成 `ManageResult.Fail(Message, Field)`；`IndicatorRule.ValidateDirectionChange(原方向, 新方向, 理由)` 判断 BR-031。编码格式和前缀由 `ReferenceCodeRule.ValidateIndicatorCode(编码, 经济体)` 校验。编码是否重复、经济体和货币是否存在且启用要查库，在服务中校验。
+- `sigma_n` 为空时取 `IndicatorRule.DefaultSigmaN`（4）。
 
 ### 3.5 启停与删除（BR-028）
 
@@ -183,7 +185,7 @@
 
 ### 3.6 枚举（`Suanpan.Core/Reference/Enums/`）
 
-存为 `smallint`（后端约定 §6.3），中英文显示名在 Core 中统一定义，后台和快讯共用。
+存为 `smallint`（后端约定 §6.3），取值从 1 开始连续编号，已有的值不能改；中英文显示名由 `ReferenceDisplayNames.Get(枚举值)` 统一提供，后台和快讯共用，每个枚举值都要登记（单元测试检查）。英文显示名为初稿，随首批指标（JAN-78）一并确认。重要性的取值为低 1、中 2、高 3，可以按大小比较。
 
 | 枚举 | 取值 |
 |---|---|
@@ -205,6 +207,7 @@
 - EF Core 用 `ComplexProperty` 把它映射成两列，列名在实体配置中显式指定；必填的字段（如名称）两列都 `NOT NULL`，可空的字段（如说明）两列都可空。
 - 其他模块和后台页面按语言取文字时都调用 `Get`，不直接读某一种语言的属性；后台表单仍是每种语言一个输入框。前台通过对外视图读取，视图的列由发布模块（FR-023）定义。
 - 本模块用到的字段：货币和经济体的名称；指标的名称、简称、发布机构、说明；枚举的中英文显示名（`ReferenceDisplayNames` 返回 `BilingualText`）。
+- 可空的字段（指标说明）在实体中为 `BilingualText?`，用 `HasOptionalBilingualColumns` 映射：两种语言都没填时为 null，两列都存 NULL；只填一种时另一种存空串，前台按"没有说明"处理（BR-033）。
 
 以后增加语言时：
 - 繁体中文（web-portal Q-002，v1.1）一般由简体在显示时自动转换，不需要另存，不改表。
@@ -236,7 +239,7 @@ Suanpan.Core/Common/Localization/   BilingualText、ContentLanguage（跨模块�
 Suanpan.Core/Reference/
 ├─ Entities/      Currency、Economy、Indicator、IndicatorSource
 ├─ Enums/         IndicatorCategory、IndicatorValueType、IndicatorUnit、ReleaseFrequency、Importance、ImpactDirection
-└─ Rules/         ReferenceCodeRule、TimeZoneRule、IndicatorRule、ReferenceDisplayNames（枚举的中英文显示名）
+└─ Rules/         ReferenceCodeRule、TimeZoneRule、IndicatorRule、IndicatorRuleError、ReferenceDisplayNames（枚举的中英文显示名）
 
 Suanpan.Data/
 ├─ SuanpanDbContext.Reference.cs
@@ -371,3 +374,4 @@ Suanpan.Crm/
 | v0.4 | 2026-10-22 | vivo.li / Claude | 评审通过；§10 按 FR 拆成 6 个子任务（原按层拆分的前三项各涉及两个 FR，Linear 子任务只能挂在一个父工单下），回填 Linear 工单号 |
 | v0.5 | 2026-10-22 | vivo.li / Claude | FR-005.1 实施：§2.4 货币、经济体的预置数据改为在迁移中手写 `InsertData`（`HasData` 会丢掉中英文文本）；§3.2 部署环境需要 tzdata |
 | v0.6 | 2026-10-23 | vivo.li / Claude | FR-005.2 实施：§6、§6.1 权限码前缀由 `ref:` 更正为 `reference:`（按 Area 名自动生成）；§5.2 失败提示带字段名、删除提示措辞、`GetNextSortAsync`；§6 补充删除按钮、货币下拉框的处理 |
+| v0.7 | 2026-10-23 | vivo.li / Claude | FR-006.1 实施：§3.4 `IndicatorRule` 的接口和返回的字段名；§3.6 枚举编号、显示名的登记和英文名待确认；§3.7 可空的说明的存储方式 |

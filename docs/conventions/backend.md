@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.22 |
+| 版本 | v1.23 |
 | 日期 | 2026-10-23 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -296,7 +296,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 | 指标数值 | `numeric(18,6)` | 不用 float / double |
 | 枚举 | `smallint` + `HasConversion` | |
 | 结构化附加信息 | `jsonb` | 如字段锁定信息、任务参数 |
-| 中英文内容 | 每种语言一列：`xxx_zh`、`xxx_en` | 不用 `jsonb`。实体中用 `Suanpan.Core.Common.Localization.BilingualText` 表示，EF Core 用 `ComplexProperty` 映射成两列；调用方用 `Get(语言)` 取值，不直接读某一种语言的属性，以后增加语言时只改存储（基础数据设计 §3.7） |
+| 中英文内容 | 每种语言一列：`xxx_zh`、`xxx_en` | 不用 `jsonb`。实体中用 `Suanpan.Core.Common.Localization.BilingualText` 表示，EF Core 用 `ComplexProperty` 映射成两列（必填的用 `HasBilingualColumns`，可空的用 `HasOptionalBilingualColumns`，属性为 null 时两列都为 NULL）；调用方用 `Get(语言)` 取值，不直接读某一种语言的属性，以后增加语言时只改存储（基础数据设计 §3.7） |
 | 布尔 | `boolean` | |
 
 ### 6.4 并发与幂等
@@ -623,3 +623,4 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | v1.20 | 2026-10-21 | vivo.li / Claude | ENG-005.4 实施：§11 新增告警的调用方式（`IAlertService`、`AlertLevel`，调用处捕获告警异常） |
 | v1.21 | 2026-10-22 | vivo.li / Claude | §6.3 新增中英文内容的存储和代码写法：每种语言一列，实体中用 `BilingualText` 封装 |
 | v1.22 | 2026-10-23 | vivo.li / Claude | §7 `ManageResult` 增加 `Field`：错误属于某个输入项时，提示显示在对应输入框下（FR-005.2 实施） |
+| v1.23 | 2026-10-23 | vivo.li / Claude | §6.3 可空的中英文内容用 `HasOptionalBilingualColumns` 映射（FR-006.1 实施） |
