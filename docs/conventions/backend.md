@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.25 |
+| 版本 | v1.26 |
 | 日期 | 2026-10-23 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -346,7 +346,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 沿用 VVPay：
 
 - Controller 保持精简，业务逻辑一律放进 Service。
-- 管理操作返回 `ManageResult`（成功或错误，Controller 转成 ModelState 或 TempData）；分页查询返回 `PagedResult<T>`。错误属于某个输入项时（如编码重复、时区非法），服务用 `ManageResult.Fail(提示, nameof(XxxInput.字段))` 带上字段名，Controller 写 `ModelState.AddModelError(result.Field ?? string.Empty, result.Error!)`，提示显示在对应输入框下；ViewModel 的属性名与输入模型保持一致。
+- 管理操作返回 `ManageResult`（成功或错误，Controller 转成 ModelState 或 TempData）；分页查询返回 `PagedResult<T>`。错误属于某个输入项时（如编码重复、时区非法），服务用 `ManageResult.Fail(提示, nameof(XxxInput.字段))` 带上字段名（Core 中的字段规则返回 `FieldError(Field, Message)`，见 `Suanpan.Core/Common/Validation/`，服务原样转成 `ManageResult.Fail(error.Message, error.Field)`），Controller 写 `ModelState.AddModelError(result.Field ?? string.Empty, result.Error!)`，提示显示在对应输入框下；ViewModel 的属性名与输入模型保持一致。
 - 查询条件用 `record XxxQuery(...)`，列表行投影用 `record XxxRow(...)`。
 - 配置键用 static class 集中定义常量，通过 `IConfigService.GetXxxAsync(key, 默认值)` 读取：键不存在时用代码默认值，`sys_config` 中有值时覆盖。默认值也定义为常量，并把配置项登记到该类的 `Definitions`（类型、默认值、分组、说明），系统配置页面才能显示和修改（参考 `SysConfigKeys`）。
 
@@ -626,3 +626,4 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | v1.23 | 2026-10-23 | vivo.li / Claude | §6.3 可空的中英文内容用 `HasOptionalBilingualColumns` 映射（FR-006.1 实施） |
 | v1.24 | 2026-10-23 | vivo.li / Claude | §12 配置键增加 `Auth:SkipTotpInDevelopment`（开发环境跳过 TOTP 验证码） |
 | v1.25 | 2026-10-23 | vivo.li / Claude | §8.2 消息清单：`CollectTaskDueCommand`、`CollectTriggerCommand` 合并为 `CollectRunCommand`（采集设计评审） |
+| v1.26 | 2026-10-23 | vivo.li / Claude | §7 Core 的字段规则统一返回 `FieldError`（FR-001.1 实施） |

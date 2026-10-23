@@ -23,6 +23,118 @@ namespace Suanpan.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Suanpan.Core.Collect.Entities.DataSource", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Agency")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("agency");
+
+                    b.Property<string>("BaseUrl")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("base_url");
+
+                    b.Property<short>("ComplianceClass")
+                        .HasColumnType("smallint")
+                        .HasColumnName("compliance_class");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Credential")
+                        .HasColumnType("text")
+                        .HasColumnName("credential");
+
+                    b.Property<bool>("CredentialRequired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("credential_required");
+
+                    b.Property<string>("EconomyCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("character(2)")
+                        .HasColumnName("economy_code")
+                        .IsFixedLength();
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_enabled");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("RateLimit")
+                        .HasColumnType("integer")
+                        .HasColumnName("rate_limit");
+
+                    b.Property<short>("RateLimitUnit")
+                        .HasColumnType("smallint")
+                        .HasColumnName("rate_limit_unit");
+
+                    b.Property<string>("Remark")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("remark");
+
+                    b.Property<short>("RobotsResult")
+                        .HasColumnType("smallint")
+                        .HasColumnName("robots_result");
+
+                    b.Property<string>("TermsUrl")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("terms_url");
+
+                    b.Property<short>("TimeoutSeconds")
+                        .HasColumnType("smallint")
+                        .HasColumnName("timeout_seconds");
+
+                    b.Property<short>("Type")
+                        .HasColumnType("smallint")
+                        .HasColumnName("type");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_col_source");
+
+                    b.HasIndex("EconomyCode")
+                        .HasDatabaseName("ix_col_source_economy_code");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ux_col_source_name");
+
+                    b.ToTable("col_source", (string)null);
+                });
+
             modelBuilder.Entity("Suanpan.Core.Reference.Entities.Currency", b =>
                 {
                     b.Property<string>("Code")

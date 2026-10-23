@@ -1,4 +1,5 @@
 using Suanpan.Core.Common.Localization;
+using Suanpan.Core.Common.Validation;
 using Suanpan.Core.Reference.Entities;
 using Suanpan.Core.Reference.Enums;
 
@@ -20,7 +21,7 @@ public static class IndicatorRule
     /// 新增和修改共用：BR-030 的必填字段齐全（文本不能为空白，枚举必须是已定义的值）、小数位 0 ~ 6、
     /// 持平容差不小于 0、上下限都填时下限不大于上限、标准差倍数填写时大于 0。返回第一条错误，全部通过时返回 null
     /// </summary>
-    public static IndicatorRuleError? Validate(Indicator indicator)
+    public static FieldError? Validate(Indicator indicator)
     {
         var error = RequiredText(indicator.Name, nameof(Indicator.Name), "名称")
             ?? RequiredText(indicator.ShortName, nameof(Indicator.ShortName), "简称")
@@ -66,7 +67,7 @@ public static class IndicatorRule
     public static string? ValidateDirectionChange(ImpactDirection current, ImpactDirection updated, string? reason)
         => current != updated && string.IsNullOrWhiteSpace(reason) ? "修改影响方向时必须填写修改理由" : null;
 
-    private static IndicatorRuleError? RequiredText(BilingualText? text, string field, string label)
+    private static FieldError? RequiredText(BilingualText? text, string field, string label)
     {
         if (string.IsNullOrWhiteSpace(text?.Zh))
         {
@@ -76,7 +77,7 @@ public static class IndicatorRule
         return string.IsNullOrWhiteSpace(text.En) ? new($"{field}En", $"请填写英文{label}") : null;
     }
 
-    private static IndicatorRuleError? RequiredEnum<TEnum>(TEnum value, string field, string label)
+    private static FieldError? RequiredEnum<TEnum>(TEnum value, string field, string label)
         where TEnum : struct, Enum
         => Enum.IsDefined(value) ? null : new(field, $"请选择{label}");
 }

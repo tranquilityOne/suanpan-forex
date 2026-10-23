@@ -2,11 +2,11 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.10 |
+| 版本 | v0.11 |
 | 日期 | 2026-10-23 |
 | 状态 | 已评审（2026-10-22，vivo.li） |
 | 覆盖 | FR-005 经济体与货币管理、FR-006 指标字典管理（指标与数据源的映射只定表结构） |
-| 依据 | data-hub PRD v1.0.0.15；web-portal PRD（FR-005 指标详情页，BR-015、BR-017）；后端约定 v1.23；前端约定 v1.9；数据库变更约定 |
+| 依据 | data-hub PRD v1.0.0.15；web-portal PRD（FR-005 指标详情页，BR-015、BR-017）；后端约定 v1.26；前端约定 v1.9；数据库变更约定 |
 
 > 本文只写"怎么实现"。需求、业务规则和验收标准以 PRD 为准，这里引用编号，不复述。
 > 实现偏离本文时，在同一个 PR 里更新本文。
@@ -166,7 +166,7 @@
 - 新增：编码格式正确、以经济体开头、不重复（ERR-IND-001）；经济体和货币必须存在且启用；必填字段齐全（BR-030）；小数位 0 ~ 6；持平容差 ≥ 0；上下限都填时下限 ≤ 上限；标准差倍数 `sigma_n` 可以不填，填写时必须大于 0（JAN-77 实现）。
 - 修改：编码和经济体不可改。**影响方向变化时必须填写理由**（BR-031，ERR-IND-002）：表单上有"修改理由"字段，服务端判断方向是否变化；理由由操作日志过滤器写入 `sys_op_log.reason`（sys 设计 §7.1 按名为 `Reason` 的属性采集），审计日志可查（FR-006 验收第 2 条）。不另建方向变更历史表（PRD DEC-018：操作日志只记请求参数）。
 - 数值类型为"区间"的指标，日历事件同时存上下限（BR-032），本表只记类型。
-- 实现：`IndicatorRule.Validate(Indicator)` 校验上面的字段规则，返回第一条错误 `IndicatorRuleError(Field, Message)`，`Field` 为表单字段名（中英文字段为属性名加 `Zh` / `En`，如 `NameZh`），服务转成 `ManageResult.Fail(Message, Field)`；`IndicatorRule.ValidateDirectionChange(原方向, 新方向, 理由)` 判断 BR-031。编码格式和前缀由 `ReferenceCodeRule.ValidateIndicatorCode(编码, 经济体)` 校验。编码是否重复、经济体和货币是否存在且启用要查库，在服务中校验。
+- 实现：`IndicatorRule.Validate(Indicator)` 校验上面的字段规则，返回第一条错误 `FieldError(Field, Message)`（`Suanpan.Core/Common/Validation/`，各模块的规则共用），`Field` 为表单字段名（中英文字段为属性名加 `Zh` / `En`，如 `NameZh`），服务转成 `ManageResult.Fail(Message, Field)`；`IndicatorRule.ValidateDirectionChange(原方向, 新方向, 理由)` 判断 BR-031。编码格式和前缀由 `ReferenceCodeRule.ValidateIndicatorCode(编码, 经济体)` 校验。编码是否重复、经济体和货币是否存在且启用要查库，在服务中校验。
 - `sigma_n` 为空时取 `IndicatorRule.DefaultSigmaN`（4）。
 
 ### 3.5 启停与删除（BR-028）
@@ -178,7 +178,7 @@
 | 被引用的数据 | 当前检查 | 后续模块加入后补充 |
 |---|---|---|
 | 货币 | 经济体、指标 | 央行（`cb_bank`）、参考汇率 |
-| 经济体 | 指标 | 央行 |
+| 经济体 | 指标、数据源（`col_source.economy_code`，JAN-81 加入） | 央行 |
 | 指标 | —（引用它的表都还没建） | 指标与数据源的映射（JAN-79）、日历事件、快讯模板、央行（决议指标） |
 
 指标按 BR-153 处理：被引用的只能停用，没有被引用的可以删除。
@@ -239,7 +239,7 @@ Suanpan.Core/Common/Localization/   BilingualText、ContentLanguage（跨模块�
 Suanpan.Core/Reference/
 ├─ Entities/      Currency、Economy、Indicator、IndicatorSource
 ├─ Enums/         IndicatorCategory、IndicatorValueType、IndicatorUnit、ReleaseFrequency、Importance、ImpactDirection
-└─ Rules/         ReferenceCodeRule、TimeZoneRule、IndicatorRule、IndicatorRuleError、ReferenceDisplayNames（枚举的中英文显示名）
+└─ Rules/         ReferenceCodeRule、TimeZoneRule、IndicatorRule、ReferenceDisplayNames（枚举的中英文显示名）
 
 Suanpan.Data/
 ├─ SuanpanDbContext.Reference.cs
@@ -380,3 +380,4 @@ Suanpan.Crm/
 | v0.8 | 2026-10-23 | vivo.li / Claude | §3.4 补充：`sigma_n` 填写时必须大于 0（vivo.li 确认，JAN-77 实现） |
 | v0.9 | 2026-10-23 | vivo.li / Claude | FR-006.2 实施：§6、§6.1 指标详情的 action 和权限码按前端约定改为 `Detail` / `reference:indicator:detail`；§3.5 指标暂无引用表；§6 补充列表的引用数、指标表单的脚本和修改理由；§5.2 经济体列表带指标数 |
 | v0.10 | 2026-10-23 | vivo.li / Claude | FR-006.3 实施：§2.4 首批指标清单确认（[reference-indicators.md](reference-indicators.md)），导入迁移 `ImportReferenceInitialIndicators`；§3.6 单位增加"千个"，英文显示名确认；§8、§9 同步 |
+| v0.11 | 2026-10-23 | vivo.li / Claude | FR-001.1 实施：§3.4 校验失败改用各模块共用的 `FieldError`；§3.5 经济体的引用方增加数据源 |
