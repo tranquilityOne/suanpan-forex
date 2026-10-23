@@ -1,0 +1,104 @@
+@model IndicatorListViewModel
+@{
+    ViewData["Title"] = "指标字典";
+    var filter = Model.Filter;
+    string Zh(Enum value) => ReferenceDisplayNames.Get(value).Get(ContentLanguage.Zh);
+}
+
+<div class="page-header mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col">
+            <h2 class="page-title">指标字典</h2>
+        </div>
+        <div class="col-auto">
+            <a asp-action="Create" asp-permission="reference:indicator:create" class="btn btn-primary"><i class="ti ti-plus me-1"></i>新增指标</a>
+        </div>
+    </div>
+</div>
+
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label">经济体</label>
+        <select name="EconomyCode" asp-items="@(new SelectList(Model.EconomyOptions, "Value", "Text", filter.EconomyCode))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">类别</label>
+        <select name="Category" asp-items="@(new SelectList(Model.CategoryOptions, "Value", "Text", filter.Category?.ToString()))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">重要性</label>
+        <select name="Importance" asp-items="@(new SelectList(Model.ImportanceOptions, "Value", "Text", filter.Importance?.ToString()))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">状态</label>
+        <select name="IsEnabled" class="form-select form-select-sm">
+            <option value="">全部</option>
+            <option value="true" selected="@(filter.IsEnabled == true)">启用</option>
+            <option value="false" selected="@(filter.IsEnabled == false)">停用</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">关键字</label>
+        <input name="Keyword" value="@filter.Keyword" class="form-control form-control-sm" placeholder="编码或名称" />
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-primary">查询</button>
+        <a asp-action="Index" class="btn btn-sm">重置</a>
+    </div>
+</form>
+
+<div class="card">
+    @if (Model.Result.Items.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("没有符合条件的指标")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle card-table text-nowrap">
+                <thead>
+                    <tr><th>编码</th><th>简称</th><th>经济体</th><th>重要性</th><th>影响方向</th><th>频率</th><th>状态</th><th class="w-1"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var indicator in Model.Result.Items)
+                    {
+                        <tr>
+                            <td><code class="small">@indicator.Code</code></td>
+                            <td>@indicator.ShortName.Get(ContentLanguage.Zh)</td>
+                            <td>@indicator.EconomyName.Get(ContentLanguage.Zh)</td>
+                            <td>@Zh(indicator.Importance)</td>
+                            <td>@Zh(indicator.Direction)</td>
+                            <td>@Zh(indicator.Frequency)</td>
+                            <td><status-badge tone="@(indicator.IsEnabled ? BadgeTone.Success : BadgeTone.Neutral)" text="@(indicator.IsEnabled ? "启用" : "停用")" /></td>
+                            <td>
+                                <div class="btn-list flex-nowrap">
+                                    <a asp-action="Detail" asp-route-id="@indicator.Code" asp-permission="reference:indicator:detail" class="btn btn-sm">详情</a>
+                                    <a asp-action="Edit" asp-route-id="@indicator.Code" asp-permission="reference:indicator:edit" class="btn btn-sm">编辑</a>
+                                    @if (indicator.IsEnabled)
+                                    {
+                                        <confirm-form asp-action="SetStatus" asp-route-id="@indicator.Code" asp-route-enabled="false" asp-permission="reference:indicator:set_status"
+                                                      message="@($"停用指标 {indicator.Code}？停用后不再生成新的日历事件、不再盯盘，也不能被新选用；已有的数据不受影响。")" button-text="停用" />
+                                    }
+                                    else
+                                    {
+                                        <confirm-form asp-action="SetStatus" asp-route-id="@indicator.Code" asp-route-enabled="true" asp-permission="reference:indicator:set_status"
+                                                      message="@($"启用指标 {indicator.Code}？")" button-text="启用" button-class="btn btn-sm btn-outline-success" />
+                                    }
+                                    <confirm-form asp-action="Delete" asp-route-id="@indicator.Code" asp-permission="reference:indicator:delete" button-text="删除"
+                                                  message="@($"删除指标 {indicator.Code}？删除后不能恢复；被引用的指标不能删除，可以停用。")" />
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <partial name="_Pager" model="Model.Result" />
+    }
+</div>

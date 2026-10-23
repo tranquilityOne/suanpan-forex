@@ -18,9 +18,13 @@ public sealed class CurrencyService(SuanpanDbContext db) : ICurrencyService
             .GroupBy(e => e.CurrencyCode)
             .Select(g => new { Code = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Code, x => x.Count, ct);
+        var indicatorCounts = await db.Indicators
+            .GroupBy(i => i.CurrencyCode)
+            .Select(g => new { Code = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Code, x => x.Count, ct);
 
         return currencies
-            .Select(c => new CurrencyRow(c.Code, c.Name, c.IsEnabled, economyCounts.GetValueOrDefault(c.Code)))
+            .Select(c => new CurrencyRow(c.Code, c.Name, c.IsEnabled, economyCounts.GetValueOrDefault(c.Code), indicatorCounts.GetValueOrDefault(c.Code)))
             .ToList();
     }
 
@@ -82,13 +86,18 @@ public sealed class CurrencyService(SuanpanDbContext db) : ICurrencyService
             return ManageResult.Fail("货币不存在");
         }
 
-        // 引用方（基础数据设计 §3.5）：指标、央行等模块加入后在这里补充
+        // 引用方（基础数据设计 §3.5）：央行、参考汇率等模块加入后在这里补充
         var economies = await db.Economies.AsNoTracking()
             .Where(e => e.CurrencyCode == currency.Code)
             .OrderBy(e => e.Sort)
             .Select(e => e.Code)
             .ToListAsync(ct);
-        if (ReferenceUsage.DescribeOrNull(("经济体", economies)) is { } usage)
+        var indicators = await db.Indicators.AsNoTracking()
+            .Where(i => i.CurrencyCode == currency.Code)
+            .OrderBy(i => i.Code)
+            .Select(i => i.Code)
+            .ToListAsync(ct);
+        if (ReferenceUsage.DescribeOrNull(("经济体", economies), ("指标", indicators)) is { } usage)
         {
             return ManageResult.Fail(usage);
         }

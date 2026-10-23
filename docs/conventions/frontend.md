@@ -2,8 +2,8 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.8 |
-| 日期 | 2026-10-17 |
+| 版本 | v1.9 |
+| 日期 | 2026-10-23 |
 | 适用范围 | 后台 Suanpan.Crm 和前台 Suanpan.Portal 的页面、视图、静态资源 |
 | 依据 | data-hub PRD v1.0.0.2（DEC-014、NFR-131、§10.10）；web-portal PRD v1.0.0.2（DEC-005 ~ DEC-007、NFR-120 ~ NFR-124）；VVPay `doc/frontend.md` |
 | 相关约定 | [后端技术约定](backend.md) |
@@ -165,6 +165,8 @@ Suanpan.Crm/
 - **校验提示用中文默认提示**：ViewModel 只标 `[Display(Name = "中文名")]`；`Required`、`StringLength`、`MaxLength`、`MinLength`、`Range`、`Compare`、`EmailAddress`、`Phone`、`Url`、`RegularExpression` 没写 `ErrorMessage` 时，由 `Suanpan.Crm/Mvc/ChineseValidationMessages` 统一填中文提示（如"请填写名称"），int、bool 这类值类型的隐式必填和模型绑定错误也是中文。服务端和客户端显示同一句话。只有特殊场景才在特性上单独写 `ErrorMessage`。
 - 字段说明用 `.form-text`；复杂字段单独占一行，不要把说明挤在输入框正下方影响校验提示。
 - 布尔值用 `form-check form-switch`。
+- **小数输入框必须写 `asp-format`**，如 `asp-format="{0:0.######}"`：不写时 InputTagHelper 把 `decimal` 显示成两位小数，再保存就截断了（如 0.001 变成 0）。时间（`TimeOnly`）输入框写 `type="time" asp-format="{0:HH:mm}"`，不写时渲染成文本框。
+- 下拉框选项多的表单，把选项放进一个可空的 `[BindNever]` 对象（如 `IndicatorFormOptions`）：绑定时为空，操作日志序列化请求参数时跳过空值，日志里不会出现一串空的选项列表。
 - **表单页必须引用 `_ValidationScriptsPartial`**，确保客户端校验实际生效。**【与 VVPay 不同】** VVPay 的页面没有引用这个 partial，客户端校验实际没有生效。
 
 ### 5.3 写操作三件套
@@ -400,3 +402,4 @@ Suanpan.Portal/
 | v1.6 | 2026-10-18 | vivo.li / Claude | ENG-004.5 实施：§5.1 筛选区的导出按钮用 `formaction` 提交筛选表单；§7.2 CSV 导出用 `CsvDownload` 设置响应头、边查边写，导出 action 以 `Export` 开头并标 `[OpLog]` |
 | v1.7 | 2026-10-21 | vivo.li / Claude | §5.1 新增标题区写法：标题靠左，带按钮时用 `row` / `col` / `col-auto`，不在 `page-header` 上加 `align-items-center`（会让标题居中） |
 | v1.8 | 2026-10-21 | vivo.li / Claude | ENG-005.3 实施：§6 `asp-permission` 的写法要点（可用于 `confirm-form`、表单页按钮不用标、多个权限码时注入 `CurrentPermissions` 判断、权限码由约定测试检查） |
+| v1.9 | 2026-10-23 | vivo.li / Claude | FR-006.2 实施：§5.2 小数、时间输入框的格式；下拉框选项放进可空对象，不记进操作日志 |

@@ -23,6 +23,6 @@ public interface ICurrencyService
 
     Task<ManageResult> SetEnabledAsync(string code, bool enabled, CancellationToken ct = default);
 
-    /// <summary>被经济体引用时拒绝，提示中列出引用方（BR-028、ERR-REF-002）</summary>
+    /// <summary>被经济体或指标引用时拒绝，提示中列出引用方（BR-028、ERR-REF-002）</summary>
     Task<ManageResult> DeleteAsync(string code, CancellationToken ct = default);
 }

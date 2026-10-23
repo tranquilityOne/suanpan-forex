@@ -1,4 +1,4 @@
-@model IReadOnlyList<Suanpan.Core.Reference.Entities.Economy>
+@model IReadOnlyList<Suanpan.Services.Reference.Economies.Models.EconomyRow>
 @{
     ViewData["Title"] = "经济体";
 }
@@ -24,7 +24,7 @@
         <div class="table-responsive">
             <table class="table table-hover table-sm align-middle card-table text-nowrap">
                 <thead>
-                    <tr><th>编码</th><th>中文名称</th><th>英文名称</th><th>货币</th><th>时区</th><th class="text-end">显示顺序</th><th>状态</th><th class="w-1"></th></tr>
+                    <tr><th>编码</th><th>中文名称</th><th>英文名称</th><th>货币</th><th>时区</th><th class="text-end">显示顺序</th><th class="text-end">指标数</th><th>状态</th><th class="w-1"></th></tr>
                 </thead>
                 <tbody>
                     @foreach (var economy in Model)
@@ -36,6 +36,7 @@
                             <td><code>@economy.CurrencyCode</code></td>
                             <td>@economy.TimeZone</td>
                             <td class="text-end font-monospace">@economy.Sort</td>
+                            <td class="text-end font-monospace">@economy.IndicatorCount</td>
                             <td><status-badge tone="@(economy.IsEnabled ? BadgeTone.Success : BadgeTone.Neutral)" text="@(economy.IsEnabled ? "启用" : "停用")" /></td>
                             <td>
                                 <div class="btn-list flex-nowrap">
@@ -50,8 +51,15 @@
                                         <confirm-form asp-action="SetStatus" asp-route-id="@economy.Code" asp-route-enabled="true" asp-permission="reference:economy:set_status"
                                                       message="@($"启用经济体 {economy.Code}？")" button-text="启用" button-class="btn btn-sm btn-outline-success" />
                                     }
-                                    <confirm-form asp-action="Delete" asp-route-id="@economy.Code" asp-permission="reference:economy:delete" button-text="删除"
-                                                  message="@($"删除经济体 {economy.Code}？删除后不能恢复；被引用的经济体不能删除，可以停用。")" />
+                                    @if (economy.IndicatorCount == 0)
+                                    {
+                                        <confirm-form asp-action="Delete" asp-route-id="@economy.Code" asp-permission="reference:economy:delete" button-text="删除"
+                                                      message="@($"删除经济体 {economy.Code}？删除后不能恢复。")" />
+                                    }
+                                    else
+                                    {
+                                        <button type="button" asp-permission="reference:economy:delete" class="btn btn-sm" disabled title="有指标属于该经济体，不能删除，可以停用">删除</button>
+                                    }
                                 </div>
                             </td>
                         </tr>

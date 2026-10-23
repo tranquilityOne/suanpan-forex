@@ -2,6 +2,7 @@ using Suanpan.Services.Reference.Currencies;
 using Suanpan.Services.Reference.Currencies.Models;
 using Suanpan.Services.Reference.Economies;
 using Suanpan.Services.Reference.Economies.Models;
+using Suanpan.Services.Reference.Indicators;
 using Suanpan.Services.Tests.Fixtures;
 using Xunit;
 
@@ -68,6 +69,22 @@ public class CurrencyServiceTests(PostgresFixture postgres)
         Assert.False(result.Success);
         Assert.Contains("QA", result.Error);
         Assert.NotNull(await service.GetAsync("XAC", Ct));
+    }
+
+    /// <summary>FR-005 验收第 3 条：被指标使用时同样不能删除</summary>
+    [Fact]
+    public async Task Delete_RejectsCurrencyUsedByIndicator()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var service = new CurrencyService(db);
+        await service.CreateAsync(new CurrencyInput("XAE", "测试币", "Test Dollar"), Ct);
+        var indicator = TestData.IndicatorCode();
+        await new IndicatorService(db).CreateAsync(TestData.Indicator(indicator, currencyCode: "XAE"), Ct);
+
+        var result = await service.DeleteAsync("XAE", Ct);
+
+        Assert.False(result.Success);
+        Assert.Contains(indicator, result.Error);
     }
 
     [Fact]

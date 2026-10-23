@@ -37,7 +37,7 @@ public class IndicatorRuleTests
         Assert.Null(IndicatorRule.Validate(indicator));
     }
 
-    /// <summary>BR-030 必填字段，以及小数位、持平容差、上下限的范围；Field 指向出错的表单字段</summary>
+    /// <summary>BR-030 必填字段，以及小数位、持平容差、上下限、标准差倍数的范围；Field 指向出错的表单字段</summary>
     [Theory]
     [MemberData(nameof(InvalidCases))]
     public void Validate_ReportsTheInvalidField(string field, Action<Indicator> breakIt)
@@ -64,6 +64,8 @@ public class IndicatorRuleTests
         { "Decimals", i => i.Decimals = IndicatorRule.MaxDecimals + 1 },
         { "FlatTolerance", i => i.FlatTolerance = -0.000001m },
         { "RangeMin", i => (i.RangeMin, i.RangeMax) = (10, 9.999999m) },
+        { "SigmaN", i => i.SigmaN = 0 },
+        { "SigmaN", i => i.SigmaN = -1 },
     };
 
     /// <summary>BR-031：影响方向改变时必须填写理由</summary>

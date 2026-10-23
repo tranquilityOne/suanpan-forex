@@ -7,8 +7,8 @@ namespace Suanpan.Services.Reference.Economies;
 /// <summary>经济体（基础数据设计 §3.3、§3.5、§5.2，FR-005）</summary>
 public interface IEconomyService
 {
-    /// <summary>全部经济体，按显示顺序排序</summary>
-    Task<IReadOnlyList<Economy>> GetListAsync(CancellationToken ct = default);
+    /// <summary>全部经济体，按显示顺序排序，带各自的指标数</summary>
+    Task<IReadOnlyList<EconomyRow>> GetListAsync(CancellationToken ct = default);
 
     Task<Economy?> GetAsync(string code, CancellationToken ct = default);
 
@@ -29,6 +29,6 @@ public interface IEconomyService
 
     Task<ManageResult> SetEnabledAsync(string code, bool enabled, CancellationToken ct = default);
 
-    /// <summary>被引用时拒绝，提示中列出引用方（BR-028、ERR-REF-002）</summary>
+    /// <summary>被指标引用时拒绝，提示中列出引用方（BR-028、ERR-REF-002）</summary>
     Task<ManageResult> DeleteAsync(string code, CancellationToken ct = default);
 }

@@ -13,8 +13,8 @@ public static class PresetRoleGrants
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
         {
             // 基础数据：基础数据设计 §6.1
-            [RoleCodes.Engineer] = ["reference:*:index", "reference:*:details", "reference:indicator_source:*"],
-            [RoleCodes.Editor] = ["reference:*:index", "reference:*:details", "reference:economy:*", "reference:currency:*", "reference:indicator:*"],
-            [RoleCodes.Viewer] = ["reference:*:index", "reference:*:details"],
+            [RoleCodes.Engineer] = ["reference:*:index", "reference:*:detail", "reference:indicator_source:*"],
+            [RoleCodes.Editor] = ["reference:*:index", "reference:*:detail", "reference:economy:*", "reference:currency:*", "reference:indicator:*"],
+            [RoleCodes.Viewer] = ["reference:*:index", "reference:*:detail"],
         };
 }

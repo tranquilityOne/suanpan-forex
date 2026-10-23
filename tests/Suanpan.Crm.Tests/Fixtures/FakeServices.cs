@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
 using System.Net;
+using Suanpan.Core.Reference.Entities;
 using Suanpan.Core.Sys.Entities;
+using Suanpan.Services.Reference.Indicators;
+using Suanpan.Services.Reference.Indicators.Models;
 using Suanpan.Services.Sys.Auth;
 using Suanpan.Services.Sys.Configs;
 using Suanpan.Services.Sys.Configs.Models;
@@ -135,4 +138,28 @@ public sealed class RecordingOpLogService : IOpLogService
         await output.WriteAsync(System.Text.Encoding.UTF8.GetBytes(ExportContent), ct);
         return 1;
     }
+}
+
+/// <summary>按编码返回预设的指标；修改时记下输入并返回成功</summary>
+public sealed class FakeIndicatorService : IIndicatorService
+{
+    public Dictionary<string, Indicator> Indicators { get; } = [];
+
+    public List<IndicatorInput> Updated { get; } = [];
+
+    public Task<Indicator?> GetAsync(string code, CancellationToken ct = default) => Task.FromResult(Indicators.GetValueOrDefault(code));
+
+    public Task<ManageResult> UpdateAsync(IndicatorInput input, CancellationToken ct = default)
+    {
+        Updated.Add(input);
+        return Task.FromResult(ManageResult.Ok);
+    }
+
+    public Task<PagedResult<IndicatorRow>> QueryAsync(IndicatorQuery query, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<ManageResult> CreateAsync(IndicatorInput input, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<ManageResult> SetEnabledAsync(string code, bool enabled, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<ManageResult> DeleteAsync(string code, CancellationToken ct = default) => throw new NotSupportedException();
 }

@@ -60,6 +60,8 @@ public partial class AreaCatalogTests
             "sys:job:index",
             "reference:economy:index", "reference:economy:create", "reference:economy:edit", "reference:economy:set_status", "reference:economy:delete",
             "reference:currency:index", "reference:currency:create", "reference:currency:edit", "reference:currency:set_status", "reference:currency:delete",
+            "reference:indicator:index", "reference:indicator:detail", "reference:indicator:create", "reference:indicator:edit",
+            "reference:indicator:set_status", "reference:indicator:delete",
         ];
 
         var codes = GeneratedPermCodes(app);

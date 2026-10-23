@@ -18,7 +18,7 @@ public static class IndicatorRule
 
     /// <summary>
     /// 新增和修改共用：BR-030 的必填字段齐全（文本不能为空白，枚举必须是已定义的值）、小数位 0 ~ 6、
-    /// 持平容差不小于 0、上下限都填时下限不大于上限。返回第一条错误，全部通过时返回 null
+    /// 持平容差不小于 0、上下限都填时下限不大于上限、标准差倍数填写时大于 0。返回第一条错误，全部通过时返回 null
     /// </summary>
     public static IndicatorRuleError? Validate(Indicator indicator)
     {
@@ -49,6 +49,11 @@ public static class IndicatorRule
         if (indicator.RangeMin is { } min && indicator.RangeMax is { } max && min > max)
         {
             return new(nameof(Indicator.RangeMin), "合理下限不能大于合理上限");
+        }
+
+        if (indicator.SigmaN <= 0)
+        {
+            return new(nameof(Indicator.SigmaN), "标准差倍数必须大于 0，不填时按 4 倍");
         }
 
         return null;

@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Suanpan.Services.Common.Alerts;
 using Suanpan.Services.Reference.Currencies;
 using Suanpan.Services.Reference.Economies;
+using Suanpan.Services.Reference.Indicators;
 using Suanpan.Services.Sys.Auth;
 using Suanpan.Services.Sys.Configs;
 using Suanpan.Services.Sys.Logging;
@@ -62,6 +63,7 @@ public static class ServicesServiceCollectionExtensions
         // Reference：基础数据
         services.AddScoped<ICurrencyService, CurrencyService>();
         services.AddScoped<IEconomyService, EconomyService>();
+        services.AddScoped<IIndicatorService, IndicatorService>();
 
         return services;
     }

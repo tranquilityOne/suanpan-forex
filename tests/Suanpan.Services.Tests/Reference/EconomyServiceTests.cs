@@ -3,6 +3,7 @@ using Suanpan.Services.Reference.Currencies;
 using Suanpan.Services.Reference.Currencies.Models;
 using Suanpan.Services.Reference.Economies;
 using Suanpan.Services.Reference.Economies.Models;
+using Suanpan.Services.Reference.Indicators;
 using Suanpan.Services.Tests.Fixtures;
 using Xunit;
 
@@ -95,7 +96,23 @@ public class EconomyServiceTests(PostgresFixture postgres)
         Assert.DoesNotContain(await service.GetOptionsAsync(Ct), e => e.Code == "QF");
     }
 
-    /// <summary>被指标引用时不能删除的情况随指标一起实现（JAN-77）</summary>
+    /// <summary>FR-005 验收第 3 条、ERR-REF-002：有指标的经济体不能删除，提示中列出指标</summary>
+    [Fact]
+    public async Task Delete_RejectsEconomyWithIndicators()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var service = new EconomyService(db);
+        await service.CreateAsync(new EconomyInput("QH", "测试国", "Testland", "USD", NewYork, 900), Ct);
+        var indicator = TestData.IndicatorCode("QH");
+        await new IndicatorService(db).CreateAsync(TestData.Indicator(indicator, "QH"), Ct);
+
+        var result = await service.DeleteAsync("QH", Ct);
+
+        Assert.False(result.Success);
+        Assert.Contains(indicator, result.Error);
+        Assert.NotNull(await service.GetAsync("QH", Ct));
+    }
+
     [Fact]
     public async Task Delete_RemovesUnreferencedEconomy()
     {

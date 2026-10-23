@@ -24,7 +24,7 @@
         <div class="table-responsive">
             <table class="table table-hover table-sm align-middle card-table text-nowrap">
                 <thead>
-                    <tr><th>编码</th><th>中文名称</th><th>英文名称</th><th class="text-end">经济体数</th><th>状态</th><th class="w-1"></th></tr>
+                    <tr><th>编码</th><th>中文名称</th><th>英文名称</th><th class="text-end">经济体数</th><th class="text-end">指标数</th><th>状态</th><th class="w-1"></th></tr>
                 </thead>
                 <tbody>
                     @foreach (var currency in Model)
@@ -34,6 +34,7 @@
                             <td>@currency.Name.Zh</td>
                             <td>@currency.Name.En</td>
                             <td class="text-end font-monospace">@currency.EconomyCount</td>
+                            <td class="text-end font-monospace">@currency.IndicatorCount</td>
                             <td><status-badge tone="@(currency.IsEnabled ? BadgeTone.Success : BadgeTone.Neutral)" text="@(currency.IsEnabled ? "启用" : "停用")" /></td>
                             <td>
                                 <div class="btn-list flex-nowrap">
@@ -48,14 +49,14 @@
                                         <confirm-form asp-action="SetStatus" asp-route-id="@currency.Code" asp-route-enabled="true" asp-permission="reference:currency:set_status"
                                                       message="@($"启用货币 {currency.Code}？")" button-text="启用" button-class="btn btn-sm btn-outline-success" />
                                     }
-                                    @if (currency.EconomyCount == 0)
+                                    @if (!currency.IsReferenced)
                                     {
                                         <confirm-form asp-action="Delete" asp-route-id="@currency.Code" asp-permission="reference:currency:delete" button-text="删除"
                                                       message="@($"删除货币 {currency.Code}？删除后不能恢复。")" />
                                     }
                                     else
                                     {
-                                        <button type="button" asp-permission="reference:currency:delete" class="btn btn-sm" disabled title="有经济体使用该货币，不能删除，可以停用">删除</button>
+                                        <button type="button" asp-permission="reference:currency:delete" class="btn btn-sm" disabled title="有经济体或指标使用该货币，不能删除，可以停用">删除</button>
                                     }
                                 </div>
                             </td>

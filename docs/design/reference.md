@@ -2,11 +2,11 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.7 |
+| 版本 | v0.9 |
 | 日期 | 2026-10-23 |
 | 状态 | 已评审（2026-10-22，vivo.li） |
 | 覆盖 | FR-005 经济体与货币管理、FR-006 指标字典管理（指标与数据源的映射只定表结构） |
-| 依据 | data-hub PRD v1.0.0.15；web-portal PRD（FR-005 指标详情页，BR-015、BR-017）；后端约定 v1.23；前端约定 v1.8；数据库变更约定 |
+| 依据 | data-hub PRD v1.0.0.15；web-portal PRD（FR-005 指标详情页，BR-015、BR-017）；后端约定 v1.23；前端约定 v1.9；数据库变更约定 |
 
 > 本文只写"怎么实现"。需求、业务规则和验收标准以 PRD 为准，这里引用编号，不复述。
 > 实现偏离本文时，在同一个 PR 里更新本文。
@@ -163,7 +163,7 @@
 
 ### 3.4 指标的保存（`IndicatorRule`）
 
-- 新增：编码格式正确、以经济体开头、不重复（ERR-IND-001）；经济体和货币必须存在且启用；必填字段齐全（BR-030）；小数位 0 ~ 6；持平容差 ≥ 0；上下限都填时下限 ≤ 上限。
+- 新增：编码格式正确、以经济体开头、不重复（ERR-IND-001）；经济体和货币必须存在且启用；必填字段齐全（BR-030）；小数位 0 ~ 6；持平容差 ≥ 0；上下限都填时下限 ≤ 上限；标准差倍数 `sigma_n` 可以不填，填写时必须大于 0（JAN-77 实现）。
 - 修改：编码和经济体不可改。**影响方向变化时必须填写理由**（BR-031，ERR-IND-002）：表单上有"修改理由"字段，服务端判断方向是否变化；理由由操作日志过滤器写入 `sys_op_log.reason`（sys 设计 §7.1 按名为 `Reason` 的属性采集），审计日志可查（FR-006 验收第 2 条）。不另建方向变更历史表（PRD DEC-018：操作日志只记请求参数）。
 - 数值类型为"区间"的指标，日历事件同时存上下限（BR-032），本表只记类型。
 - 实现：`IndicatorRule.Validate(Indicator)` 校验上面的字段规则，返回第一条错误 `IndicatorRuleError(Field, Message)`，`Field` 为表单字段名（中英文字段为属性名加 `Zh` / `En`，如 `NameZh`），服务转成 `ManageResult.Fail(Message, Field)`；`IndicatorRule.ValidateDirectionChange(原方向, 新方向, 理由)` 判断 BR-031。编码格式和前缀由 `ReferenceCodeRule.ValidateIndicatorCode(编码, 经济体)` 校验。编码是否重复、经济体和货币是否存在且启用要查库，在服务中校验。
@@ -179,7 +179,7 @@
 |---|---|---|
 | 货币 | 经济体、指标 | 央行（`cb_bank`）、参考汇率 |
 | 经济体 | 指标 | 央行 |
-| 指标 | 指标与数据源的映射 | 日历事件、快讯模板、央行（决议指标） |
+| 指标 | —（引用它的表都还没建） | 指标与数据源的映射（JAN-79）、日历事件、快讯模板、央行（决议指标） |
 
 指标按 BR-153 处理：被引用的只能停用，没有被引用的可以删除。
 
@@ -262,7 +262,7 @@ Suanpan.Crm/
 | 接口 | 方法 | 说明 |
 |---|---|---|
 | `ICurrencyService` | `GetListAsync`、`GetAsync(code)`、`GetOptionsAsync`、`CreateAsync`、`UpdateAsync`、`SetEnabledAsync(code, enabled)`、`DeleteAsync(code)` | `GetOptionsAsync` 只返回启用的，供下拉框使用 |
-| `IEconomyService` | 同上，另有 `GetNextSortAsync` | 列表按 `sort` 排序；新增页的显示顺序默认取当前最大值加 10 |
+| `IEconomyService` | 同上，另有 `GetNextSortAsync` | 列表按 `sort` 排序，带各经济体的指标数；新增页的显示顺序默认取当前最大值加 10 |
 | `IIndicatorService` | `QueryAsync(IndicatorQuery)`、`GetAsync(code)`、`CreateAsync`、`UpdateAsync`、`SetEnabledAsync`、`DeleteAsync` | `IndicatorQuery`：经济体、类别、重要性、启用状态、关键字（编码或名称包含），分页；`UpdateAsync` 的输入带 `Reason` |
 
 删除被拒时，`ManageResult` 的提示中列出引用方，如"被以下数据引用，不能删除，可以停用：指标 US.NFP、US.CPI.YOY"（每类最多列 10 个，其余给出总数），由 `Services/Reference/Common/ReferenceUsage` 拼写。
@@ -281,16 +281,18 @@ Suanpan.Crm/
 | 删除 | POST | `reference:economy:delete` | 二次确认；被引用时提示引用方 |
 | 货币 | `/Reference/Currency` 及新增、编辑、启停、删除 | `reference:currency:index` / `create` / `edit` / `set_status` / `delete` | 同经济体 |
 | 指标字典 | `/Reference/Indicator` | `reference:indicator:index` | 筛选：经济体、类别、重要性、状态、关键字；列：编码、简称、经济体、重要性、影响方向、频率、状态 |
-| 指标详情 | `/Reference/Indicator/Details/{code}` | `reference:indicator:details` | 只读，显示全部字段（含说明），供没有编辑权限的角色查看 |
+| 指标详情 | `/Reference/Indicator/Detail/{code}` | `reference:indicator:detail` | 只读，显示全部字段（含说明），供没有编辑权限的角色查看 |
 | 新增 / 编辑指标 | `/Reference/Indicator/Create`、`/Edit/{code}` | `reference:indicator:create` / `edit` | 字段分组：基本信息、数值、发布、说明、质量校验参数。新增时货币默认取经济体的货币；编辑时编码、经济体只读。修改影响方向时"修改理由"必填 |
 | 启用 / 停用、删除指标 | POST | `reference:indicator:set_status` / `delete` | 二次确认 |
 | 指标的数据源映射 | 待 FR-001 完成后设计 | `reference:indicator_source:*` | 管理员、采集工程师可编辑（PRD §13.1.2） |
 
 菜单排序：经济体 10、货币 20、指标字典 30。列表页、表单页的写法按前端约定 §5，操作按钮按权限隐藏（`asp-permission`）。
 
-权限码的第一段是 Area 名转成的 snake_case（`Reference` → `reference`，sys 设计 §4.4），不是表名前缀 `ref_`。路由中的 `{code}` 不区分大小写。指标详情的 action 名为 `Details`，没有默认显示名，需要标 `[PermName("详情")]`。
+权限码的第一段是 Area 名转成的 snake_case（`Reference` → `reference`，sys 设计 §4.4），不是表名前缀 `ref_`。路由中的 `{code}` 不区分大小写。指标详情的 action 名为 `Detail`（前端约定 §3.3 的详情页命名，默认显示名"详情"），权限码为 `reference:indicator:detail`。
 
-货币列表显示使用该货币的经济体数，大于 0 时删除按钮置灰并提示"可以停用"；经济体的引用方（指标）在 JAN-77 加入后同样处理。编辑经济体时，货币下拉框保留当前使用的货币（即使已停用，标"已停用"），其余只列启用的。
+货币列表显示使用该货币的经济体数和指标数，经济体列表显示指标数，大于 0 时删除按钮置灰并提示"可以停用"。编辑经济体、指标时，货币下拉框保留当前使用的货币（即使已停用，标"已停用"），其余只列启用的。
+
+指标表单（`wwwroot/js/reference/indicator-edit.js`）：新增时选了经济体，货币默认设为经济体的货币；编辑时影响方向一改变，"修改理由"就标为必填，是否必填仍以服务端判断为准。修改理由的属性名为 `Reason`，由操作日志过滤器写入原因列。保存后回到详情页。下拉框选项放在可空的 `Options` 对象里，绑定时为空，操作日志的请求参数中不会出现选项。
 
 ### 6.1 权限码与预置角色
 
@@ -298,9 +300,9 @@ Suanpan.Crm/
 
 | 角色 | 通配规则 |
 |---|---|
-| 采集工程师 `engineer` | `reference:*:index`、`reference:*:details`、`reference:indicator_source:*` |
-| 编辑 `editor` | `reference:*:index`、`reference:*:details`、`reference:economy:*`、`reference:currency:*`、`reference:indicator:*` |
-| 只读 `viewer` | `reference:*:index`、`reference:*:details` |
+| 采集工程师 `engineer` | `reference:*:index`、`reference:*:detail`、`reference:indicator_source:*` |
+| 编辑 `editor` | `reference:*:index`、`reference:*:detail`、`reference:economy:*`、`reference:currency:*`、`reference:indicator:*` |
+| 只读 `viewer` | `reference:*:index`、`reference:*:detail` |
 
 ---
 
@@ -375,3 +377,5 @@ Suanpan.Crm/
 | v0.5 | 2026-10-22 | vivo.li / Claude | FR-005.1 实施：§2.4 货币、经济体的预置数据改为在迁移中手写 `InsertData`（`HasData` 会丢掉中英文文本）；§3.2 部署环境需要 tzdata |
 | v0.6 | 2026-10-23 | vivo.li / Claude | FR-005.2 实施：§6、§6.1 权限码前缀由 `ref:` 更正为 `reference:`（按 Area 名自动生成）；§5.2 失败提示带字段名、删除提示措辞、`GetNextSortAsync`；§6 补充删除按钮、货币下拉框的处理 |
 | v0.7 | 2026-10-23 | vivo.li / Claude | FR-006.1 实施：§3.4 `IndicatorRule` 的接口和返回的字段名；§3.6 枚举编号、显示名的登记和英文名待确认；§3.7 可空的说明的存储方式 |
+| v0.8 | 2026-10-23 | vivo.li / Claude | §3.4 补充：`sigma_n` 填写时必须大于 0（vivo.li 确认，JAN-77 实现） |
+| v0.9 | 2026-10-23 | vivo.li / Claude | FR-006.2 实施：§6、§6.1 指标详情的 action 和权限码按前端约定改为 `Detail` / `reference:indicator:detail`；§3.5 指标暂无引用表；§6 补充列表的引用数、指标表单的脚本和修改理由；§5.2 经济体列表带指标数 |

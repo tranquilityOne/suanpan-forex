@@ -1,8 +1,8 @@
 using System.Net;
-using System.Text.RegularExpressions;
 using Suanpan.Core.Sys.Enums;
 using Suanpan.Crm.Tests.Fixtures;
 using Xunit;
+using static Suanpan.Crm.Tests.Fixtures.BrowserForms;
 
 namespace Suanpan.Crm.Tests.Controllers;
 
@@ -10,7 +10,7 @@ namespace Suanpan.Crm.Tests.Controllers;
 /// 登录流程中 Cookie 的签发、切换和跳转（sys 设计 §5.1、§5.2）。浏览器自动保存 Cookie，表单带防伪令牌提交。
 /// 登录服务用替身，它本身的校验在 Suanpan.Services.Tests 中测试。
 /// </summary>
-public partial class AccountControllerTests
+public class AccountControllerTests
 {
     /// <summary>完成标准（JAN-68）：管理员能完成"密码 → TOTP → 进入首页"；只通过密码时还进不了首页</summary>
     [Fact]
@@ -98,27 +98,6 @@ public partial class AccountControllerTests
         Assert.Equal("/Account/Login", (await browser.GetAsync("/", Ct)).RedirectPath());
         Assert.Contains("user10", app.Auth.LoggedOut);
     }
-
-    private static async Task<HttpClient> SignedInBrowserAsync(CrmApp app, string username)
-    {
-        var browser = app.CreateBrowser();
-        await SubmitAsync(browser, "/Account/Login", new() { ["Username"] = username, ["Password"] = FakeAuthService.Password });
-        var verify = await SubmitAsync(browser, "/Account/TwoFactor", new() { ["Code"] = FakeAuthService.Code });
-        Assert.Equal("/", verify.RedirectPath());
-        return browser;
-    }
-
-    /// <summary>打开表单所在的页面取防伪令牌，再提交表单（默认提交到同一地址）</summary>
-    private static async Task<HttpResponseMessage> SubmitAsync(
-        HttpClient browser, string page, Dictionary<string, string> fields, string? action = null)
-    {
-        var html = await browser.GetStringAsync(page, Ct);
-        fields["__RequestVerificationToken"] = AntiforgeryToken().Match(html).Groups["token"].Value;
-        return await browser.PostAsync(action ?? page, new FormUrlEncodedContent(fields), Ct);
-    }
-
-    [GeneratedRegex("name=\"__RequestVerificationToken\" type=\"hidden\" value=\"(?<token>[^\"]+)\"")]
-    private static partial Regex AntiforgeryToken();
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 }

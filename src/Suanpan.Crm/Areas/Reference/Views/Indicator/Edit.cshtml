@@ -1,0 +1,215 @@
+@model IndicatorEditViewModel
+@{
+    // 编辑页的地址带编码（/Edit/{code}），新增页没有
+    var isNew = ViewContext.RouteData.Values["id"] is null;
+    ViewData["Title"] = isNew ? "新增指标" : "编辑指标";
+    var options = Model.Options!;
+    // 小数输入框都写 asp-format="{0:0.######}"：不指定时 ASP.NET 把 decimal 显示成两位小数，再保存就被截断了
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">@ViewData["Title"]</h2>
+</div>
+
+<div class="card" style="max-width: 60rem">
+    <form asp-action="@(isNew ? "Create" : "Edit")" asp-route-id="@(isNew ? null : Model.Code)" method="post" class="card-body" id="indicator-form">
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+
+        <h3 class="card-title">基本信息</h3>
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label asp-for="EconomyCode" class="form-label required"></label>
+                @if (isNew)
+                {
+                    <select asp-for="EconomyCode" asp-items="options.Economies" class="form-select"
+                            data-economy-currencies="@System.Text.Json.JsonSerializer.Serialize(options.EconomyCurrencies)">
+                        <option value="">请选择</option>
+                    </select>
+                    <div class="form-text">创建后不能修改</div>
+                    <span asp-validation-for="EconomyCode"></span>
+                }
+                else
+                {
+                    <div class="form-control-plaintext"><code>@Model.EconomyCode</code></div>
+                }
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="Code" class="form-label required"></label>
+                @if (isNew)
+                {
+                    <input asp-for="Code" class="form-control font-monospace text-uppercase" maxlength="@ReferenceCodeRule.MaxIndicatorCodeLength" autocomplete="off" placeholder="如 US.CPI.YOY" />
+                    <div class="form-text">经济体.简称，简称只用大写字母和数字，可以有多段；创建后不能修改</div>
+                    <span asp-validation-for="Code"></span>
+                }
+                else
+                {
+                    <div class="form-control-plaintext"><code>@Model.Code</code></div>
+                }
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="CurrencyCode" class="form-label required"></label>
+                <select asp-for="CurrencyCode" asp-items="options.Currencies" class="form-select">
+                    <option value="">请选择</option>
+                </select>
+                <div class="form-text">默认取经济体的货币，可以改</div>
+                <span asp-validation-for="CurrencyCode"></span>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="NameZh" class="form-label required"></label>
+                <input asp-for="NameZh" class="form-control" placeholder="如：非农就业人数" />
+                <span asp-validation-for="NameZh"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="NameEn" class="form-label required"></label>
+                <input asp-for="NameEn" class="form-control" placeholder="如：Nonfarm Payrolls" />
+                <span asp-validation-for="NameEn"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="ShortNameZh" class="form-label required"></label>
+                <input asp-for="ShortNameZh" class="form-control" placeholder="日历和快讯中使用，如：非农" />
+                <span asp-validation-for="ShortNameZh"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="ShortNameEn" class="form-label required"></label>
+                <input asp-for="ShortNameEn" class="form-control" placeholder="如：NFP" />
+                <span asp-validation-for="ShortNameEn"></span>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="Category" class="form-label required"></label>
+                <select asp-for="Category" asp-items="options.Categories" class="form-select">
+                    <option value="">请选择</option>
+                </select>
+                <span asp-validation-for="Category"></span>
+            </div>
+        </div>
+
+        <h3 class="card-title mt-2">数值</h3>
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label asp-for="ValueType" class="form-label required"></label>
+                <select asp-for="ValueType" asp-items="options.ValueTypes" class="form-select">
+                    <option value="">请选择</option>
+                </select>
+                <div class="form-text">区间：如联邦基金利率目标区间，公布值同时存上下限</div>
+                <span asp-validation-for="ValueType"></span>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="Unit" class="form-label required"></label>
+                <select asp-for="Unit" asp-items="options.Units" class="form-select">
+                    <option value="">请选择</option>
+                </select>
+                <div class="form-text">公布值按这个单位存储</div>
+                <span asp-validation-for="Unit"></span>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="Decimals" class="form-label required"></label>
+                <input asp-for="Decimals" class="form-control" min="0" max="@IndicatorRule.MaxDecimals" />
+                <span asp-validation-for="Decimals"></span>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="Direction" class="form-label required"></label>
+                <select asp-for="Direction" asp-items="options.Directions" class="form-select" data-original="@Model.OriginalDirection">
+                    <option value="">请选择</option>
+                </select>
+                <div class="form-text">快讯据此判断利多利空</div>
+                <span asp-validation-for="Direction"></span>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="FlatTolerance" class="form-label required"></label>
+                <input asp-for="FlatTolerance" asp-format="{0:0.######}" class="form-control" />
+                <div class="form-text">公布值与预期之差不超过它时算持平</div>
+                <span asp-validation-for="FlatTolerance"></span>
+            </div>
+        </div>
+
+        <h3 class="card-title mt-2">发布</h3>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="AgencyZh" class="form-label required"></label>
+                <input asp-for="AgencyZh" class="form-control" placeholder="如：美国劳工统计局" />
+                <span asp-validation-for="AgencyZh"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="AgencyEn" class="form-label required"></label>
+                <input asp-for="AgencyEn" class="form-control" placeholder="如：Bureau of Labor Statistics" />
+                <span asp-validation-for="AgencyEn"></span>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="DefaultReleaseTime" class="form-label required"></label>
+                <input asp-for="DefaultReleaseTime" type="time" asp-format="{0:HH:mm}" class="form-control" />
+                <div class="form-text">机构当地时间，按经济体的时区解释</div>
+                <span asp-validation-for="DefaultReleaseTime"></span>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="Frequency" class="form-label required"></label>
+                <select asp-for="Frequency" asp-items="options.Frequencies" class="form-select">
+                    <option value="">请选择</option>
+                </select>
+                <span asp-validation-for="Frequency"></span>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="Importance" class="form-label required"></label>
+                <select asp-for="Importance" asp-items="options.Importances" class="form-select">
+                    <option value="">请选择</option>
+                </select>
+                <div class="form-text">"高"的指标进入盯盘计划</div>
+                <span asp-validation-for="Importance"></span>
+            </div>
+        </div>
+
+        <h3 class="card-title mt-2">说明</h3>
+        <div class="form-text mb-2">定义、计算方式、为什么重要，前台指标详情页使用；可以不填，不填时前台不展示。不得复制其他网站的说明文字</div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="DescriptionZh" class="form-label"></label>
+                <textarea asp-for="DescriptionZh" class="form-control" rows="4"></textarea>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="DescriptionEn" class="form-label"></label>
+                <textarea asp-for="DescriptionEn" class="form-control" rows="4"></textarea>
+            </div>
+        </div>
+
+        <h3 class="card-title mt-2">质量校验参数</h3>
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label asp-for="RangeMin" class="form-label"></label>
+                <input asp-for="RangeMin" asp-format="{0:0.######}" class="form-control" />
+                <span asp-validation-for="RangeMin"></span>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="RangeMax" class="form-label"></label>
+                <input asp-for="RangeMax" asp-format="{0:0.######}" class="form-control" />
+                <span asp-validation-for="RangeMax"></span>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="SigmaN" class="form-label"></label>
+                <input asp-for="SigmaN" asp-format="{0:0.######}" class="form-control" />
+                <div class="form-text">偏离几倍标准差算异常；不填时按 @IndicatorRule.DefaultSigmaN.ToString("0") 倍</div>
+                <span asp-validation-for="SigmaN"></span>
+            </div>
+        </div>
+
+        @if (!isNew)
+        {
+            <div class="mb-3">
+                <label asp-for="Reason" class="form-label" id="reason-label"></label>
+                <input asp-for="Reason" class="form-control" />
+                <div class="form-text">修改影响方向时必填，记入操作日志</div>
+                <span asp-validation-for="Reason"></span>
+            </div>
+        }
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">保存</button>
+            <a asp-action="@(isNew ? "Index" : "Detail")" asp-route-id="@(isNew ? null : Model.Code)" class="btn">取消</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/js/reference/indicator-edit.js" asp-append-version="true"></script>
+}

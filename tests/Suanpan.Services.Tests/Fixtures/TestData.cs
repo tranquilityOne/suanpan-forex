@@ -1,6 +1,8 @@
+using Suanpan.Core.Reference.Enums;
 using Suanpan.Core.Sys.Entities;
 using Suanpan.Core.Sys.Enums;
 using Suanpan.Data;
+using Suanpan.Services.Reference.Indicators.Models;
 using Suanpan.Shared.Auth;
 
 namespace Suanpan.Services.Tests.Fixtures;
@@ -69,6 +71,32 @@ internal static class TestData
         db.SysRolePermissions.AddRange(permIds.Select(id => new SysRolePermission { RoleId = roleId, PermId = id }));
         await db.SaveChangesAsync(ct);
     }
+
+    /// <summary>带随机简称的指标编码，如 US.T1A2B3C4D5</summary>
+    public static string IndicatorCode(string economyCode = "US") => $"{economyCode}.T{Guid.NewGuid():N}"[..(economyCode.Length + 12)].ToUpperInvariant();
+
+    /// <summary>字段齐全、可以直接保存的指标输入；需要时用 with 改个别字段</summary>
+    public static IndicatorInput Indicator(string code, string economyCode = "US", string currencyCode = "USD") => new()
+    {
+        Code = code,
+        EconomyCode = economyCode,
+        CurrencyCode = currencyCode,
+        NameZh = "测试指标",
+        NameEn = "Test Indicator",
+        ShortNameZh = "测试",
+        ShortNameEn = "Test",
+        Category = IndicatorCategory.Other,
+        ValueType = IndicatorValueType.Value,
+        Unit = IndicatorUnit.Percent,
+        Decimals = 1,
+        Frequency = ReleaseFrequency.Monthly,
+        Importance = Importance.Medium,
+        Direction = ImpactDirection.HigherIsBullish,
+        FlatTolerance = 0,
+        AgencyZh = "测试机构",
+        AgencyEn = "Test Agency",
+        DefaultReleaseTime = new TimeOnly(8, 30),
+    };
 }
 
 /// <summary>固定的当前用户</summary>

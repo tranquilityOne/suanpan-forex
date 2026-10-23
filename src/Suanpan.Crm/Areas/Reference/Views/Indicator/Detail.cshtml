@@ -1,0 +1,91 @@
+@model IndicatorDetailViewModel
+@{
+    var indicator = Model.Indicator;
+    ViewData["Title"] = $"指标 {indicator.Code}";
+    string Zh(Enum value) => ReferenceDisplayNames.Get(value).Get(ContentLanguage.Zh);
+    string Number(decimal? value) => value?.ToString("0.######") ?? "—";
+}
+
+<div class="page-header mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col">
+            <h2 class="page-title">@indicator.Name.Get(ContentLanguage.Zh) <code class="ms-2">@indicator.Code</code></h2>
+            <div class="text-secondary">@indicator.Name.Get(ContentLanguage.En)</div>
+        </div>
+        <div class="col-auto">
+            <div class="btn-list">
+                <a asp-action="Edit" asp-route-id="@indicator.Code" asp-permission="reference:indicator:edit" class="btn btn-primary">编辑</a>
+                <a asp-action="Index" class="btn">返回列表</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="max-width: 60rem">
+    <div class="card-body">
+        <h3 class="card-title">基本信息</h3>
+        <dl class="row mb-4">
+            <dt class="col-sm-3">状态</dt>
+            <dd class="col-sm-9"><status-badge tone="@(indicator.IsEnabled ? BadgeTone.Success : BadgeTone.Neutral)" text="@(indicator.IsEnabled ? "启用" : "停用")" /></dd>
+            <dt class="col-sm-3">经济体</dt>
+            <dd class="col-sm-9"><code>@indicator.EconomyCode</code> @Model.Economy?.Name.Get(ContentLanguage.Zh)</dd>
+            <dt class="col-sm-3">货币</dt>
+            <dd class="col-sm-9"><code>@indicator.CurrencyCode</code></dd>
+            <dt class="col-sm-3">简称</dt>
+            <dd class="col-sm-9">@indicator.ShortName.Get(ContentLanguage.Zh) / @indicator.ShortName.Get(ContentLanguage.En)</dd>
+            <dt class="col-sm-3">类别</dt>
+            <dd class="col-sm-9">@Zh(indicator.Category)</dd>
+        </dl>
+
+        <h3 class="card-title">数值</h3>
+        <dl class="row mb-4">
+            <dt class="col-sm-3">数值类型</dt>
+            <dd class="col-sm-9">@Zh(indicator.ValueType)</dd>
+            <dt class="col-sm-3">单位</dt>
+            <dd class="col-sm-9">@Zh(indicator.Unit)</dd>
+            <dt class="col-sm-3">小数位</dt>
+            <dd class="col-sm-9 font-monospace">@indicator.Decimals</dd>
+            <dt class="col-sm-3">影响方向</dt>
+            <dd class="col-sm-9">@Zh(indicator.Direction)</dd>
+            <dt class="col-sm-3">持平容差</dt>
+            <dd class="col-sm-9 font-monospace">@Number(indicator.FlatTolerance)</dd>
+        </dl>
+
+        <h3 class="card-title">发布</h3>
+        <dl class="row mb-4">
+            <dt class="col-sm-3">发布机构</dt>
+            <dd class="col-sm-9">@indicator.Agency.Get(ContentLanguage.Zh) / @indicator.Agency.Get(ContentLanguage.En)</dd>
+            <dt class="col-sm-3">默认发布时间</dt>
+            <dd class="col-sm-9"><span class="font-monospace">@indicator.DefaultReleaseTime.ToString("HH:mm")</span> <span class="text-secondary">（机构当地时间，@(Model.Economy?.TimeZone)）</span></dd>
+            <dt class="col-sm-3">发布频率</dt>
+            <dd class="col-sm-9">@Zh(indicator.Frequency)</dd>
+            <dt class="col-sm-3">重要性</dt>
+            <dd class="col-sm-9">@Zh(indicator.Importance)</dd>
+        </dl>
+
+        <h3 class="card-title">说明</h3>
+        <dl class="row mb-4">
+            <dt class="col-sm-3">中文</dt>
+            <dd class="col-sm-9" style="white-space: pre-line">@(string.IsNullOrWhiteSpace(indicator.Description?.Zh) ? "—" : indicator.Description.Zh)</dd>
+            <dt class="col-sm-3">英文</dt>
+            <dd class="col-sm-9" style="white-space: pre-line">@(string.IsNullOrWhiteSpace(indicator.Description?.En) ? "—" : indicator.Description.En)</dd>
+        </dl>
+
+        <h3 class="card-title">质量校验参数</h3>
+        <dl class="row mb-4">
+            <dt class="col-sm-3">合理范围</dt>
+            <dd class="col-sm-9 font-monospace">@Number(indicator.RangeMin) ~ @Number(indicator.RangeMax)</dd>
+            <dt class="col-sm-3">标准差倍数</dt>
+            <dd class="col-sm-9"><span class="font-monospace">@Number(indicator.SigmaN)</span> @if (indicator.SigmaN is null) { <span class="text-secondary">（不填时按 @Number(IndicatorRule.DefaultSigmaN) 倍）</span> }</dd>
+        </dl>
+
+        <div class="text-secondary small">
+            创建：@indicator.CreatedBy <utc-time value="@indicator.CreatedAt" />
+            @if (indicator.UpdatedAt is not null)
+            {
+                <span class="ms-3">最后修改：@indicator.UpdatedBy <utc-time value="@indicator.UpdatedAt" /></span>
+            }
+            <span class="ms-3">影响方向的修改理由见操作日志</span>
+        </div>
+    </div>
+</div>

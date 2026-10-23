@@ -3,6 +3,7 @@ using Suanpan.Core.Common.Localization;
 using Suanpan.Core.Reference.Entities;
 using Suanpan.Core.Reference.Rules;
 using Suanpan.Data;
+using Suanpan.Services.Reference.Common;
 using Suanpan.Services.Reference.Economies.Models;
 using Suanpan.Shared.Mvc;
 
@@ -12,8 +13,18 @@ public sealed class EconomyService(SuanpanDbContext db) : IEconomyService
 {
     private const short SortStep = 10;
 
-    public async Task<IReadOnlyList<Economy>> GetListAsync(CancellationToken ct = default)
-        => await db.Economies.AsNoTracking().OrderBy(e => e.Sort).ThenBy(e => e.Code).ToListAsync(ct);
+    public async Task<IReadOnlyList<EconomyRow>> GetListAsync(CancellationToken ct = default)
+    {
+        var economies = await db.Economies.AsNoTracking().OrderBy(e => e.Sort).ThenBy(e => e.Code).ToListAsync(ct);
+        var indicatorCounts = await db.Indicators
+            .GroupBy(i => i.EconomyCode)
+            .Select(g => new { Code = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Code, x => x.Count, ct);
+
+        return economies
+            .Select(e => new EconomyRow(e.Code, e.Name, e.CurrencyCode, e.TimeZone, e.Sort, e.IsEnabled, indicatorCounts.GetValueOrDefault(e.Code)))
+            .ToList();
+    }
 
     public Task<Economy?> GetAsync(string code, CancellationToken ct = default)
     {
@@ -102,7 +113,17 @@ public sealed class EconomyService(SuanpanDbContext db) : IEconomyService
             return ManageResult.Fail("经济体不存在");
         }
 
-        // 引用方（基础数据设计 §3.5）：指标（JAN-77）、央行等模块加入后在这里补充，用 ReferenceUsage 拼提示
+        // 引用方（基础数据设计 §3.5）：央行等模块加入后在这里补充
+        var indicators = await db.Indicators.AsNoTracking()
+            .Where(i => i.EconomyCode == economy.Code)
+            .OrderBy(i => i.Code)
+            .Select(i => i.Code)
+            .ToListAsync(ct);
+        if (ReferenceUsage.DescribeOrNull(("指标", indicators)) is { } usage)
+        {
+            return ManageResult.Fail(usage);
+        }
+
         db.Economies.Remove(economy);
         await db.SaveChangesAsync(ct);
         return ManageResult.Ok;
