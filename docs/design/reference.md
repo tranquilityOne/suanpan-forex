@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.11 |
+| 版本 | v0.12 |
 | 日期 | 2026-10-23 |
 | 状态 | 已评审（2026-10-22，vivo.li） |
 | 覆盖 | FR-005 经济体与货币管理、FR-006 指标字典管理（指标与数据源的映射只定表结构） |
@@ -265,7 +265,7 @@ Suanpan.Crm/
 | `IEconomyService` | 同上，另有 `GetNextSortAsync` | 列表按 `sort` 排序，带各经济体的指标数；新增页的显示顺序默认取当前最大值加 10 |
 | `IIndicatorService` | `QueryAsync(IndicatorQuery)`、`GetAsync(code)`、`CreateAsync`、`UpdateAsync`、`SetEnabledAsync`、`DeleteAsync` | `IndicatorQuery`：经济体、类别、重要性、启用状态、关键字（编码或名称包含），分页；`UpdateAsync` 的输入带 `Reason` |
 
-删除被拒时，`ManageResult` 的提示中列出引用方，如"被以下数据引用，不能删除，可以停用：指标 US.NFP、US.CPI.YOY"（每类最多列 10 个，其余给出总数），由 `Services/Reference/Common/ReferenceUsage` 拼写。
+删除被拒时，`ManageResult` 的提示中列出引用方，如"被以下数据引用，不能删除，可以停用：指标 US.NFP、US.CPI.YOY"（每类最多列 10 个，其余给出总数），由 `Services/Common/References/ReferenceUsage` 拼写（采集模块也用它）。
 
 ---
 
@@ -381,3 +381,4 @@ Suanpan.Crm/
 | v0.9 | 2026-10-23 | vivo.li / Claude | FR-006.2 实施：§6、§6.1 指标详情的 action 和权限码按前端约定改为 `Detail` / `reference:indicator:detail`；§3.5 指标暂无引用表；§6 补充列表的引用数、指标表单的脚本和修改理由；§5.2 经济体列表带指标数 |
 | v0.10 | 2026-10-23 | vivo.li / Claude | FR-006.3 实施：§2.4 首批指标清单确认（[reference-indicators.md](reference-indicators.md)），导入迁移 `ImportReferenceInitialIndicators`；§3.6 单位增加"千个"，英文显示名确认；§8、§9 同步 |
 | v0.11 | 2026-10-23 | vivo.li / Claude | FR-001.1 实施：§3.4 校验失败改用各模块共用的 `FieldError`；§3.5 经济体的引用方增加数据源 |
+| v0.12 | 2026-10-23 | vivo.li / Claude | FR-002.1（JAN-82）：§5.2 `ReferenceUsage` 移到 `Services/Common/References/`，供采集模块共用 |

@@ -3,7 +3,7 @@ using Suanpan.Core.Common.Localization;
 using Suanpan.Core.Reference.Entities;
 using Suanpan.Core.Reference.Rules;
 using Suanpan.Data;
-using Suanpan.Services.Reference.Common;
+using Suanpan.Services.Common.References;
 using Suanpan.Services.Reference.Economies.Models;
 using Suanpan.Shared.Mvc;
 

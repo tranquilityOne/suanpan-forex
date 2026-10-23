@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Collect.Enums;
 using Suanpan.Data;
 using Suanpan.Infrastructure.Redis;
@@ -107,7 +108,26 @@ public class DataSourceServiceTests(PostgresFixture postgres)
         Assert.True((await service.GetAsync(id, Ct))!.IsEnabled);
     }
 
-    /// <summary>没有被引用的数据源可以删除（被采集任务引用时不能删除的情况随 JAN-82 建表后实现）</summary>
+    /// <summary>FR-001 验收第 3 条、BR-006、ERR-SRC-003：被采集任务引用时不能删除，提示中列出任务</summary>
+    [Fact]
+    public async Task Delete_RejectsSourceUsedByTask()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var service = Create(db);
+        var name = TestData.Unique("源");
+        await service.CreateAsync(Input(name), Ct);
+        var id = await IdOf(db, name);
+        var task = TestData.Unique("任务");
+        db.CollectTasks.Add(new CollectTask { Name = task, SourceId = id, ParserKey = "us.test.schedule", TargetType = CollectTargetType.Calendar });
+        await db.SaveChangesAsync(Ct);
+
+        var result = await service.DeleteAsync(id, Ct);
+
+        Assert.False(result.Success);
+        Assert.Contains(task, result.Error);
+        Assert.NotNull(await service.GetAsync(id, Ct));
+    }
+
     [Fact]
     public async Task Delete_RemovesUnreferencedSource()
     {

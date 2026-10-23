@@ -1,8 +1,8 @@
-namespace Suanpan.Services.Reference.Common;
+namespace Suanpan.Services.Common.References;
 
 /// <summary>
-/// 删除被引用的基础数据时，提示中列出引用方（ERR-REF-002，基础数据设计 §3.5、§5.2）：
-/// 每类最多列 10 个编码，其余给出总数。
+/// 删除被引用的数据时，提示中列出引用方（基础数据 ERR-REF-002、数据源 ERR-SRC-003，基础数据设计 §5.2）：
+/// 每类最多列 10 个（编码或名称），其余给出总数。
 /// </summary>
 public static class ReferenceUsage
 {

@@ -6,6 +6,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 采集任务的 cron 解析和到点计算 -->
+    <PackageReference Include="Cronos" />
     <!-- TOTP 绑定页的二维码 -->
     <PackageReference Include="QRCoder" />
   </ItemGroup>

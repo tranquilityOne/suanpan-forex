@@ -23,6 +23,215 @@ namespace Suanpan.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Suanpan.Core.Collect.Entities.CollectRun", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<short>("AttemptCount")
+                        .HasColumnType("smallint")
+                        .HasColumnName("attempt_count");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ended_at");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("error_code");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("error_message");
+
+                    b.Property<int>("InsertedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("inserted_count");
+
+                    b.Property<DateTime?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_attempt_at");
+
+                    b.Property<DateTime>("QueuedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("queued_at");
+
+                    b.Property<DateTime?>("ScheduledFor")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("scheduled_for");
+
+                    b.Property<int>("SkippedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("skipped_count");
+
+                    b.Property<long>("SourceId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_id");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<short>("Status")
+                        .HasColumnType("smallint")
+                        .HasColumnName("status");
+
+                    b.Property<long>("TaskId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("task_id");
+
+                    b.Property<string>("TraceId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("trace_id");
+
+                    b.Property<short>("Trigger")
+                        .HasColumnType("smallint")
+                        .HasColumnName("trigger");
+
+                    b.Property<string>("TriggeredBy")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("triggered_by");
+
+                    b.Property<int>("UpdatedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("updated_count");
+
+                    b.ComplexCollection(typeof(List<Dictionary<string, object>>), "Attempts", "Suanpan.Core.Collect.Entities.CollectRun.Attempts#CollectAttempt", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<int>("DeferredMs");
+
+                            b1.Property<int>("DurationMs");
+
+                            b1.Property<string>("Error");
+
+                            b1.Property<int?>("HttpStatus");
+
+                            b1.Property<short>("No");
+
+                            b1.Property<DateTime>("StartedAt");
+
+                            b1
+                                .ToJson("attempts")
+                                .HasColumnType("jsonb");
+                        });
+
+                    b.HasKey("Id")
+                        .HasName("pk_col_run");
+
+                    b.HasIndex("QueuedAt")
+                        .HasDatabaseName("ix_col_run_queued_at");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_col_run_status")
+                        .HasFilter("status IN (1, 2)");
+
+                    b.HasIndex("SourceId", "QueuedAt")
+                        .HasDatabaseName("ix_col_run_source_id_queued_at");
+
+                    b.HasIndex("TaskId", "QueuedAt")
+                        .HasDatabaseName("ix_col_run_task_id_queued_at");
+
+                    b.HasIndex("TaskId", "ScheduledFor")
+                        .IsUnique()
+                        .HasDatabaseName("ux_col_run_task_id_scheduled_for")
+                        .HasFilter("scheduled_for IS NOT NULL");
+
+                    b.ToTable("col_run", (string)null);
+                });
+
+            modelBuilder.Entity("Suanpan.Core.Collect.Entities.CollectTask", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Cron")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("cron");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_enabled");
+
+                    b.Property<DateTime?>("LastDispatchedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_dispatched_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Params")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("params");
+
+                    b.Property<string>("ParserKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("parser_key");
+
+                    b.Property<string>("Remark")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("remark");
+
+                    b.Property<long>("SourceId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_id");
+
+                    b.Property<short>("TargetType")
+                        .HasColumnType("smallint")
+                        .HasColumnName("target_type");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_col_task");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ux_col_task_name");
+
+                    b.HasIndex("SourceId")
+                        .HasDatabaseName("ix_col_task_source_id");
+
+                    b.ToTable("col_task", (string)null);
+                });
+
             modelBuilder.Entity("Suanpan.Core.Collect.Entities.DataSource", b =>
                 {
                     b.Property<long>("Id")

@@ -8,6 +8,7 @@ using Suanpan.Data;
 using Suanpan.Infrastructure.Http;
 using Suanpan.Infrastructure.Redis;
 using Suanpan.Services.Collect.Sources.Models;
+using Suanpan.Services.Common.References;
 using Suanpan.Services.Sys.Security;
 using Suanpan.Shared.Mvc;
 
@@ -106,8 +107,17 @@ public sealed class DataSourceService(
             return ManageResult.Fail("数据源不存在");
         }
 
-        // 引用方（BR-006，采集设计 §3.1）：采集任务（JAN-82 建表后）、指标与数据源的映射（JAN-79）、新闻加入后在这里补充，
-        // 用 ReferenceUsage 拼提示
+        // 引用方（BR-006、ERR-SRC-003，采集设计 §3.1）：指标与数据源的映射（JAN-79）、新闻加入后在这里补充
+        var tasks = await db.CollectTasks.AsNoTracking()
+            .Where(t => t.SourceId == source.Id)
+            .OrderBy(t => t.Name)
+            .Select(t => t.Name)
+            .ToListAsync(ct);
+        if (ReferenceUsage.DescribeOrNull(("采集任务", tasks)) is { } usage)
+        {
+            return ManageResult.Fail(usage);
+        }
+
         db.DataSources.Remove(source);
         await db.SaveChangesAsync(ct);
         return ManageResult.Ok;

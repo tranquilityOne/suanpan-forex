@@ -2,11 +2,11 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.5 |
+| 版本 | v0.6 |
 | 日期 | 2026-10-23 |
 | 状态 | 已评审（2026-10-23，vivo.li；§11 第 7 项的联系邮箱待提供） |
 | 覆盖 | FR-001 数据源管理、FR-002 采集任务配置与调度；盯盘（FR-003）、快照与重新解析（FR-004）只定接入位置 |
-| 依据 | data-hub PRD v1.0.0.18（FR-001、FR-002、BR-001 ~ BR-012、§8.1.2、§10.8、§13.1.2、DEC-012、DEC-016、DEC-017、DEC-020）；后端约定 v1.27（§1.2、§7、§8、§9、§12）；前端约定 v1.9；数据库变更约定；sys 设计（§6 权限、§7 操作日志）；基础数据设计（§2.1 指标与数据源的映射） |
+| 依据 | data-hub PRD v1.0.0.19（FR-001、FR-002、BR-001 ~ BR-012、§8.1.2、§10.8、§13.1.2、DEC-012、DEC-016、DEC-017、DEC-020）；后端约定 v1.27（§1.2、§7、§8、§9、§12）；前端约定 v1.9；数据库变更约定；sys 设计（§6 权限、§7 操作日志）；基础数据设计（§2.1 指标与数据源的映射） |
 
 > 本文只写"怎么实现"。需求、业务规则和验收标准以 PRD 为准，这里引用编号，不复述。
 > 实现偏离本文时，在同一个 PR 里更新本文。
@@ -95,8 +95,8 @@
 | `started_at`、`ended_at` | `timestamptz` | 是 | |
 | `attempt_count` | `smallint` | 否 | 已发起的请求次数（含重试） |
 | `next_attempt_at` | `timestamptz` | 是 | 等待重试时的下一次时间 |
-| `attempts` | `jsonb` | 否 | 每次请求的记录：序号、开始时间、耗时、HTTP 状态码、错误、因频率上限等待的毫秒数（FR-002 验收第 3 条），默认 `[]` |
-| `inserted_count`、`updated_count`、`skipped_count` | `integer` | 否 | 入库结果，默认 0 |
+| `attempts` | `jsonb` | 否 | 每次请求的记录：序号、开始时间、耗时、HTTP 状态码、错误、因频率上限等待的毫秒数（FR-002 验收第 3 条）；键名与 `CollectAttempt` 的属性名相同。新建时由程序写入 `[]`，数据库不设默认值 |
+| `inserted_count`、`updated_count`、`skipped_count` | `integer` | 否 | 入库结果，新建时为 0 |
 | `error_code` | `varchar(32)` | 是 | 失败或跳过的错误码（§9） |
 | `error_message` | `varchar(2000)` | 是 | 面向工程师的原因 |
 | `trace_id` | `varchar(64)` | 是 | 贯穿下发、执行、入库的日志追踪（NFR-050） |
@@ -134,7 +134,7 @@
 - **保存**：名称、所属机构、基础地址、条款链接必填；基础地址和条款链接必须是 http 或 https 的绝对地址；频率上限为正整数；超时 1 ~ 120 秒；需要凭据时凭据不能为空（新建时必须填写，修改时留空表示不变，ERR-SRC-004）。
 - **启用**：合规类别为"待确认"或 robots.txt 为"不允许"时拒绝（BR-002，ERR-SRC-001）。已启用的数据源把合规类别改为"待确认"、robots.txt 改为"不允许"时，同样拒绝保存，提示先停用（否则会绕过启用时的检查）。
 - **凭据**（BR-004）：保存前用 `ISecretProtector` 加密；页面只显示"已设置"或"未设置"，不显示任何字符；修改时输入框为空表示保留原值，要更换就输入完整的新值；"清除凭据"单独一个勾选项。凭据只在 Collector 发请求时解密，不写日志。表单字段名包含 `Credential`，操作日志自动脱敏（sys 设计 §7.1）。
-- **删除**：被任务引用的不能删除，提示中列出任务名（BR-006，ERR-SRC-003）；以后加入的引用方（指标与数据源的映射 JAN-79、新闻）同样检查。采集任务的表在 FR-002.1（JAN-82）中建立，这项检查随它一起实现。
+- **删除**：被任务引用的不能删除，提示中列出任务名（BR-006，ERR-SRC-003）；以后加入的引用方（指标与数据源的映射 JAN-79、新闻）同样检查。`DataSourceService.DeleteAsync` 查 `col_task`，提示由 `Services/Common/References/ReferenceUsage` 拼写（FR-002.1 实现）。
 - **实现**：`DataSourceRule.Validate(DataSource)` 校验保存，`DataSourceRule.ValidateCanEnable(DataSource)` 校验启用，都返回第一条错误 `FieldError(Field, Message)`。凭据按保存后的值判断：服务先把"留空不改""清除"处理成最终的密文再校验。超时的默认值和范围是 `DataSourceRule` 的常量。
 - **数据源引用经济体**：经济体被数据源引用时也不能删除，`EconomyService.DeleteAsync` 在 FR-001.2（JAN-81）中补充这项检查。
 
@@ -144,6 +144,7 @@
 - **cron**（BR-008，ERR-COL-001）：只接受 5 段标准写法（分 时 日 月 周），所以最小间隔天然是 1 分钟；带秒的 6 段写法、无法解析的写法都拒绝。表单上同时显示"按操作者时区的下 3 次执行时间"，方便核对 UTC 换算。cron 的解析和计算放在 Services（`CronSchedule`，基于 Cronos 库）：Core 不引用第三方包。
 - **启用**：所属数据源必须是启用状态（PRD FR-002 前置条件）。数据源停用后，它下面的任务不用逐个停用：调度分发和执行时都检查数据源状态（§4.2、§4.3）。
 - **删除**：有运行记录的任务不能删除，只能停用；没有运行记录的可以删除（BR-154）。
+- **实现**：`CollectTaskRule.Validate(CollectTask, 按标识查解析器)` 校验名称必填、解析器在目录中、目标数据类型与解析器一致、参数为空或 JSON 对象，返回第一条错误 `FieldError`；名称唯一、数据源存在和启用要查库，在服务中校验（FR-002.2）。`CronSchedule`（`Suanpan.Services/Collect/Tasks/`）：`Validate(cron)` 返回提示或 null；`LatestOccurrence(cron, 起点, 终点)` 取起点（不含）到终点（含）之间最后一个时间点，供调度分发（§4.2）；`NextOccurrences(cron, 起点, 个数)` 供表单预览。时间都是 UTC。
 
 ### 3.3 运行记录的状态（`CollectRunStatusRule`）
 
@@ -168,12 +169,14 @@ stateDiagram-v2
 
 - 状态只能按上图流转，用条件更新（`ExecuteUpdateAsync` + `Where(status = 旧状态)`）防止并发改写（后端约定 §6.4）。
 - "跳过"和"失败"都写 `error_code`、`error_message`。
+- **实现**：`CollectRunStatusRule.CanTransition(旧状态, 新状态)` 对应上图的每条边；`IsFinished(状态)` 判断成功、部分成功、失败、跳过四个结束状态。
 
 ### 3.4 重试（`RetryPolicy`，BR-009）
 
 - 可重试的失败：超时、网络错误、HTTP 5xx、429。HTTP 4xx（429 除外）不重试：多半是地址、参数或凭据错误，重试也不会成功。解析失败不重试（同样的内容再解析结果相同），快照保留供 FR-004 重新解析。
 - 最多重试 3 次，间隔取系统配置 `collect:retry_delay_seconds`，默认 `30,120,300`（30 秒、2 分钟、5 分钟）。
 - 429 和 403 在盯盘中另有"间隔加倍退避"（ERR-COL-005），由 FR-003 实现。
+- **实现**：`RetryPolicy.ParseDelays(配置值)` 解析间隔，间隔的个数就是最多重试的次数，空值表示不重试，格式不对返回 null（调用方改用默认值 `RetryPolicy.DefaultDelaySeconds`）；`IsRetryable(HTTP 状态码)`，超时和网络错误传 null；`DelayAfter(第几次请求, 间隔)` 返回下一次请求前的等待时间，次数用完返回 null。
 
 ---
 
@@ -268,7 +271,7 @@ Job 每天执行一次 `collect-run-cleanup`：删除 `queued_at` 早于保留�
 ### 5.2 解析器与解析器目录
 
 - 解析器是纯函数（硬性规则 14）：输入响应内容和任务参数，输出标准化记录，不访问数据库和网络，配基于真实快照的测试（ENG-009）。
-- **解析器目录** `ParserCatalog`（`Suanpan.Core/Collect/Parsers/`）：列出全部解析器的标识、中文名、所属适配器、目标数据类型。Crm 用它填下拉框、校验任务配置；Collector 按标识找到实现。Crm 不引用 Collector（后端约定 §2），所以目录放在两边都能引用的 Core 中。`Suanpan.Collector.Tests` 检查目录与实现一一对应。
+- **解析器目录** `ParserCatalog`（`Suanpan.Core/Collect/Parsers/`）：列出全部解析器的标识、中文名、所属适配器、目标数据类型（`ParserDescriptor`；所属适配器取标识去掉最后一段，如 `us.bls`）。Crm 用它填下拉框、校验任务配置；Collector 按标识找到实现。Crm 不引用 Collector（后端约定 §2），所以目录放在两边都能引用的 Core 中。`Suanpan.Core.Tests` 检查标识的写法和不重复，`Suanpan.Collector.Tests` 检查目录与实现一一对应。
 - 解析器标识的写法：`{经济体}.{机构}.{内容}`，全部小写，如 `us.bls.schedule`、`us.bls.release`。
 - M1 目录为空（真实解析器从 ENG-009 开始加入），后台的任务页面在目录为空时提示"还没有可用的解析器"。
 
@@ -410,7 +413,7 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 |---|---|---|
 | ERR-SRC-001 | 合规未确认时启用 | `DataSourceRule` 拒绝，提示"请先完成合规确认" |
 | ERR-SRC-002 | 连通性测试失败 | 页面显示状态码和错误，不阻止保存 |
-| ERR-SRC-003 | 删除被引用的数据源 | 拒绝，提示中列出任务名（复用基础数据的 `ReferenceUsage` 写法） |
+| ERR-SRC-003 | 删除被引用的数据源 | 拒绝，提示中列出任务名（由 `Services/Common/References/ReferenceUsage` 拼写，与基础数据的删除提示相同） |
 | ERR-SRC-004 | 需要凭据但未填写 | 表单在凭据字段提示 |
 | ERR-COL-001 | cron 非法 | 表单在 cron 字段提示 |
 | ERR-COL-002 | 请求失败 | 按 §3.4 重试；用完记为失败，每次请求的原因见运行详情 |
@@ -458,7 +461,7 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 | 9 | 重试间隔按全局还是按任务配置 | 全局（系统配置 `collect:retry_delay_seconds`） | §3.4、§10 |
 | 10 | 调度方式 | 一个每分钟执行的分发任务，按 cron 算到点 | §4.2 |
 | 11 | 两个下发指令合并为 `CollectRunCommand` | 合并 | §7.3；后端约定 §8.2 |
-| 12 | 新增依赖 Cronos（MIT） | 在 Services 中直接引用 | FR-002.1 实施时登记到 PRD §13.2.4 |
+| 12 | 新增依赖 Cronos（MIT） | 在 Services 中直接引用 | 已登记到 PRD §13.2.4（v1.0.0.19），使用 0.13.0；Hangfire.Core 不依赖这个包 |
 | 13 | 停用的任务能否手动触发 | 可以，方便启用前试跑；数据源必须启用 | §4.3、§4.4；PRD 新增 BR-155 |
 
 另外，本文新增的错误码 ERR-COL-008（下发失败）、ERR-COL-009（执行中断）补进 PRD FR-002 的异常流程；数据源的"请求超时"补进 FR-001 的页面元素。
@@ -515,3 +518,4 @@ JAN-79（指标与数据源的映射）在 FR-001.2（JAN-81）完成后可以�
 | v0.3 | 2026-10-23 | vivo.li / Claude | 评审通过；§13 回填 Linear 工单号（JAN-80 ~ JAN-85） |
 | v0.4 | 2026-10-23 | vivo.li / Claude | FR-001.1 实施：§2.2 增加 `ix_col_source_economy_code`（经济体被数据源引用时不能删除）；§3.1 补充规则的接口 |
 | v0.5 | 2026-10-23 | vivo.li / Claude | FR-001.2 实施：§5.4 HttpClient 的注册和跳转处理、User-Agent 的默认值；§7.2 数据源服务的方法名；§8.1 连通性测试的结果展示。数据源被采集任务引用时不能删除的检查随 FR-002.1（JAN-82）建表后实现 |
+| v0.6 | 2026-10-23 | vivo.li / Claude | FR-002.1 实施：§2.1 `attempts` 的键名，`attempts` 和计数列的初值由程序写入；§3.1 数据源删除时检查采集任务；§3.2 ~ §3.4 补充规则和 `CronSchedule` 的接口；§5.2 解析器描述和目录的测试；§9 `ReferenceUsage` 移到 `Services/Common/References/`，各模块共用；§11 第 12 项 Cronos 已登记（PRD v1.0.0.19） |

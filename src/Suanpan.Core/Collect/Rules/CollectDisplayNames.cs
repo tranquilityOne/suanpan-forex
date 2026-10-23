@@ -25,6 +25,25 @@ public static class CollectDisplayNames
         [RobotsResult.Allowed] = "允许",
         [RobotsResult.NotApplicable] = "不涉及（API）",
         [RobotsResult.Disallowed] = "不允许",
+
+        [CollectTargetType.Calendar] = "日历排期",
+        [CollectTargetType.Release] = "公布值",
+        [CollectTargetType.History] = "历史数据",
+        [CollectTargetType.CentralBankRate] = "央行利率",
+        [CollectTargetType.ReferenceRate] = "参考汇率",
+        [CollectTargetType.News] = "新闻",
+
+        [CollectRunTrigger.Scheduled] = "定时",
+        [CollectRunTrigger.Watch] = "盯盘",
+        [CollectRunTrigger.Manual] = "手动",
+        [CollectRunTrigger.Reparse] = "重新解析",
+
+        [CollectRunStatus.Queued] = "排队",
+        [CollectRunStatus.Running] = "运行中",
+        [CollectRunStatus.Succeeded] = "成功",
+        [CollectRunStatus.PartiallySucceeded] = "部分成功",
+        [CollectRunStatus.Failed] = "失败",
+        [CollectRunStatus.Skipped] = "跳过",
     };
 
     /// <summary>取枚举值的中文显示名；没有登记的值显示枚举名</summary>

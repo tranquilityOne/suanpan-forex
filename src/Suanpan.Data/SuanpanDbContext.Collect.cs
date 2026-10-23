@@ -7,4 +7,8 @@ namespace Suanpan.Data;
 public partial class SuanpanDbContext
 {
     public DbSet<DataSource> DataSources => Set<DataSource>();
+
+    public DbSet<CollectTask> CollectTasks => Set<CollectTask>();
+
+    public DbSet<CollectRun> CollectRuns => Set<CollectRun>();
 }
