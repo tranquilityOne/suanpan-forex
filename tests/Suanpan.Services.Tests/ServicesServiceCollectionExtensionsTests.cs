@@ -24,6 +24,7 @@ public class ServicesServiceCollectionExtensionsTests
             ["ConnectionStrings:Main"] = "Host=127.0.0.1;Database=resolve_only",
             ["Security:EncryptionKey"] = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)),
             ["Redis:Configuration"] = "127.0.0.1:1",
+            ["RabbitMq:Uri"] = "amqp://127.0.0.1:1/",
         }).Build();
         var services = new ServiceCollection()
             .AddSingleton<IConfiguration>(configuration)
@@ -31,6 +32,7 @@ public class ServicesServiceCollectionExtensionsTests
             .AddSuanpanData(configuration, "test")
             .AddSuanpanRedis(configuration)
             .AddSuanpanCollectHttp(configuration)
+            .AddSuanpanEventBus(configuration, "test")
             .AddSuanpanServices();
 
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });

@@ -1,0 +1,23 @@
+@model CollectTriggerButtonModel
+@inject CurrentPermissions Permissions
+@*
+    "立即执行"按钮（采集设计 §8.2）：有 trigger_any 时提交到 TriggerAny；否则只对日历排期、公布值类任务显示，提交到 Trigger。
+    按钮只是体验优化，能否触发以后端校验为准。
+*@
+@{
+    string? action = null;
+    if (await Permissions.HasAsync("collect:task:trigger_any"))
+    {
+        action = "TriggerAny";
+    }
+    else if (CollectTaskRule.IsEditorTriggerable(Model.TargetType) && await Permissions.HasAsync("collect:task:trigger"))
+    {
+        action = "Trigger";
+    }
+}
+@if (action is not null)
+{
+    <confirm-form asp-area="Collect" asp-controller="Task" asp-action="@action" asp-route-id="@Model.TaskId"
+                  message="@($"立即执行 {Model.TaskName}？会按数据源的频率上限向数据源发出请求，结果在运行详情中查看。")"
+                  button-text="立即执行" button-class="@Model.ButtonClass" />
+}

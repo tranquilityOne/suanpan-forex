@@ -179,19 +179,14 @@ public sealed class SourceController(IDataSourceService sources, IEconomyService
         model.Options = new DataSourceFormOptions
         {
             Economies = economyOptions,
-            Types = EnumOptions<DataSourceType>(),
-            RateLimitUnits = EnumOptions<RateLimitUnit>(),
-            ComplianceClasses = EnumOptions<ComplianceClass>(),
-            RobotsResults = EnumOptions<RobotsResult>(),
+            Types = CollectEnumOptions.Of<DataSourceType>(),
+            RateLimitUnits = CollectEnumOptions.Of<RateLimitUnit>(),
+            ComplianceClasses = CollectEnumOptions.Of<ComplianceClass>(),
+            RobotsResults = CollectEnumOptions.Of<RobotsResult>(),
             HasCredential = existing?.Credential is not null,
         };
         return model;
     }
-
-    /// <summary>枚举的下拉框选项：值为枚举名，文字为中文显示名（CollectDisplayNames）</summary>
-    private static List<SelectListItem> EnumOptions<TEnum>()
-        where TEnum : struct, Enum
-        => Enum.GetValues<TEnum>().Select(value => new SelectListItem(CollectDisplayNames.Get(value), value.ToString())).ToList();
 
     private IActionResult Done(ManageResult result, string message)
     {

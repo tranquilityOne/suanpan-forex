@@ -34,15 +34,18 @@ public class PresetRoleGrantsTests
     }
 
     /// <summary>
-    /// 采集设计 §8.3：采集工程师维护数据源；编辑和只读只能查看（快照页面加入后也不会被自动授权）。
-    /// 任务、运行记录的页面加入后（JAN-83）补充到这里
+    /// 采集设计 §8.3：采集工程师维护数据源和任务；编辑只能查看，另可立即执行日历排期、公布值类任务；只读只能查看
+    /// （快照页面加入后也不会被自动授权）
     /// </summary>
     [Theory]
     [InlineData(RoleCodes.Engineer,
         "collect:source:index collect:source:detail collect:source:create collect:source:edit "
-        + "collect:source:set_status collect:source:delete collect:source:test")]
-    [InlineData(RoleCodes.Editor, "collect:source:index collect:source:detail")]
-    [InlineData(RoleCodes.Viewer, "collect:source:index collect:source:detail")]
+        + "collect:source:set_status collect:source:delete collect:source:test "
+        + "collect:task:index collect:task:create collect:task:edit collect:task:set_status collect:task:delete "
+        + "collect:task:trigger collect:task:trigger_any collect:run:index collect:run:detail")]
+    [InlineData(RoleCodes.Editor,
+        "collect:source:index collect:source:detail collect:task:index collect:task:trigger collect:run:index collect:run:detail")]
+    [InlineData(RoleCodes.Viewer, "collect:source:index collect:source:detail collect:task:index collect:run:index collect:run:detail")]
     public async Task CollectGrantsMatchDesign(string roleCode, string expected)
     {
         await using var app = new CrmApp();

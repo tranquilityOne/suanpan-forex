@@ -1,3 +1,5 @@
+using Suanpan.Core.Collect.Enums;
+using Suanpan.Core.Collect.Rules;
 using Suanpan.Core.Sys.Enums;
 
 namespace Suanpan.Crm.TagHelpers;
@@ -14,6 +16,14 @@ public static class StatusBadges
         [UserStatus.Pending] = (BadgeTone.Attention, "待激活"),
         [UserStatus.Active] = (BadgeTone.Success, "启用"),
         [UserStatus.Disabled] = (BadgeTone.Neutral, "停用"),
+
+        // Collect：运行记录的状态（采集设计 §3.3），文字与 CollectDisplayNames 一致
+        [CollectRunStatus.Queued] = (BadgeTone.Neutral, CollectDisplayNames.Get(CollectRunStatus.Queued)),
+        [CollectRunStatus.Running] = (BadgeTone.InProgress, CollectDisplayNames.Get(CollectRunStatus.Running)),
+        [CollectRunStatus.Succeeded] = (BadgeTone.Success, CollectDisplayNames.Get(CollectRunStatus.Succeeded)),
+        [CollectRunStatus.PartiallySucceeded] = (BadgeTone.Attention, CollectDisplayNames.Get(CollectRunStatus.PartiallySucceeded)),
+        [CollectRunStatus.Failed] = (BadgeTone.Failure, CollectDisplayNames.Get(CollectRunStatus.Failed)),
+        [CollectRunStatus.Skipped] = (BadgeTone.Neutral, CollectDisplayNames.Get(CollectRunStatus.Skipped)),
     };
 
     /// <summary>已登记的枚举类型</summary>

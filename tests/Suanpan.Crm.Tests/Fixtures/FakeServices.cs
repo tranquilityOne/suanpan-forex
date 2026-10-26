@@ -3,6 +3,9 @@ using System.Net;
 using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Reference.Entities;
 using Suanpan.Core.Sys.Entities;
+using Suanpan.Core.Collect.Enums;
+using Suanpan.Services.Collect.Runs;
+using Suanpan.Services.Collect.Runs.Models;
 using Suanpan.Services.Collect.Sources;
 using Suanpan.Services.Collect.Sources.Models;
 using Suanpan.Services.Reference.Indicators;
@@ -191,4 +194,28 @@ public sealed class FakeDataSourceService : IDataSourceService
     public Task<ManageResult> DeleteAsync(long id, CancellationToken ct = default) => throw new NotSupportedException();
 
     public Task<DataSourceTestResult> TestAsync(long id, CancellationToken ct = default) => throw new NotSupportedException();
+}
+
+/// <summary>立即执行时记下参数并返回预设的结果；运行详情按 id 返回预设的记录</summary>
+public sealed class FakeCollectRunService : ICollectRunService
+{
+    public List<(long TaskId, string TriggeredBy, bool AnyTargetType)> Triggered { get; } = [];
+
+    public EnqueueResult TriggerResult { get; set; } = new(true, null, RunId: 42, Published: true);
+
+    public Dictionary<long, CollectRunDetail> Runs { get; } = [];
+
+    public Task<EnqueueResult> TriggerAsync(long taskId, string triggeredBy, bool anyTargetType, CancellationToken ct = default)
+    {
+        Triggered.Add((taskId, triggeredBy, anyTargetType));
+        return Task.FromResult(TriggerResult);
+    }
+
+    public Task<CollectRunDetail?> GetAsync(long id, CancellationToken ct = default) => Task.FromResult(Runs.GetValueOrDefault(id));
+
+    public Task<PagedResult<CollectRunRow>> QueryAsync(CollectRunQuery query, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<EnqueueResult> EnqueueAsync(
+        long taskId, CollectRunTrigger trigger, DateTime? scheduledFor, string? triggeredBy, CancellationToken ct = default)
+        => throw new NotSupportedException();
 }

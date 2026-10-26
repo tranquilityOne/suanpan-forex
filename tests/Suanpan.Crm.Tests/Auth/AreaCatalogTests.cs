@@ -64,6 +64,8 @@ public partial class AreaCatalogTests
             "reference:indicator:set_status", "reference:indicator:delete",
             "collect:source:index", "collect:source:detail", "collect:source:create", "collect:source:edit",
             "collect:source:set_status", "collect:source:delete", "collect:source:test",
+            "collect:task:index", "collect:task:create", "collect:task:edit", "collect:task:set_status", "collect:task:delete",
+            "collect:task:trigger", "collect:task:trigger_any", "collect:run:index", "collect:run:detail",
         ];
 
         var codes = GeneratedPermCodes(app);

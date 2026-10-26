@@ -1,0 +1,22 @@
+@model Suanpan.Services.Collect.Runs.Models.CollectRunDetail
+@{
+    ViewData["Title"] = $"运行记录 #{Model.Run.Id}";
+}
+
+<div class="page-header mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col">
+            <h2 class="page-title">运行记录 #@Model.Run.Id</h2>
+            <div class="text-secondary">@Model.TaskName</div>
+        </div>
+        <div class="col-auto">
+            <div class="btn-list">
+                <partial name="_TriggerButton" model='new CollectTriggerButtonModel(Model.Run.TaskId, Model.TaskName, Model.TargetType, "btn btn-primary")' />
+                <a asp-action="Index" asp-route-TaskId="@Model.Run.TaskId" class="btn">这个任务的运行记录</a>
+                <a asp-action="Index" class="btn">返回列表</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<partial name="_Detail" model="Model" />

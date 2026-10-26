@@ -42,6 +42,15 @@ public class CollectTaskRuleTests
         { "Params", t => t.Params = "{not json" },
     };
 
+    /// <summary>PRD §13.1.2：编辑只能触发日历排期、公布值类任务</summary>
+    [Theory]
+    [InlineData(CollectTargetType.Calendar, true)]
+    [InlineData(CollectTargetType.Release, true)]
+    [InlineData(CollectTargetType.History, false)]
+    [InlineData(CollectTargetType.News, false)]
+    public void IsEditorTriggerable_OnlyCalendarAndRelease(CollectTargetType targetType, bool expected)
+        => Assert.Equal(expected, CollectTaskRule.IsEditorTriggerable(targetType));
+
     private static ParserDescriptor? Find(string key) => key == Schedule.Key ? Schedule : null;
 
     private static CollectTask Valid() => new()

@@ -1,0 +1,88 @@
+@model CollectRunListViewModel
+@{
+    ViewData["Title"] = "运行记录";
+    var filter = Model.Filter;
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">运行记录</h2>
+    <div class="text-secondary">每次定时执行、立即执行都有一条记录，保留 90 天；时间按你的时区显示，日期按触发时间筛选。</div>
+</div>
+
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label">任务</label>
+        <select name="TaskId" asp-items="@(new SelectList(Model.TaskOptions, "Value", "Text", filter.TaskId?.ToString()))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">数据源</label>
+        <select name="SourceId" asp-items="@(new SelectList(Model.SourceOptions, "Value", "Text", filter.SourceId?.ToString()))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">状态</label>
+        <select name="Status" asp-items="@(new SelectList(Model.StatusOptions, "Value", "Text", filter.Status?.ToString()))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">触发方式</label>
+        <select name="Trigger" asp-items="@(new SelectList(Model.TriggerOptions, "Value", "Text", filter.Trigger?.ToString()))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">日期</label>
+        <div class="d-flex align-items-center gap-1">
+            <input type="date" name="From" value="@filter.From?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
+            <span>至</span>
+            <input type="date" name="To" value="@filter.To?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
+        </div>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-primary">查询</button>
+        <a asp-action="Index" class="btn btn-sm">重置</a>
+    </div>
+</form>
+
+<div class="card">
+    @if (Model.Result.Items.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("没有符合条件的运行记录")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle card-table text-nowrap">
+                <thead>
+                    <tr><th>触发时间</th><th>任务</th><th>触发方式</th><th>状态</th><th class="text-end">耗时</th><th class="text-end">新增 / 更新 / 跳过</th><th class="text-end">请求次数</th><th class="w-1"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var run in Model.Result.Items)
+                    {
+                        <tr>
+                            <td><utc-time value="@run.QueuedAt" format="yyyy-MM-dd HH:mm:ss" /></td>
+                            <td>@run.TaskName</td>
+                            <td>
+                                @CollectDisplayNames.Get(run.Trigger)
+                                @if (run.TriggeredBy is not null)
+                                {
+                                    <span class="text-secondary">（@run.TriggeredBy）</span>
+                                }
+                            </td>
+                            <td><status-badge value="@run.Status" /></td>
+                            <td class="text-end font-monospace">@(CollectRunDurations.Format(run.StartedAt, run.EndedAt) ?? "-")</td>
+                            <td class="text-end font-monospace">@run.InsertedCount / @run.UpdatedCount / @run.SkippedCount</td>
+                            <td class="text-end font-monospace">@run.AttemptCount</td>
+                            <td><a asp-action="Detail" asp-route-id="@run.Id" asp-permission="collect:run:detail" class="btn btn-sm">详情</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <partial name="_Pager" model="Model.Result" />
+    }
+</div>

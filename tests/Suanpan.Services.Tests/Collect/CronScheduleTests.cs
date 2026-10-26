@@ -24,6 +24,12 @@ public class CronScheduleTests
     public void Validate_RejectsOtherForms(string cron)
         => Assert.NotNull(CronSchedule.Validate(cron));
 
+    [Theory]
+    [InlineData("  */5   *\t* * *  ", "*/5 * * * *")]
+    [InlineData("   ", null)]
+    public void Normalize_CollapsesWhitespace(string cron, string? expected)
+        => Assert.Equal(expected, CronSchedule.Normalize(cron));
+
     /// <summary>区间内有多个时间点时只取最近一次：Job 停机后恢复，不逐个补发</summary>
     [Fact]
     public void LatestOccurrence_ReturnsTheLastPointInRange()

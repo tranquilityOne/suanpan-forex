@@ -2,8 +2,8 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.6 |
-| 日期 | 2026-10-23 |
+| 版本 | v0.7 |
+| 日期 | 2026-10-26 |
 | 状态 | 已评审（2026-10-23，vivo.li；§11 第 7 项的联系邮箱待提供） |
 | 覆盖 | FR-001 数据源管理、FR-002 采集任务配置与调度；盯盘（FR-003）、快照与重新解析（FR-004）只定接入位置 |
 | 依据 | data-hub PRD v1.0.0.19（FR-001、FR-002、BR-001 ~ BR-012、§8.1.2、§10.8、§13.1.2、DEC-012、DEC-016、DEC-017、DEC-020）；后端约定 v1.27（§1.2、§7、§8、§9、§12）；前端约定 v1.9；数据库变更约定；sys 设计（§6 权限、§7 操作日志）；基础数据设计（§2.1 指标与数据源的映射） |
@@ -241,7 +241,7 @@ Collector 的消息处理器 `CollectRunCommandHandler`（`Suanpan.Collector/Han
 
 ### 4.4 手动触发（Crm）
 
-- 运行记录页和任务列表上的"立即执行"：创建运行记录（触发方式"手动"，`triggered_by` 为当前登录名），然后发布 `CollectRunCommand`。页面跳到该运行记录的详情页，状态从"排队"变为"运行中"（FR-002 验收第 2 条：10 秒内，取决于 Collector 接收消息的速度）。
+- 运行记录页和任务列表上的"立即执行"：创建运行记录（触发方式"手动"，`triggered_by` 为当前登录名），然后发布 `CollectRunCommand`。页面跳到该运行记录的详情页，状态从"排队"变为"运行中"（FR-002 验收第 2 条：10 秒内，取决于 Collector 接收消息的速度）；详情在排队、运行中时每 2 秒局部刷新，结束后停止（前端约定 §4.1 登记的"手动触发采集"）。运行记录提交后发布失败时不报错，页面提示"稍后由调度自动重新下发"（§4.2 的兜底）。
 - 停用的任务也允许手动触发，方便工程师在启用前试跑；所属数据源必须启用（BR-155）。
 - 编辑只能触发目标数据类型为"日历排期""公布值"的任务（PRD §13.1.2），实现见 §8.2。
 
@@ -271,7 +271,7 @@ Job 每天执行一次 `collect-run-cleanup`：删除 `queued_at` 早于保留�
 ### 5.2 解析器与解析器目录
 
 - 解析器是纯函数（硬性规则 14）：输入响应内容和任务参数，输出标准化记录，不访问数据库和网络，配基于真实快照的测试（ENG-009）。
-- **解析器目录** `ParserCatalog`（`Suanpan.Core/Collect/Parsers/`）：列出全部解析器的标识、中文名、所属适配器、目标数据类型（`ParserDescriptor`；所属适配器取标识去掉最后一段，如 `us.bls`）。Crm 用它填下拉框、校验任务配置；Collector 按标识找到实现。Crm 不引用 Collector（后端约定 §2），所以目录放在两边都能引用的 Core 中。`Suanpan.Core.Tests` 检查标识的写法和不重复，`Suanpan.Collector.Tests` 检查目录与实现一一对应。
+- **解析器目录** `ParserCatalog`（`Suanpan.Core/Collect/Parsers/`）：列出全部解析器的标识、中文名、所属适配器、目标数据类型（`ParserDescriptor`；所属适配器取标识去掉最后一段，如 `us.bls`）。Crm 用它填下拉框、校验任务配置；Collector 按标识找到实现。Services 经 `IParserCatalog`（`Services/Collect/Tasks/`，默认实现就是 `ParserCatalog`）使用目录，测试中换成假的解析器。Crm 不引用 Collector（后端约定 §2），所以目录放在两边都能引用的 Core 中。`Suanpan.Core.Tests` 检查标识的写法和不重复，`Suanpan.Collector.Tests` 检查目录与实现一一对应。
 - 解析器标识的写法：`{经济体}.{机构}.{内容}`，全部小写，如 `us.bls.schedule`、`us.bls.release`。
 - M1 目录为空（真实解析器从 ENG-009 开始加入），后台的任务页面在目录为空时提示"还没有可用的解析器"。
 
@@ -328,7 +328,7 @@ Suanpan.Infrastructure/Http/           采集用的命名 HttpClient
 
 Suanpan.Services/Collect/
 ├─ Sources/       IDataSourceService、DataSourceService、Models/
-├─ Tasks/         ICollectTaskService、CollectTaskService、CronSchedule、Models/
+├─ Tasks/         ICollectTaskService、CollectTaskService、CronSchedule、IParserCatalog、Models/
 ├─ Runs/          ICollectRunService、CollectRunService、Models/
 └─ Jobs/          CollectDispatchJob、CollectRunCleanupJob
 
@@ -338,7 +338,7 @@ Suanpan.Collector/
 └─ Sources/       各数据源的适配器和解析器（ENG-009 起）
 
 Suanpan.Crm/
-├─ Areas/Collect/     Controllers/（Source、Task、Run）、Views/
+├─ Areas/Collect/     Controllers/（Source、Task、Run）、Views/（Shared/_TriggerButton 为"立即执行"按钮，任务列表和运行详情共用）
 └─ Models/Collect/
 ```
 
@@ -349,8 +349,8 @@ Suanpan.Crm/
 | 接口 | 方法 | 说明 |
 |---|---|---|
 | `IDataSourceService` | `GetListAsync`、`GetAsync(id)`、`GetOptionsAsync`、`CreateAsync`、`UpdateAsync(id, input)`、`SetEnabledAsync`、`DeleteAsync`、`TestAsync(id)` | 数据源不多，列表不分页；`TestAsync` 返回状态码、耗时、前 500 个字符的响应片段 |
-| `ICollectTaskService` | `QueryAsync`、`GetAsync(id)`、`CreateAsync`、`UpdateAsync`、`SetEnabledAsync`、`DeleteAsync`、`PreviewSchedule(cron, timeZone)` | `PreviewSchedule` 返回下 3 次执行时间 |
-| `ICollectRunService` | `QueryAsync(CollectRunQuery)`、`GetAsync(id)`、`EnqueueAsync(taskId, trigger, scheduledFor, triggeredBy)` | `EnqueueAsync` 创建运行记录并发布消息，Job 和 Crm 共用；`CollectRunQuery` 按任务、数据源、状态、时间筛选，分页 |
+| `ICollectTaskService` | `QueryAsync`、`GetAsync(id)`、`GetAllAsync`、`CreateAsync`、`UpdateAsync(id, input)`、`SetEnabledAsync`、`DeleteAsync`、`PreviewSchedule(cron)` | 列表带最近一次运行的状态和下次执行时间；`GetAllAsync` 供运行记录的筛选下拉框；`PreviewSchedule` 返回下 3 次执行时间（UTC，页面用 `<utc-time>` 按操作者时区显示） |
+| `ICollectRunService` | `QueryAsync(CollectRunQuery)`、`GetAsync(id)`、`EnqueueAsync(taskId, trigger, scheduledFor, triggeredBy)`、`TriggerAsync(taskId, triggeredBy, anyTargetType)` | `EnqueueAsync` 创建运行记录并发布消息，Job 和 Crm 共用，返回 `EnqueueResult`（运行记录 id；`Published` 为 false 表示已创建但发布失败）；`TriggerAsync` 是后台的"立即执行"，`anyTargetType` 为 false 时只能触发日历排期、公布值类任务（§8.2）；`CollectRunQuery` 按任务、数据源、状态、触发方式、时间筛选，分页 |
 
 ### 7.3 消息
 
@@ -364,23 +364,23 @@ Suanpan.Crm/
 
 ## 8. 后台页面（Area：Collect）
 
-栏目"数据采集"已在栏目清单中（sys 设计 §6.2，图标 `cloud-download`，排序 30）。所有写操作都标 `[OpLog("数据采集", "...")]`；运行记录列表用整页刷新，不用 HTMX。
+栏目"数据采集"已在栏目清单中（sys 设计 §6.2，图标 `cloud-download`，排序 30）。所有写操作都标 `[OpLog("数据采集", "...")]`；运行记录列表用整页刷新，不用 HTMX；只有运行详情在排队、运行中时用 HTMX 自动刷新（§4.4）。
 
 ### 8.1 页面
 
 | 页面 | 路由 | 权限码 | 说明 |
 |---|---|---|---|
-| 数据源 | `/Collect/Source` | `collect:source:index` | 列：名称、机构、经济体、类型、频率上限、合规类别、robots.txt、状态、任务数 |
+| 数据源 | `/Collect/Source` | `collect:source:index` | 列：名称、机构、经济体、类型、频率上限、合规类别、robots.txt、凭据、状态、任务数（链接到按数据源筛选的任务列表） |
 | 数据源详情 | `/Collect/Source/Detail/{id}` | `collect:source:detail` | 只读；凭据只显示"已设置 / 未设置" |
 | 新增 / 编辑数据源 | `/Collect/Source/Create`、`/Edit/{id}` | `collect:source:create` / `edit` | 字段分组：基本信息、访问方式（类型、基础地址、频率上限、超时、凭据）、合规信息。启用不在表单中，在列表上单独操作 |
 | 连通性测试 | POST | `collect:source:test` | 在详情页执行，停用的数据源也可以测试（启用前先测，PRD FR-001 主流程第 2 步），robots.txt 为"不允许"的不发请求；结果经 TempData 带回详情页（状态码、耗时、响应片段按纯文本显示）；失败时写 `TempData["Error"]`，操作日志记为失败；失败不影响保存（ERR-SRC-002） |
 | 启用 / 停用、删除数据源 | POST | `collect:source:set_status` / `delete` | 二次确认；启用时校验 BR-002；停用时提示"它下面的任务将停止执行" |
-| 采集任务 | `/Collect/Task` | `collect:task:index` | 筛选：数据源、目标数据类型、状态；列：名称、数据源、解析器、目标数据类型、cron 和下次执行时间（操作者时区）、最近一次运行的状态、启用状态 |
-| 新增 / 编辑任务 | `/Collect/Task/Create`、`/Edit/{id}` | `collect:task:create` / `edit` | 解析器下拉框按适配器分组；选了解析器后显示目标数据类型；cron 输入框旁边显示下 3 次执行时间 |
+| 采集任务 | `/Collect/Task` | `collect:task:index` | 筛选：数据源、目标数据类型、状态；列：名称、数据源、解析器、目标数据类型、cron（UTC）、下次执行时间（操作者时区；任务或数据源停用时为空）、最近一次运行的状态和时间、启用状态。有运行记录的任务删除按钮置灰。解析器目录为空时不显示新增按钮，给出提示 |
+| 新增 / 编辑任务 | `/Collect/Task/Create`、`/Edit/{id}` | `collect:task:create` / `edit` | 解析器下拉框按适配器分组，选项文字带目标数据类型（不用脚本）；cron 输入框下显示下 3 次执行时间：按表单中的 cron 在服务端计算，打开编辑页、提交后回到表单时显示，输入时不实时更新 |
 | 启用 / 停用、删除任务 | POST | `collect:task:set_status` / `delete` | 二次确认 |
 | 立即执行 | POST | `collect:task:trigger` / `trigger_any` | 见 §8.2 |
-| 运行记录 | `/Collect/Run` | `collect:run:index` | 筛选：任务、数据源、状态、触发方式、时间范围（FR-002 验收第 5 条）；列：开始时间、任务、触发方式、状态、耗时、新增 / 更新 / 跳过、请求次数 |
-| 运行详情 | `/Collect/Run/Detail/{id}` | `collect:run:detail` | 每次请求的时间、耗时、状态码、错误、延后时长；错误信息按纯文本显示（硬性规则 10）；M2 起显示关联快照 |
+| 运行记录 | `/Collect/Run` | `collect:run:index` | 筛选：任务、数据源、状态、触发方式、时间范围（FR-002 验收第 5 条）；列：触发时间（与筛选的时间一致，即 `queued_at`）、任务、触发方式（手动的带触发人）、状态、耗时、新增 / 更新 / 跳过、请求次数 |
+| 运行详情 | `/Collect/Run/Detail/{id}` | `collect:run:detail` | 每次请求的时间、耗时、状态码、错误、延后时长；错误信息按纯文本显示（硬性规则 10）；排队、运行中时每 2 秒自动刷新（§4.4）；M2 起显示关联快照 |
 
 菜单排序：数据源 10、采集任务 20、运行记录 30。
 
@@ -482,6 +482,8 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 | FR-002 #3 最多重试 3 次，每次可见 | 单元测试 `RetryPolicy`；Collector 集成测试：假 HTTP 服务一直返回 500，运行记录有 4 次请求、状态为失败 |
 | FR-002 #4 同一任务不并发 | Collector 集成测试：同一任务两条排队记录同时处理，一条运行、一条跳过 |
 | FR-002 #5 运行记录按任务、数据源、状态、时间筛选 | 集成测试：查询条件组合 |
+| FR-002 主流程第 5 步、BR-155 手动触发 | 集成测试：停用的任务能立即执行，运行记录为排队、记录触发人并发布指令；数据源停用时拒绝；编辑不能触发其他类型；发布失败时记录停在排队。Crm 管道测试：立即执行以登录名为触发人、跳到运行详情、记入操作日志；运行详情的 HTMX 区块结束后不再刷新 |
+| BR-154 有运行记录的任务不能删除 | 集成测试 |
 | BR-003 频率上限 | 单元测试窗口换算；Collector 集成测试：上限 1 次/秒时连续两次请求，第二次记录了延后 |
 | BR-008 cron 最小 1 分钟 | 单元测试：6 段写法、非法写法被拒绝 |
 | 消息幂等 | Collector 集成测试：同一条指令投递两次，只执行一次 |
@@ -519,3 +521,4 @@ JAN-79（指标与数据源的映射）在 FR-001.2（JAN-81）完成后可以�
 | v0.4 | 2026-10-23 | vivo.li / Claude | FR-001.1 实施：§2.2 增加 `ix_col_source_economy_code`（经济体被数据源引用时不能删除）；§3.1 补充规则的接口 |
 | v0.5 | 2026-10-23 | vivo.li / Claude | FR-001.2 实施：§5.4 HttpClient 的注册和跳转处理、User-Agent 的默认值；§7.2 数据源服务的方法名；§8.1 连通性测试的结果展示。数据源被采集任务引用时不能删除的检查随 FR-002.1（JAN-82）建表后实现 |
 | v0.6 | 2026-10-23 | vivo.li / Claude | FR-002.1 实施：§2.1 `attempts` 的键名，`attempts` 和计数列的初值由程序写入；§3.1 数据源删除时检查采集任务；§3.2 ~ §3.4 补充规则和 `CronSchedule` 的接口；§5.2 解析器描述和目录的测试；§9 `ReferenceUsage` 移到 `Services/Common/References/`，各模块共用；§11 第 12 项 Cronos 已登记（PRD v1.0.0.19） |
+| v0.7 | 2026-10-26 | vivo.li / Claude | FR-002.2 实施：§4.4 运行详情自动刷新、发布失败的提示；§5.2 Services 经 `IParserCatalog` 使用解析器目录；§7.1、§7.2 任务和运行记录服务的方法（`PreviewSchedule` 不带时区，新增 `GetAllAsync`、`TriggerAsync`、`EnqueueResult`）；§8 各页面的列和交互按实现补充（运行记录列表的时间列为触发时间；cron 预览在服务端计算，输入时不实时更新）；§12 补充手动触发和删除的测试 |

@@ -1,0 +1,124 @@
+@model Suanpan.Services.Collect.Runs.Models.CollectRunDetail
+@using Suanpan.Core.Collect.Enums
+@*
+    运行详情的内容区块（采集设计 §8.1）。排队、运行中时每 2 秒用 HTMX 取一次本区块替换自己，结束后不再刷新
+    （前端约定 §4.1"手动触发采集"）；标签页不可见时暂停。错误信息按纯文本输出（硬性规则 10）。
+*@
+@{
+    var run = Model.Run;
+    var refreshing = !CollectRunStatusRule.IsFinished(run.Status);
+}
+@* 值为 null 的属性不输出：结束后的区块没有 hx-* 属性，替换上去就不再刷新 *@
+<div id="run-detail"
+     hx-get="@(refreshing ? Url.Action("Detail", new { id = run.Id }) : null)"
+     hx-trigger="@(refreshing ? "every 2s [!document.hidden]" : null)"
+     hx-swap="@(refreshing ? "outerHTML" : null)">
+    <div class="row g-3">
+        <div class="col-lg-5">
+            <div class="card">
+                <div class="card-body">
+                    <h3 class="card-title">
+                        概况
+                        @if (refreshing)
+                        {
+                            <span class="text-secondary small fw-normal ms-2"><span class="spinner-border spinner-border-sm me-1"></span>自动刷新中</span>
+                        }
+                    </h3>
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">状态</dt>
+                        <dd class="col-sm-8"><status-badge value="@run.Status" /></dd>
+                        <dt class="col-sm-4">任务</dt>
+                        <dd class="col-sm-8">@Model.TaskName</dd>
+                        <dt class="col-sm-4">数据源</dt>
+                        <dd class="col-sm-8">@(Model.SourceName ?? "（已删除）")</dd>
+                        <dt class="col-sm-4">目标数据类型</dt>
+                        <dd class="col-sm-8">@CollectDisplayNames.Get(Model.TargetType)</dd>
+                        <dt class="col-sm-4">触发方式</dt>
+                        <dd class="col-sm-8">
+                            @CollectDisplayNames.Get(run.Trigger)
+                            @if (run.TriggeredBy is not null)
+                            {
+                                <span class="text-secondary">（@run.TriggeredBy）</span>
+                            }
+                        </dd>
+                        @if (run.ScheduledFor is not null)
+                        {
+                            <dt class="col-sm-4">定时时间点</dt>
+                            <dd class="col-sm-8"><utc-time value="@run.ScheduledFor" /></dd>
+                        }
+                        <dt class="col-sm-4">触发时间</dt>
+                        <dd class="col-sm-8"><utc-time value="@run.QueuedAt" format="yyyy-MM-dd HH:mm:ss" /></dd>
+                        <dt class="col-sm-4">开始时间</dt>
+                        <dd class="col-sm-8"><utc-time value="@run.StartedAt" format="yyyy-MM-dd HH:mm:ss" /></dd>
+                        <dt class="col-sm-4">结束时间</dt>
+                        <dd class="col-sm-8"><utc-time value="@run.EndedAt" format="yyyy-MM-dd HH:mm:ss" /></dd>
+                        <dt class="col-sm-4">耗时</dt>
+                        <dd class="col-sm-8 font-monospace">@(CollectRunDurations.Format(run.StartedAt, run.EndedAt) ?? "-")</dd>
+                        <dt class="col-sm-4">请求次数</dt>
+                        <dd class="col-sm-8 font-monospace">@run.AttemptCount</dd>
+                        @if (run.NextAttemptAt is not null && run.Status == CollectRunStatus.Running)
+                        {
+                            <dt class="col-sm-4">下次重试</dt>
+                            <dd class="col-sm-8"><utc-time value="@run.NextAttemptAt" format="yyyy-MM-dd HH:mm:ss" /></dd>
+                        }
+                        <dt class="col-sm-4">新增 / 更新 / 跳过</dt>
+                        <dd class="col-sm-8 font-monospace">@run.InsertedCount / @run.UpdatedCount / @run.SkippedCount</dd>
+                        @if (run.TraceId is not null)
+                        {
+                            <dt class="col-sm-4">追踪 ID</dt>
+                            <dd class="col-sm-8"><code class="small">@run.TraceId</code></dd>
+                        }
+                    </dl>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-7">
+            @if (run.ErrorCode is not null || run.ErrorMessage is not null)
+            {
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <h3 class="card-title">错误</h3>
+                        @if (run.ErrorCode is not null)
+                        {
+                            <div class="mb-2"><code>@run.ErrorCode</code></div>
+                        }
+                        @if (run.ErrorMessage is not null)
+                        {
+                            <pre class="mb-0" style="white-space: pre-wrap">@run.ErrorMessage</pre>
+                        }
+                    </div>
+                </div>
+            }
+            <div class="card">
+                <div class="card-header"><h3 class="card-title">请求记录</h3></div>
+                @if (run.Attempts.Count == 0)
+                {
+                    <div class="card-body text-secondary">还没有发出请求</div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle card-table">
+                            <thead>
+                                <tr><th class="text-end">序号</th><th>开始时间</th><th class="text-end">耗时（毫秒）</th><th class="text-end">HTTP 状态码</th><th class="text-end">延后（秒）</th><th>错误</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var attempt in run.Attempts.OrderBy(a => a.No))
+                                {
+                                    <tr>
+                                        <td class="text-end font-monospace">@attempt.No</td>
+                                        <td class="text-nowrap"><utc-time value="@attempt.StartedAt" format="yyyy-MM-dd HH:mm:ss" /></td>
+                                        <td class="text-end font-monospace">@attempt.DurationMs</td>
+                                        <td class="text-end font-monospace">@(attempt.HttpStatus?.ToString() ?? "-")</td>
+                                        <td class="text-end font-monospace">@(attempt.DeferredMs > 0 ? (attempt.DeferredMs / 1000.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) : "-")</td>
+                                        <td class="text-break">@attempt.Error</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>

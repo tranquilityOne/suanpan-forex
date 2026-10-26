@@ -1,0 +1,86 @@
+@model CollectTaskEditViewModel
+@{
+    // 编辑页的地址带 id（/Edit/{id}），新增页没有
+    var isNew = ViewContext.RouteData.Values["id"] is null;
+    ViewData["Title"] = isNew ? "新增采集任务" : "编辑采集任务";
+    var options = Model.Options!;
+    var preview = options.Preview;
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">@ViewData["Title"]</h2>
+</div>
+
+<div class="card" style="max-width: 60rem">
+    <form asp-action="@(isNew ? "Create" : "Edit")" asp-route-id="@(isNew ? null : ViewContext.RouteData.Values["id"])" method="post" class="card-body" autocomplete="off">
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        @if (isNew)
+        {
+            <div class="alert alert-info">新建的任务为停用状态。保存后可以在列表上立即执行试跑，确认结果后再启用。</div>
+        }
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="Name" class="form-label required"></label>
+                <input asp-for="Name" class="form-control" placeholder="如：BLS 发布日程" />
+                <span asp-validation-for="Name"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="SourceId" class="form-label required"></label>
+                <select asp-for="SourceId" asp-items="options.Sources" class="form-select">
+                    <option value="">请选择</option>
+                </select>
+                <div class="form-text">停用的数据源也可以选，但数据源启用后任务才能启用和执行</div>
+                <span asp-validation-for="SourceId"></span>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="ParserKey" class="form-label required"></label>
+            <select asp-for="ParserKey" asp-items="options.Parsers" class="form-select">
+                <option value="">请选择</option>
+            </select>
+            <div class="form-text">解析器决定任务的目标数据类型（BR-012）@if (options.TargetType is { } targetType) {<text>，当前为 <strong>@CollectDisplayNames.Get(targetType)</strong></text>}</div>
+            <span asp-validation-for="ParserKey"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Cron" class="form-label"></label>
+            <input asp-for="Cron" class="form-control font-monospace" style="max-width: 20rem" placeholder="如：0 1 * * *" />
+            <div class="form-text">5 段写法（分 时 日 月 周），按 UTC 解释，最小间隔 1 分钟；不填时只能立即执行</div>
+            <span asp-validation-for="Cron"></span>
+            @if (preview.Next.Count > 0)
+            {
+                <div class="mt-2 small">
+                    <span class="text-secondary">接下来 @preview.Next.Count 次执行（你的时区）：</span>
+                    @for (var i = 0; i < preview.Next.Count; i++)
+                    {
+                        <utc-time value="@preview.Next[i]" class="font-monospace me-2" />
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Params" class="form-label"></label>
+            <textarea asp-for="Params" class="form-control font-monospace" rows="4" placeholder='如：{"series": ["CES0000000001"]}'></textarea>
+            <div class="form-text">JSON 对象，具体字段由解析器决定；不需要时留空</div>
+            <span asp-validation-for="Params"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="Remark" class="form-label"></label>
+            <textarea asp-for="Remark" class="form-control" rows="2"></textarea>
+            <span asp-validation-for="Remark"></span>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">保存</button>
+            <a asp-action="Index" class="btn">取消</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

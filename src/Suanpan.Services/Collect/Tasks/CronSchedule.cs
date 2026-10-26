@@ -8,6 +8,10 @@ namespace Suanpan.Services.Collect.Tasks;
 /// </summary>
 public static class CronSchedule
 {
+    /// <summary>保存前统一写法：去掉首尾空白，段与段之间只留一个空格；空白输入返回 null（只能手动触发）</summary>
+    public static string? Normalize(string? cron)
+        => string.IsNullOrWhiteSpace(cron) ? null : string.Join(' ', cron.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
     /// <summary>写法正确时返回 null，否则返回面向用户的提示（ERR-COL-001）</summary>
     public static string? Validate(string? cron)
     {

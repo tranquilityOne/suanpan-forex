@@ -26,7 +26,7 @@
         <div class="table-responsive">
             <table class="table table-hover table-sm align-middle card-table text-nowrap">
                 <thead>
-                    <tr><th>名称</th><th>所属机构</th><th>经济体</th><th>类型</th><th class="text-end">频率上限</th><th>合规类别</th><th>robots.txt</th><th>凭据</th><th>状态</th><th class="w-1"></th></tr>
+                    <tr><th>名称</th><th>所属机构</th><th>经济体</th><th>类型</th><th class="text-end">频率上限</th><th>合规类别</th><th>robots.txt</th><th>凭据</th><th>状态</th><th class="text-end">任务数</th><th class="w-1"></th></tr>
                 </thead>
                 <tbody>
                     @foreach (var source in Model)
@@ -59,6 +59,16 @@
                             </td>
                             <td class="text-secondary">@(source.HasCredential ? "已设置" : source.CredentialRequired ? "未设置" : "不需要")</td>
                             <td><status-badge tone="@(source.IsEnabled ? BadgeTone.Success : BadgeTone.Neutral)" text="@(source.IsEnabled ? "启用" : "停用")" /></td>
+                            <td class="text-end">
+                                @if (source.TaskCount > 0)
+                                {
+                                    <a asp-controller="Task" asp-action="Index" asp-route-SourceId="@source.Id" class="font-monospace">@source.TaskCount</a>
+                                }
+                                else
+                                {
+                                    <span class="font-monospace text-secondary">0</span>
+                                }
+                            </td>
                             <td>
                                 <div class="btn-list flex-nowrap">
                                     <a asp-action="Detail" asp-route-id="@source.Id" asp-permission="collect:source:detail" class="btn btn-sm">详情</a>

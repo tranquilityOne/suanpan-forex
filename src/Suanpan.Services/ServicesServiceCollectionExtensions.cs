@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Suanpan.Services.Collect.Runs;
 using Suanpan.Services.Collect.Sources;
+using Suanpan.Services.Collect.Tasks;
 using Suanpan.Services.Common.Alerts;
 using Suanpan.Services.Reference.Currencies;
 using Suanpan.Services.Reference.Economies;
@@ -19,8 +21,8 @@ namespace Suanpan.Services;
 public static class ServicesServiceCollectionExtensions
 {
     /// <summary>
-    /// 注册业务服务。调用方还需要注册 Data（AddSuanpanData）、Redis（AddSuanpanRedis，登录的 TOTP 防重放、数据源限流等用到）
-    /// 和采集用的 HttpClient（AddSuanpanCollectHttp，数据源连通性测试用到），
+    /// 注册业务服务。调用方还需要注册 Data（AddSuanpanData）、Redis（AddSuanpanRedis，登录的 TOTP 防重放、数据源限流等用到）、
+    /// 采集用的 HttpClient（AddSuanpanCollectHttp，数据源连通性测试用到）和 RabbitMQ（AddSuanpanEventBus，采集的运行记录下发用到），
     /// 见 docs/conventions/backend.md §4。
     /// 权限树重建 <see cref="IPermissionRebuildService"/> 依赖 MVC、初始管理员的启动服务 <see cref="AdminSeedHostedService"/>，只由 Crm 注册。
     /// </summary>
@@ -69,6 +71,9 @@ public static class ServicesServiceCollectionExtensions
 
         // Collect：数据采集
         services.AddScoped<IDataSourceService, DataSourceService>();
+        services.TryAddSingleton<IParserCatalog, DefaultParserCatalog>();
+        services.AddScoped<ICollectTaskService, CollectTaskService>();
+        services.AddScoped<ICollectRunService, CollectRunService>();
 
         return services;
     }

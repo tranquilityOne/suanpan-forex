@@ -1,3 +1,5 @@
+using Suanpan.Core.Collect.Entities;
+using Suanpan.Core.Collect.Enums;
 using Suanpan.Core.Reference.Enums;
 using Suanpan.Core.Sys.Entities;
 using Suanpan.Core.Sys.Enums;
@@ -97,6 +99,46 @@ internal static class TestData
         AgencyEn = "Test Agency",
         DefaultReleaseTime = new TimeOnly(8, 30),
     };
+
+    /// <summary>字段齐全的数据源（不需要凭据），名称带随机后缀</summary>
+    public static async Task<DataSource> AddDataSourceAsync(SuanpanDbContext db, CancellationToken ct, bool enabled = true)
+    {
+        var source = new DataSource
+        {
+            Name = Unique("源"),
+            Agency = "测试机构",
+            Type = DataSourceType.OfficialApi,
+            BaseUrl = "https://api.example.org/",
+            RateLimit = 2,
+            RateLimitUnit = RateLimitUnit.PerSecond,
+            ComplianceClass = ComplianceClass.GovernmentPublic,
+            TermsUrl = "https://www.example.org/terms",
+            RobotsResult = RobotsResult.NotApplicable,
+            IsEnabled = enabled,
+        };
+        db.DataSources.Add(source);
+        await db.SaveChangesAsync(ct);
+        return source;
+    }
+
+    /// <summary>采集任务，名称带随机后缀；解析器标识只是占位，不经过解析器目录</summary>
+    public static async Task<CollectTask> AddCollectTaskAsync(
+        SuanpanDbContext db, CancellationToken ct, long sourceId, CollectTargetType targetType = CollectTargetType.Calendar,
+        bool enabled = false, string? cron = null)
+    {
+        var task = new CollectTask
+        {
+            Name = Unique("任务"),
+            SourceId = sourceId,
+            ParserKey = "us.test.schedule",
+            TargetType = targetType,
+            Cron = cron,
+            IsEnabled = enabled,
+        };
+        db.CollectTasks.Add(task);
+        await db.SaveChangesAsync(ct);
+        return task;
+    }
 }
 
 /// <summary>固定的当前用户</summary>

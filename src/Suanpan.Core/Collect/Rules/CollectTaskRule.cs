@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Suanpan.Core.Collect.Entities;
+using Suanpan.Core.Collect.Enums;
 using Suanpan.Core.Collect.Parsers;
 using Suanpan.Core.Common.Validation;
 
@@ -34,6 +35,13 @@ public static class CollectTaskRule
 
         return IsJsonObjectOrEmpty(task.Params) ? null : new(nameof(CollectTask.Params), "参数必须是 JSON 对象，如 {\"series\": [\"CES0000000001\"]}");
     }
+
+    /// <summary>
+    /// 编辑只能手动触发"排期采集、公布值补采"类任务（PRD §13.1.2，采集设计 §8.2），即目标数据类型为日历排期、公布值的任务；
+    /// 有"立即执行（全部）"权限的角色不受这个限制
+    /// </summary>
+    public static bool IsEditorTriggerable(CollectTargetType targetType)
+        => targetType is CollectTargetType.Calendar or CollectTargetType.Release;
 
     private static bool IsJsonObjectOrEmpty(string? value)
     {

@@ -1,0 +1,156 @@
+@model CollectTaskListViewModel
+@{
+    ViewData["Title"] = "采集任务";
+    var filter = Model.Filter;
+}
+
+<div class="page-header mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col">
+            <h2 class="page-title">采集任务</h2>
+            <div class="text-secondary">cron 按 UTC 解释，下次执行时间按你的时区显示；停用的任务不定时执行，但可以立即执行试跑。</div>
+        </div>
+        @if (Model.HasParsers)
+        {
+            <div class="col-auto">
+                <a asp-action="Create" asp-permission="collect:task:create" class="btn btn-primary"><i class="ti ti-plus me-1"></i>新增采集任务</a>
+            </div>
+        }
+    </div>
+</div>
+
+@if (!Model.HasParsers)
+{
+    <div class="alert alert-info">还没有可用的解析器，暂时不能新增采集任务。解析器随数据源的适配器一起发版加入（ENG-009）。</div>
+}
+
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label">数据源</label>
+        <select name="SourceId" asp-items="@(new SelectList(Model.SourceOptions, "Value", "Text", filter.SourceId?.ToString()))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">目标数据类型</label>
+        <select name="TargetType" asp-items="@(new SelectList(Model.TargetTypeOptions, "Value", "Text", filter.TargetType?.ToString()))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">状态</label>
+        <select name="IsEnabled" class="form-select form-select-sm">
+            <option value="">全部</option>
+            <option value="true" selected="@(filter.IsEnabled == true)">启用</option>
+            <option value="false" selected="@(filter.IsEnabled == false)">停用</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-primary">查询</button>
+        <a asp-action="Index" class="btn btn-sm">重置</a>
+    </div>
+</form>
+
+<div class="card">
+    @if (Model.Result.Items.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("没有符合条件的采集任务")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle card-table text-nowrap">
+                <thead>
+                    <tr><th>名称</th><th>数据源</th><th>解析器</th><th>目标数据类型</th><th>cron（UTC）</th><th>下次执行</th><th>最近一次运行</th><th>状态</th><th class="w-1"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var task in Model.Result.Items)
+                    {
+                        <tr>
+                            <td>@task.Name</td>
+                            <td>
+                                @task.SourceName
+                                @if (!task.SourceEnabled)
+                                {
+                                    <status-badge tone="Neutral" text="数据源停用" />
+                                }
+                            </td>
+                            <td>
+                                @if (task.ParserName is not null)
+                                {
+                                    @task.ParserName
+                                }
+                                else
+                                {
+                                    <status-badge tone="Failure" text="目录中已没有" />
+                                }
+                                <div><code class="small">@task.ParserKey</code></div>
+                            </td>
+                            <td>@CollectDisplayNames.Get(task.TargetType)</td>
+                            <td>
+                                @if (task.Cron is not null)
+                                {
+                                    <code class="small">@task.Cron</code>
+                                }
+                                else
+                                {
+                                    <span class="text-secondary">只能手动执行</span>
+                                }
+                            </td>
+                            <td>
+                                @if (task.NextRunAt is not null)
+                                {
+                                    <utc-time value="@task.NextRunAt" />
+                                }
+                                else
+                                {
+                                    <span class="text-secondary">—</span>
+                                }
+                            </td>
+                            <td>
+                                @if (task.LastRunStatus is { } lastStatus)
+                                {
+                                    <a asp-controller="Run" asp-action="Index" asp-route-TaskId="@task.Id" asp-permission="collect:run:index" class="text-reset">
+                                        <status-badge value="@lastStatus" />
+                                    </a>
+                                    <utc-time value="@task.LastRunAt" class="text-secondary small" />
+                                }
+                                else
+                                {
+                                    <span class="text-secondary">还没有运行过</span>
+                                }
+                            </td>
+                            <td><status-badge tone="@(task.IsEnabled ? BadgeTone.Success : BadgeTone.Neutral)" text="@(task.IsEnabled ? "启用" : "停用")" /></td>
+                            <td>
+                                <div class="btn-list flex-nowrap">
+                                    <partial name="_TriggerButton" model="new CollectTriggerButtonModel(task.Id, task.Name, task.TargetType)" />
+                                    <a asp-action="Edit" asp-route-id="@task.Id" asp-permission="collect:task:edit" class="btn btn-sm">编辑</a>
+                                    @if (task.IsEnabled)
+                                    {
+                                        <confirm-form asp-action="SetStatus" asp-route-id="@task.Id" asp-route-enabled="false" asp-permission="collect:task:set_status"
+                                                      message="@($"停用采集任务 {task.Name}？停用后不再定时执行，仍可以立即执行。")" button-text="停用" />
+                                    }
+                                    else
+                                    {
+                                        <confirm-form asp-action="SetStatus" asp-route-id="@task.Id" asp-route-enabled="true" asp-permission="collect:task:set_status"
+                                                      message="@($"启用采集任务 {task.Name}？启用后从下一个时间点开始按 cron 定时执行。")" button-text="启用" button-class="btn btn-sm btn-outline-success" />
+                                    }
+                                    @if (task.LastRunStatus is null)
+                                    {
+                                        <confirm-form asp-action="Delete" asp-route-id="@task.Id" asp-permission="collect:task:delete" button-text="删除"
+                                                      message="@($"删除采集任务 {task.Name}？删除后不能恢复。")" />
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-danger" disabled title="已有运行记录的任务不能删除，可以停用" asp-permission="collect:task:delete">删除</button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <partial name="_Pager" model="Model.Result" />
+    }
+</div>

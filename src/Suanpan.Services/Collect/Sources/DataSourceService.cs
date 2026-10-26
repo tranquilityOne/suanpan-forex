@@ -32,7 +32,8 @@ public sealed class DataSourceService(
             .OrderBy(s => s.Name)
             .Select(s => new DataSourceRow(
                 s.Id, s.Name, s.Agency, s.EconomyCode, s.Type, s.RateLimit, s.RateLimitUnit,
-                s.ComplianceClass, s.RobotsResult, s.CredentialRequired, s.Credential != null, s.IsEnabled))
+                s.ComplianceClass, s.RobotsResult, s.CredentialRequired, s.Credential != null, s.IsEnabled,
+                db.CollectTasks.Count(t => t.SourceId == s.Id)))
             .ToListAsync(ct);
 
     public Task<DataSource?> GetAsync(long id, CancellationToken ct = default)
