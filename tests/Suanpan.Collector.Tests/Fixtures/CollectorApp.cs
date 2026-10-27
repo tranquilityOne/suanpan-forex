@@ -1,0 +1,111 @@
+using System.Security.Cryptography;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Suanpan.Collector.Execution;
+using Suanpan.Core.Collect.Entities;
+using Suanpan.Core.Collect.Enums;
+using Suanpan.Core.Collect.Rules;
+using Suanpan.Data;
+using Suanpan.Infrastructure.Http;
+using Suanpan.Infrastructure.Messaging;
+using Suanpan.Services.Collect.Ingest;
+using Suanpan.Services.Collect.Runs;
+using Suanpan.Shared.Messages.Collect;
+
+namespace Suanpan.Collector.Tests.Fixtures;
+
+/// <summary>
+/// 在内存中启动的 Collector（WebApplicationFactory）：连测试容器，采集用的 HttpClient 接到 <see cref="StubHttp"/>，
+/// 另注册测试用的适配器、解析器和入库服务（<see cref="FakeAdapter"/> 等）。消息接收、限流、分布式锁都是真实的
+/// </summary>
+public sealed class CollectorApp(string connectionString, string redis, string rabbitMq, StubHttp http) : WebApplicationFactory<Program>
+{
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseEnvironment("Testing");
+        builder.UseSetting("ConnectionStrings:Main", connectionString);
+        builder.UseSetting("Redis:Configuration", redis);
+        builder.UseSetting("RabbitMq:Uri", rabbitMq);
+        builder.UseSetting("RabbitMq:RetryDelaySeconds", "1");
+        builder.UseSetting("Security:EncryptionKey", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+        builder.UseSetting("Logging:LogLevel:Microsoft.EntityFrameworkCore", "Warning");
+
+        builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<ICollectAdapter, FakeAdapter>();
+            services.AddSingleton<IParser, FakeParser>();
+            services.AddSingleton<ICollectIngestor, FakeIngestor>();
+            services.AddHttpClient(CollectHttp.ClientName).ConfigurePrimaryHttpMessageHandler(http.CreateHandler);
+        });
+    }
+
+    /// <summary>启用的数据源和它下面一个停用的任务（停用的任务可以手动触发，BR-155）；数据源的基础地址指向 StubHttp 的主机</summary>
+    public async Task<CollectTask> AddTaskAsync(string host, int rateLimit = 100, string? parameters = null)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<SuanpanDbContext>();
+        var source = new DataSource
+        {
+            Name = $"源_{Guid.NewGuid():N}",
+            Agency = "测试机构",
+            Type = DataSourceType.OfficialApi,
+            BaseUrl = $"https://{host}/",
+            RateLimit = rateLimit,
+            RateLimitUnit = RateLimitUnit.PerSecond,
+            ComplianceClass = ComplianceClass.GovernmentPublic,
+            TermsUrl = $"https://{host}/terms",
+            RobotsResult = RobotsResult.NotApplicable,
+            IsEnabled = true,
+        };
+        db.DataSources.Add(source);
+        await db.SaveChangesAsync();
+
+        var task = new CollectTask
+        {
+            Name = $"任务_{Guid.NewGuid():N}",
+            SourceId = source.Id,
+            ParserKey = FakeParser.ParserKey,
+            TargetType = CollectTargetType.Calendar,
+            Params = parameters,
+        };
+        db.CollectTasks.Add(task);
+        await db.SaveChangesAsync();
+        return task;
+    }
+
+    /// <summary>后台的"立即执行"：创建排队的运行记录并下发（与 Crm 走同一个服务）</summary>
+    public async Task<long> TriggerAsync(CollectTask task)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var result = await scope.ServiceProvider.GetRequiredService<ICollectRunService>().TriggerAsync(task.Id, "tester", anyTargetType: true);
+        return result is { Success: true, Published: true, RunId: { } runId }
+            ? runId
+            : throw new InvalidOperationException($"立即执行失败：{result.Error}");
+    }
+
+    /// <summary>直接发一条指令，模拟重复投递</summary>
+    public Task PublishAsync(long runId, int attempt = 1)
+        => Services.GetRequiredService<IEventBus>().PublishAsync(new CollectRunCommand(runId, attempt));
+
+    public async Task<CollectRun> GetRunAsync(long runId)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<SuanpanDbContext>().CollectRuns.AsNoTracking().SingleAsync(r => r.Id == runId);
+    }
+
+    /// <summary>等运行记录到达某个状态</summary>
+    public Task<CollectRun> WaitForRunAsync(long runId, Func<CollectRun, bool> done)
+        => Eventually.GetAsync(() => GetRunAsync(runId), done, r => $"状态 {r.Status}，请求 {r.AttemptCount} 次，错误 {r.ErrorCode} {r.ErrorMessage}");
+
+    public Task<CollectRun> WaitUntilFinishedAsync(long runId)
+        => WaitForRunAsync(runId, r => CollectRunStatusRule.IsFinished(r.Status));
+
+    public async Task ExecuteAsync(Func<SuanpanDbContext, Task> action)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        await action(scope.ServiceProvider.GetRequiredService<SuanpanDbContext>());
+    }
+}

@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.28 |
+| 版本 | v1.29 |
 | 日期 | 2026-10-27 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -485,7 +485,7 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 - `Suanpan.Infrastructure.Tests`：Redis 组件（分布式锁、限流器）和事件总线（收发、重试后转入 `.failed`、延时投递）。Testcontainers 启动 Valkey 8.1 和 RabbitMQ 4.1，与线上服务端版本一致，同样需要 Docker。
 - `Suanpan.Crm.Tests`：后台的请求管道（Cookie、安全戳、默认拒绝、IP 白名单、Hangfire 面板的授权、全局过滤器）和页面框架（布局、公共部件、中文校验提示）。WebApplicationFactory 在内存中启动 Crm，依赖数据库的服务和 Hangfire 存储换成假实现，不需要 Docker；登录 Cookie 用 Crm 自己的加密格式生成，经过真实的 Cookie 校验。测试用的页面放在 `Fixtures/`，只在测试中加载。
 - 容器夹具在第一个用到它的测试中才启动容器。xUnit 不论筛选条件都会创建程序集夹具，在 `InitializeAsync` 中启动会让只跑单元测试时也启动容器。
-- `Suanpan.Collector.Tests`：每个解析器至少有一组基于真实快照的测试样例；官方页面改版后，把新快照补进样例。
+- `Suanpan.Collector.Tests`：每个解析器至少有一组基于真实快照的测试样例；官方页面改版后，把新快照补进样例。执行框架的集成测试启动 PostgreSQL、Valkey、RabbitMQ 容器，在内存中启动 Collector（采集设计 §12）；Collector 在后台自己提交事务，这类测试不能用回滚隔离，改为每个测试用自己的数据（随机名称），断言只看自己的数据。
 - 每个类库对应一个测试项目（`Suanpan.{类库}.Tests`），需要测试的类库还没有测试项目时，先新建再写测试。
 - 测试框架为 xUnit v3，通过 Microsoft.Testing.Platform 运行（`global.json` 中设置），测试项目的 `OutputType` 为 `Exe`。
 
@@ -556,7 +556,7 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 |---|---|
 | 测试中不直接取当前时间（`DateTime.Now`、`DateTime.UtcNow`、`DateTimeOffset.Now`、`DateTimeOffset.UtcNow`），不用 `Thread.Sleep`、`Task.Delay` 等待；需要时间的地方注入 `TimeProvider` | CI 脚本搜索 |
 | 服务层和集成测试不比对提示文案原文，只断言成功或失败以及数据的最终状态（文案在规则的单元测试里核对一次） | CI 脚本搜索 `Assert.Equal("…", ….Error)` |
-| 要启动容器的测试类（连数据库、Valkey、RabbitMQ）必须标 `[Trait(TestCategory.Key, TestCategory.Integration)]`；连数据库的在各自的事务里执行、结束时回滚；名称带随机后缀；查询带条件，不依赖整表的行数或内容 | 架构测试：构造函数需要容器夹具（`PostgresFixture`、`ValkeyFixture`、`RabbitMqFixture`）的类必须带这个标签；其余靠评审 |
+| 要启动容器的测试类（连数据库、Valkey、RabbitMQ）必须标 `[Trait(TestCategory.Key, TestCategory.Integration)]`；连数据库的在各自的事务里执行、结束时回滚（在内存中启动整个程序的测试除外，见 §13.1 的 `Suanpan.Collector.Tests`）；名称带随机后缀；查询带条件，不依赖整表的行数或内容 | 架构测试：构造函数需要容器夹具（`PostgresFixture`、`ValkeyFixture`、`RabbitMqFixture`）的类必须带这个标签；其余靠评审 |
 | 不为纯数据类、第三方库写测试；依赖注入只保留一个冒烟测试 | 评审 |
 | Theory 只放有代表性的输入：每个分支或边界一个样例 | 评审 |
 | 不断言没有 ORDER BY 的集合顺序 | 评审 |
@@ -630,3 +630,4 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | v1.26 | 2026-10-23 | vivo.li / Claude | §7 Core 的字段规则统一返回 `FieldError`（FR-001.1 实施） |
 | v1.27 | 2026-10-23 | vivo.li / Claude | §12 配置键增加 `Collect:UserAgent`（FR-001.2 实施） |
 | v1.28 | 2026-10-27 | vivo.li / Claude | §4 调用 `AddSuanpanServices` 的程序还要注册采集 HttpClient 和 EventBus；§7 各模块的配置项由 `ConfigDefinitions.All` 汇总；§8.3 写明任务注册表和任务类的位置（FR-002.3 实施） |
+| v1.29 | 2026-10-27 | vivo.li / Claude | §13.1、§13.4 Collector 的执行框架集成测试：在内存中启动整个程序，不能用回滚隔离，改用各自的随机数据（FR-002.4 实施） |

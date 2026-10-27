@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.9 |
+| 版本 | v0.10 |
 | 日期 | 2026-10-27 |
 | 状态 | 已评审（2026-10-23，vivo.li；§11 第 7 项的联系邮箱待提供） |
 | 覆盖 | FR-001 数据源管理、FR-002 采集任务配置与调度；盯盘（FR-003）、快照与重新解析（FR-004）只定接入位置 |
@@ -245,6 +245,15 @@ Collector 的消息处理器 `CollectRunCommandHandler`（`Suanpan.Collector/Han
 
 盯盘服务重启后的恢复（ERR-COL-006）由 FR-003 处理。
 
+**实现**（`Suanpan.Collector/Execution/CollectExecutor`、`StaleRunRecovery`）：
+- 一条 `CollectRunCommand` 对应一次请求（含适配器的多页请求）。第 n 次的指令要求运行记录"运行中"且已请求 n-1 次（第 1 次要求"排队"），否则是重复投递，直接忽略。
+- 前置检查放在认领之前：停用而跳过时没有发请求，请求次数不变。因停用跳过、缺少解析器 / 适配器 / 入库服务的实现而失败，没有对应的错误码，只写原因。
+- 认领时请求次数加一，并写入这次请求的记录（开始时间），结束时再补全耗时、状态码、错误和延后时长；执行中断的回收以最近一条请求记录的开始时间判断（`CollectRunStatusRule.IsInterrupted`）。第 1 次请求的认领在任务锁内进行（锁 30 秒过期，最多等 10 秒，拿不到时抛出异常，由消息框架稍后重试）。
+- 改运行记录一律在行锁内进行（`SELECT ... FOR UPDATE` 后检查状态和请求次数再保存），与重复投递的指令、执行中断的回收互斥；回收用条件更新（状态仍为运行中、请求次数没变）。
+- 任一响应不是 2xx 即算请求失败，错误信息中的地址只保留路径（有的数据源把凭据放在查询串里）。重试间隔取系统配置，格式不对时按默认值并记警告日志；重试指令发布失败时记录停在"运行中"，由回收记为失败。
+- 频率限制拿不到配额时，等到下一个固定窗口开始再申请，同一次执行中等待的时长累加到请求记录的 `DeferredMs`。
+- RabbitMQ 接收端按到达顺序逐条处理消息（每个程序一个通道，`ConsumerDispatchConcurrency` 为默认的 1），所以一个 Collector 实例同一时刻只执行一条运行记录，频率限制的等待也会让后面的消息排队。任务多起来后再调大并发或增加实例。
+
 ### 4.4 手动触发（Crm）
 
 - 运行记录页和任务列表上的"立即执行"：创建运行记录（触发方式"手动"，`triggered_by` 为当前登录名），然后发布 `CollectRunCommand`。页面跳到该运行记录的详情页，状态从"排队"变为"运行中"（FR-002 验收第 2 条：10 秒内，取决于 Collector 接收消息的速度）；详情在排队、运行中时每 2 秒局部刷新，结束后停止（前端约定 §4.1 登记的"手动触发采集"）。运行记录提交后发布失败时不报错，页面提示"稍后由调度自动重新下发"（§4.2 的兜底）。
@@ -271,12 +280,12 @@ Job 每天执行一次 `collect-run-cleanup`：删除 `queued_at` 早于保留�
   }
   ```
 
-  `FetchContext` 带数据源配置、解密后的凭据、任务参数、限流后的 HttpClient；`FetchResult` 是一个或多个响应（地址、状态码、内容、内容类型），供解析和以后的快照使用。
+  `FetchContext` 带数据源配置（`Source`）、解密后的凭据（`Credential`）、任务参数（`Parameters`），请求一律通过它的 `SendAsync` / `GetAsync` 发出：每次请求前申请频率配额，超时取数据源的 `timeout_seconds`（超时抛出 `FetchTimeoutException`），User-Agent 由采集用的 HttpClient 设置。`FetchResult` 是一个或多个响应（`FetchedResponse`：地址、状态码、内容类型、原始内容，`Text()` 按字符集解码），供解析和以后的快照使用。
 - 适配器只发请求、不解析、不写库。频率限制、超时、User-Agent、重试由框架统一处理，适配器不重复实现。
 
 ### 5.2 解析器与解析器目录
 
-- 解析器是纯函数（硬性规则 14）：输入响应内容和任务参数，输出标准化记录，不访问数据库和网络，配基于真实快照的测试（ENG-009）。
+- 解析器是纯函数（硬性规则 14）：输入响应内容和任务参数，输出标准化记录，不访问数据库和网络，配基于真实快照的测试（ENG-009）。接口 `IParser`（`Key`、`Parse(FetchResult, 参数)`）返回 `ParseResult(记录, 缺失项)`，缺失项不为空时运行记为部分成功（ERR-PARSE-002）；内容不符合预期时抛出 `ParseException`（ERR-PARSE-001）。适配器和解析器在 `AddSuanpanCollectors` 中注册。
 - **解析器目录** `ParserCatalog`（`Suanpan.Core/Collect/Parsers/`）：列出全部解析器的标识、中文名、所属适配器、目标数据类型（`ParserDescriptor`；所属适配器取标识去掉最后一段，如 `us.bls`）。Crm 用它填下拉框、校验任务配置；Collector 按标识找到实现。Services 经 `IParserCatalog`（`Services/Collect/Tasks/`，默认实现就是 `ParserCatalog`）使用目录，测试中换成假的解析器。Crm 不引用 Collector（后端约定 §2），所以目录放在两边都能引用的 Core 中。`Suanpan.Core.Tests` 检查标识的写法和不重复，`Suanpan.Collector.Tests` 检查目录与实现一一对应。
 - 解析器标识的写法：`{经济体}.{机构}.{内容}`，全部小写，如 `us.bls.schedule`、`us.bls.release`。
 - M1 目录为空（真实解析器从 ENG-009 开始加入），后台的任务页面在目录为空时提示"还没有可用的解析器"。
@@ -295,10 +304,11 @@ Job 每天执行一次 `collect-run-cleanup`：删除 `queued_at` 早于保留�
   | 新闻 | News（FR-019） | M5 |
 
 - 入库服务负责校验（FR-026）、字段锁定（FR-011）和幂等（重复入库同一批记录结果不变），返回新增、更新、跳过条数。记录的类型随各模块的设计定义。
+- 接口 `ICollectIngestor`（`Suanpan.Services/Collect/Ingest/`）：`TargetType`、`IngestAsync(IngestRequest)`，返回 `IngestResult(新增, 更新, 跳过, 失败)`，失败条数大于 0 时运行记为部分成功。M1 还没有入库服务，执行到这一步时记为失败（"没有……的入库服务"）。
 
 ### 5.4 HTTP 客户端
 
-- `Suanpan.Infrastructure/Http/` 注册采集用的命名 HttpClient（`AddSuanpanCollectHttp`，客户端名 `CollectHttp.ClientName`）：User-Agent 取配置 `Collect:UserAgent`（如 `SuanpanForexBot/1.0 (+mailto:联系邮箱)`，§11 第 7 项；邮箱确定之前默认值为 `SuanpanForexBot/1.0`），自动解压；跳转由 `SameHostRedirectHandler` 处理，只跟随同一主机内的跳转（最多 5 次），跳到别的域名时把跳转响应原样返回。依赖 `Microsoft.Extensions.Http`（PRD §13.2.4）。
+- `Suanpan.Infrastructure/Http/` 注册采集用的命名 HttpClient（`AddSuanpanCollectHttp`，客户端名 `CollectHttp.ClientName`）：User-Agent 取配置 `Collect:UserAgent`（如 `SuanpanForexBot/1.0 (+mailto:联系邮箱)`，§11 第 7 项；邮箱确定之前用占位值 `SuanpanForexBot/1.0`，写在 Collector 的 `appsettings.json`），自动解压；跳转由 `SameHostRedirectHandler` 处理，只跟随同一主机内的跳转（最多 5 次），跳到别的域名时把跳转响应原样返回。依赖 `Microsoft.Extensions.Http`（PRD §13.2.4）。
 - 超时不在 HttpClient 上设固定值，每次请求按数据源的 `timeout_seconds` 用 `CancellationTokenSource` 控制。
 - Crm 的连通性测试（§8.1）复用同一个客户端，超时固定 10 秒（PRD FR-001 异常流程），同样经过频率限制。
 
@@ -336,13 +346,15 @@ Suanpan.Services/Collect/
 ├─ Sources/       IDataSourceService、DataSourceService、Models/
 ├─ Tasks/         ICollectTaskService、CollectTaskService、CronSchedule、IParserCatalog、Models/
 ├─ Runs/          ICollectRunService、CollectRunService、CollectConfigKeys（§10 的系统配置）、Models/
-└─ Jobs/          CollectDispatchJob、CollectRunCleanupJob
+├─ Jobs/          CollectDispatchJob、CollectRunCleanupJob
+└─ Ingest/        ICollectIngestor（§5.3 的入库接口，各模块实现）
 
 Suanpan.Job/
 └─ Registry/       RecurringJobRegistry：注册 collect-dispatch、collect-run-cleanup
 
 Suanpan.Collector/
-├─ Execution/     CollectExecutor（§4.3 的步骤）、ICollectAdapter、FetchContext、FetchResult、IParser、StaleRunRecovery
+├─ Execution/     CollectExecutor（§4.3 的步骤）、ICollectAdapter、FetchContext、FetchResult、IParser、StaleRunRecovery、
+│                 CollectorServiceCollectionExtensions（AddSuanpanCollectors）
 ├─ Handlers/      CollectRunCommandHandler
 └─ Sources/       各数据源的适配器和解析器（ENG-009 起）
 
@@ -451,7 +463,7 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 | `collect:run_retention_days` | 系统配置 | `90` | 运行记录保留天数（BR-011） |
 
 两个系统配置项登记在 `CollectConfigKeys.Definitions`，由 `ConfigDefinitions.All` 汇总，系统配置页面的"数据采集"分组中可以修改（后端约定 §7）。
-| `Collect:UserAgent` | appsettings | `SuanpanForexBot/1.0 (+mailto:待定)` | 采集请求的 User-Agent（BR-005），不涉密，写在 `appsettings.json` |
+| `Collect:UserAgent` | appsettings | `SuanpanForexBot/1.0`（占位值，联系邮箱确定后改为 `SuanpanForexBot/1.0 (+mailto:邮箱)`） | 采集请求的 User-Agent（BR-005），不涉密，写在 Collector 的 `appsettings.json`；请求头只能用 ASCII 字符 |
 
 ---
 
@@ -467,7 +479,7 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 | 4 | 采集任务能否删除 | 有运行记录的只能停用，没有的可以删除 | §3.2；PRD 新增 BR-154 |
 | 5 | 编辑只能触发部分任务，怎么实现 | 两个 action：`Trigger`（限日历排期、公布值）和 `TriggerAny`（全部） | §8.2 |
 | 6 | M1 没有真实解析器，怎么验证调度、重试、并发 | 集成测试中注册假适配器和假解析器，对接进程内的假 HTTP 服务；真实的端到端在 M2 接入 BLS 时验证 | §12 |
-| 7 | User-Agent 中的联系邮箱 | 待 vivo.li 提供项目公共邮箱 | §10 `Collect:UserAgent`；FR-002.4 实施前补上 |
+| 7 | User-Agent 中的联系邮箱 | 待 vivo.li 提供项目公共邮箱；FR-002.4 先用不带邮箱的占位值 | §10 `Collect:UserAgent`；真正采集前（M2 接入 BLS）补上 |
 | 8 | 首批数据源要不要预置 | 不预置，由工程师接入适配器时录入 | §2.4 |
 | 9 | 重试间隔按全局还是按任务配置 | 全局（系统配置 `collect:retry_delay_seconds`） | §3.4、§10 |
 | 10 | 调度方式 | 一个每分钟执行的分发任务，按 cron 算到点 | §4.2 |
@@ -505,6 +517,8 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 
 Collector 的集成测试需要 PostgreSQL、Valkey、RabbitMQ 三个容器（标 `Category=Integration`）和一个进程内的假 HTTP 服务，测试中不用 `Task.Delay` 等待（后端约定 §13.4）：重试间隔在测试中配置为 0 秒，状态变化用轮询数据库并设上限的方式等待。
 
+实现（`Suanpan.Collector.Tests`）：`CollectorFixture` 启动三个容器、按生产方式建库并执行迁移，用 WebApplicationFactory 在内存中启动 Collector；采集用 HttpClient 的最底层处理器换成 `StubHttp`（按随机主机名设置应答、记录请求），另注册测试用的适配器、解析器和入库服务。Collector 在后台自己提交事务，测试不能用回滚隔离，改为每个测试用自己的数据源、任务和主机名。"同一条指令投递两次只执行一次"的测试依赖接收端按顺序处理消息（§4.3 实现），以排在后面的另一条运行结束为准。
+
 ---
 
 ## 13. 实施拆分
@@ -537,3 +551,4 @@ JAN-79（指标与数据源的映射）在 FR-001.2（JAN-81）完成后可以�
 | v0.7 | 2026-10-26 | vivo.li / Claude | FR-002.2 实施：§4.4 运行详情自动刷新、发布失败的提示；§5.2 Services 经 `IParserCatalog` 使用解析器目录；§7.1、§7.2 任务和运行记录服务的方法（`PreviewSchedule` 不带时区，新增 `GetAllAsync`、`TriggerAsync`、`EnqueueResult`）；§8 各页面的列和交互按实现补充（运行记录列表的时间列为触发时间；cron 预览在服务端计算，输入时不实时更新）；§12 补充手动触发和删除的测试 |
 | v0.8 | 2026-10-27 | vivo.li / Claude | FR-002.3 实施：§4.2 调度分发的实现（锁、`ON CONFLICT` 写入、记账时机、重新发布的整分钟窗口、记为失败）；§4.5 清理的执行时间和锁；§7.1 Job 的任务注册表、`CollectConfigKeys`、`CollectErrorCodes`；§7.2 `TryPublishAsync`；§10 配置项的登记位置；§12 补充分发和清理的测试 |
 | v0.9 | 2026-10-27 | vivo.li / Claude | JAN-79 实施：§3.1 数据源删除时也检查指标映射；解析器下拉框 `ParserSelectOptions` 与指标映射的表单共用 |
+| v0.10 | 2026-10-27 | vivo.li / Claude | FR-002.4 实施：§4.3 执行和回收的实现（认领、行锁、请求记录先写开始时间、按顺序处理消息）；§5.1 ~ §5.3 适配器、解析器、入库的接口；§5.4、§10、§11 第 7 项 User-Agent 先用占位值；§7.1 目录；§12 Collector 测试的实现 |
