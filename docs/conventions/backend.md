@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.29 |
+| 版本 | v1.30 |
 | 日期 | 2026-10-27 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -37,13 +37,13 @@ suanpan-forex/
 │  ├─ Suanpan.Crm          【程序】后台（MVC + Areas）
 │  └─ Suanpan.Portal       【程序】前台站点（MVC），只读数据库账号
 ├─ tests/
-│  ├─ Suanpan.Core.Tests           领域规则测试
+│  ├─ Suanpan.Core.Tests           领域规则测试；Architecture/ 为依赖方向的架构测试（§2）
 │  ├─ Suanpan.Shared.Tests         鉴权基础组件测试（权限码生成、动态 Policy）
 │  ├─ Suanpan.Services.Tests       业务服务测试（连 Testcontainers 启动的 PostgreSQL）
 │  ├─ Suanpan.Infrastructure.Tests 基础设施测试（连 Testcontainers 启动的 Valkey、RabbitMQ）
 │  ├─ Suanpan.Crm.Tests            后台请求管道测试（在内存中启动 Crm，服务换成假实现）
 │  ├─ Suanpan.Data.Tests           数据层测试（审计拦截器、实体配置约定）
-│  └─ Suanpan.Collector.Tests      解析器测试（用保存的官方页面快照当样例）
+│  └─ Suanpan.Collector.Tests      解析器测试（用保存的官方页面快照当样例）、执行框架的集成测试
 └─ deploy/                         Dockerfile、docker-compose
 ```
 
@@ -129,13 +129,14 @@ Suanpan.Crm/                       目录组织见前端约定 §3.3
 Suanpan.Portal/                    目录组织见前端约定 §9.2
 
 tests/
-├─ Suanpan.Core.Tests/{模块}/                       与源码目录一一对应
+├─ Suanpan.Core.Tests/{模块}/                       与源码目录一一对应；Architecture/ 放依赖方向的架构测试
 ├─ Suanpan.Shared.Tests/                           与 Suanpan.Shared 的目录一一对应
 ├─ Suanpan.Services.Tests/{模块}/                  与 Suanpan.Services 的目录一一对应；Fixtures/ 放测试数据库，Database/ 放数据库授权的测试
 ├─ Suanpan.Infrastructure.Tests/                   与 Suanpan.Infrastructure 的目录一一对应；Fixtures/ 放测试容器
 ├─ Suanpan.Crm.Tests/                             与 Suanpan.Crm 的目录一一对应；Fixtures/ 放启动器、假服务和测试用的页面
 ├─ Suanpan.Data.Tests/                             与 Suanpan.Data 的目录一一对应
-└─ Suanpan.Collector.Tests/Sources/{经济体}/{机构}/  测试代码 + Snapshots/ 快照样例
+└─ Suanpan.Collector.Tests/Sources/{经济体}/{机构}/  测试代码 + Snapshots/ 快照样例（复制到输出目录，按相对路径读取）；
+                                                    Execution/、Handlers/ 为执行框架的集成测试，Fixtures/ 放测试容器和在内存中启动的 Collector
 ```
 
 规则：
@@ -158,6 +159,7 @@ Portal                 ──►  Data（只用对外视图的只读上下文）
 - **Portal 不引用 Services**：前台只读不写（PRD DEC-021、BR-121）。
 - **程序项目不直接引用第三方 NuGet 包**（沿用 VVPay）：第三方包都在类库中引用，程序项目只引用项目。
 - 不用 `IRepository<T>` 包装 EF Core，不用 MediatR（沿用 VVPay）。
+- 以上前三条由 `Suanpan.Core.Tests/Architecture/DependencyDirectionTests` 读各项目的 csproj 自动检查：项目引用只能指向更低的层（同层不能互相引用）、Core 不引用任何项目和包、Portal 不引用 Services、程序项目没有 PackageReference。**新增项目时要在它的层级表中登记**，否则测试失败。
 
 ---
 
@@ -478,7 +480,7 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 
 ### 13.1 测试项目
 
-- `Suanpan.Core.Tests`：领域规则。Sys 的密码、停用、通配规则；利多利空判定的全部分支、夏令时切换周的时区换算、数据质量校验规则（PRD NFR-133）。
+- `Suanpan.Core.Tests`：领域规则；`Architecture/` 中的依赖方向测试（§2）。Sys 的密码、停用、通配规则；利多利空判定的全部分支、夏令时切换周的时区换算、数据质量校验规则（PRD NFR-133）。
 - `Suanpan.Shared.Tests`：权限码生成、动态 Policy 等 Shared 中的组件。
 - `Suanpan.Data.Tests`：审计拦截器（用 EF Core InMemory）、实体配置约定（命名、外键、类型）。不连接真实数据库。
 - `Suanpan.Services.Tests`：业务服务。用到数据库的测试连真实的 PostgreSQL 17：Testcontainers 启动临时容器，按生产方式建好三个账号，用迁移账号执行全部迁移，测试用应用账号连接（权限与线上一致）；整个程序集共用一个容器。**运行这些测试需要 Docker**（本地 Docker Desktop，CI 用 GitHub Actions 自带的 Docker）。数据库授权的测试（如 Hangfire 用应用账号建表）放在 `Database/`。
@@ -556,7 +558,7 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 |---|---|
 | 测试中不直接取当前时间（`DateTime.Now`、`DateTime.UtcNow`、`DateTimeOffset.Now`、`DateTimeOffset.UtcNow`），不用 `Thread.Sleep`、`Task.Delay` 等待；需要时间的地方注入 `TimeProvider` | CI 脚本搜索 |
 | 服务层和集成测试不比对提示文案原文，只断言成功或失败以及数据的最终状态（文案在规则的单元测试里核对一次） | CI 脚本搜索 `Assert.Equal("…", ….Error)` |
-| 要启动容器的测试类（连数据库、Valkey、RabbitMQ）必须标 `[Trait(TestCategory.Key, TestCategory.Integration)]`；连数据库的在各自的事务里执行、结束时回滚（在内存中启动整个程序的测试除外，见 §13.1 的 `Suanpan.Collector.Tests`）；名称带随机后缀；查询带条件，不依赖整表的行数或内容 | 架构测试：构造函数需要容器夹具（`PostgresFixture`、`ValkeyFixture`、`RabbitMqFixture`）的类必须带这个标签；其余靠评审 |
+| 要启动容器的测试类（连数据库、Valkey、RabbitMQ）必须标 `[Trait(TestCategory.Key, TestCategory.Integration)]`；连数据库的在各自的事务里执行、结束时回滚（在内存中启动整个程序的测试除外，见 §13.1 的 `Suanpan.Collector.Tests`）；名称带随机后缀；查询带条件，不依赖整表的行数或内容 | 架构测试：构造函数用到程序集夹具（都是容器：`PostgresFixture`、`ValkeyFixture`、`RabbitMqFixture`、`CollectorFixture`）的类必须带这个标签，Services、Infrastructure、Collector 三个测试项目各有一份 `Fixtures/ContainerFixtureUsageTests`，夹具从程序集特性中读取，新增的自动纳入；其余靠评审 |
 | 不为纯数据类、第三方库写测试；依赖注入只保留一个冒烟测试 | 评审 |
 | Theory 只放有代表性的输入：每个分支或边界一个样例 | 评审 |
 | 不断言没有 ORDER BY 的集合顺序 | 评审 |
@@ -631,3 +633,4 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | v1.27 | 2026-10-23 | vivo.li / Claude | §12 配置键增加 `Collect:UserAgent`（FR-001.2 实施） |
 | v1.28 | 2026-10-27 | vivo.li / Claude | §4 调用 `AddSuanpanServices` 的程序还要注册采集 HttpClient 和 EventBus；§7 各模块的配置项由 `ConfigDefinitions.All` 汇总；§8.3 写明任务注册表和任务类的位置（FR-002.3 实施） |
 | v1.29 | 2026-10-27 | vivo.li / Claude | §13.1、§13.4 Collector 的执行框架集成测试：在内存中启动整个程序，不能用回滚隔离，改用各自的随机数据（FR-002.4 实施） |
+| v1.30 | 2026-10-27 | vivo.li / Claude | ENG-008.1 实施：§2 依赖方向由 Core.Tests 的架构测试检查，新增项目要登记层级；§13.4 容器夹具的标签检查覆盖到 Collector；§1、§1.2 测试目录补充 Architecture/ 和 Collector 的执行框架测试、快照样例复制到输出目录 |
