@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.30 |
+| 版本 | v1.31 |
 | 日期 | 2026-10-27 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -425,7 +425,7 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 
 - 服务器时区统一设为 UTC；数据库只存 UTC。
 - 代码中一律使用 `DateTime.UtcNow`，**禁止使用 `DateTime.Now`**。需要在测试中控制时间的地方，注入 `TimeProvider`（`AddSuanpanData` 已注册 `TimeProvider.System`），取 `GetUtcNow().UtcDateTime`。
-- 官方发布排期按机构当地时间解析，用 IANA 时区（如 `America/New_York`）换算成 UTC，夏令时由时区库处理（PRD BR-037）。
+- 官方发布排期按机构当地时间解析，用 IANA 时区（如 `America/New_York`）换算成 UTC，夏令时由时区库处理（PRD BR-037）。换算统一调用 `Suanpan.Core/Calendar/Rules/LocalTimeRule.ToUtc`，不在各处自己调用 `TimeZoneInfo`：夏令时开始当天不存在的时刻按跳过的时长顺延，结束当天重复出现的时刻取较早的一次，结果中标明这两种情况。
 - 转换成用户时区只在展示层做（后台按操作者时区，前台按访客时区），见前端约定。
 - 解析和格式化数字一律使用 `CultureInfo.InvariantCulture`。解析用户输入的小数时不允许千分位（`NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint`），否则把小数点误写成逗号的 `0,25` 会被当成 25。
 
@@ -634,3 +634,4 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | v1.28 | 2026-10-27 | vivo.li / Claude | §4 调用 `AddSuanpanServices` 的程序还要注册采集 HttpClient 和 EventBus；§7 各模块的配置项由 `ConfigDefinitions.All` 汇总；§8.3 写明任务注册表和任务类的位置（FR-002.3 实施） |
 | v1.29 | 2026-10-27 | vivo.li / Claude | §13.1、§13.4 Collector 的执行框架集成测试：在内存中启动整个程序，不能用回滚隔离，改用各自的随机数据（FR-002.4 实施） |
 | v1.30 | 2026-10-27 | vivo.li / Claude | ENG-008.1 实施：§2 依赖方向由 Core.Tests 的架构测试检查，新增项目要登记层级；§13.4 容器夹具的标签检查覆盖到 Collector；§1、§1.2 测试目录补充 Architecture/ 和 Collector 的执行框架测试、快照样例复制到输出目录 |
+| v1.31 | 2026-10-27 | vivo.li / Claude | §10 当地时间换算 UTC 统一用 `LocalTimeRule`，写明夏令时切换当天的处理（ENG-008.3 实施，PRD BR-037） |
