@@ -24,4 +24,10 @@ public interface ICollectRunService
     /// anyTargetType 为 false 时只能触发日历排期、公布值类任务（编辑的权限，PRD §13.1.2）
     /// </summary>
     Task<EnqueueResult> TriggerAsync(long taskId, string triggeredBy, bool anyTargetType, CancellationToken ct = default);
+
+    /// <summary>
+    /// 发布第 1 次请求的指令。EnqueueAsync 创建后调用；调度分发重新下发排队过久的记录时也调用（采集设计 §4.2）。
+    /// 失败时记警告日志并返回 false，不抛出
+    /// </summary>
+    Task<bool> TryPublishAsync(long runId, CancellationToken ct = default);
 }

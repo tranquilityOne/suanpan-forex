@@ -2,8 +2,8 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.21（草稿） |
-| 日期 | 2026-10-23 |
+| 版本 | v0.22（草稿） |
+| 日期 | 2026-10-27 |
 | 状态 | 待评审 |
 | 覆盖 | FR-028、FR-029；ENG-002、ENG-003（系统表部分）、ENG-004、ENG-005 |
 | 依据 | data-hub PRD v1.0.0.3；后端约定 v1.1；前端约定 v1.1 |
@@ -654,7 +654,7 @@ public interface IConfigService
 | `security:login_lock_minutes` | 整数 | 15 | 锁定时长 |
 | `security:admin_ip_whitelist_enabled` | 布尔 | false | 后台 IP 白名单总开关 |
 
-配置键和默认值用常量类 `SysConfigKeys` 集中定义（如 `LoginMaxFailures`、`LoginMaxFailuresDefault`），读取时把默认值传给 `IConfigService`（后端约定 §7）。每个配置项同时登记到 `SysConfigKeys.Definitions`（类型、默认值、分组、说明），系统配置页面据此显示和校验。库里没有的配置项在页面上第一次保存时新建。
+配置键和默认值用常量类 `SysConfigKeys` 集中定义（如 `LoginMaxFailures`、`LoginMaxFailuresDefault`），读取时把默认值传给 `IConfigService`（后端约定 §7）。每个配置项同时登记到 `SysConfigKeys.Definitions`（类型、默认值、分组、说明），其他模块的配置项登记在各自的配置键类中（如采集的 `CollectConfigKeys`），由 `ConfigDefinitions.All` 汇总，系统配置页面据此显示和校验。库里没有的配置项在页面上第一次保存时新建。
 
 ---
 
@@ -730,3 +730,4 @@ public interface IConfigService
 | v0.19 | 2026-10-21 | vivo.li / Claude | 随 data-hub PRD v1.0.0.14（BR-140、BR-146）：§4.3 写明锁定记入登录日志、解锁记入操作日志 |
 | v0.20 | 2026-10-21 | vivo.li / Claude | FR-029 验收（JAN-43）：§7.1 写明一次性 TOTP 验证码不算凭据、不脱敏；§12 第 1 条改为实际承担的测试 |
 | v0.21 | 2026-10-23 | vivo.li / Claude | §5.1 新增开发环境跳过 TOTP 验证码（`Auth:SkipTotpInDevelopment`）；§3 登录日志的 `stage` 增加 5 跳过 TOTP |
+| v0.22 | 2026-10-27 | vivo.li / Claude | §10.2 其他模块的配置项由 `ConfigDefinitions.All` 汇总后显示在系统配置页面（FR-002.3 实施） |

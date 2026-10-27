@@ -124,7 +124,7 @@ internal static class TestData
     /// <summary>采集任务，名称带随机后缀；解析器标识只是占位，不经过解析器目录</summary>
     public static async Task<CollectTask> AddCollectTaskAsync(
         SuanpanDbContext db, CancellationToken ct, long sourceId, CollectTargetType targetType = CollectTargetType.Calendar,
-        bool enabled = false, string? cron = null)
+        bool enabled = false, string? cron = null, DateTime? lastDispatchedAt = null)
     {
         var task = new CollectTask
         {
@@ -134,6 +134,7 @@ internal static class TestData
             TargetType = targetType,
             Cron = cron,
             IsEnabled = enabled,
+            LastDispatchedAt = lastDispatchedAt,
         };
         db.CollectTasks.Add(task);
         await db.SaveChangesAsync(ct);

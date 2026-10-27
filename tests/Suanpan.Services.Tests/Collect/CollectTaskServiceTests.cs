@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Collect.Enums;
-using Suanpan.Core.Collect.Parsers;
 using Suanpan.Data;
 using Suanpan.Services.Collect.Tasks;
 using Suanpan.Services.Collect.Tasks.Models;
@@ -18,8 +17,6 @@ namespace Suanpan.Services.Tests.Collect;
 [Trait(TestCategory.Key, TestCategory.Integration)]
 public class CollectTaskServiceTests(PostgresFixture postgres)
 {
-    private static readonly ParserDescriptor Schedule = new("us.test.schedule", "测试日程", CollectTargetType.Calendar);
-
     private readonly FixedTimeProvider _clock = new(new DateTimeOffset(2026, 10, 26, 12, 0, 0, TimeSpan.Zero));
 
     /// <summary>FR-002 主流程第 1 步、BR-012：新建为停用，目标数据类型由解析器决定，cron 统一写法</summary>
@@ -133,17 +130,17 @@ public class CollectTaskServiceTests(PostgresFixture postgres)
         var rows = (await Create(db).QueryAsync(new CollectTaskQuery(SourceId: source.Id), Ct)).Items.ToDictionary(r => r.Id);
 
         Assert.Equal((CollectRunStatus.Succeeded, now.AddHours(-1)), (rows[task.Id].LastRunStatus, rows[task.Id].LastRunAt));
-        Assert.Equal((Schedule.Name, new DateTime(2026, 10, 27, 1, 0, 0, DateTimeKind.Utc)), (rows[task.Id].ParserName, rows[task.Id].NextRunAt));
+        Assert.Equal((StubParserCatalog.Schedule.Name, new DateTime(2026, 10, 27, 1, 0, 0, DateTimeKind.Utc)), (rows[task.Id].ParserName, rows[task.Id].NextRunAt));
         Assert.Equal((null, null), (rows[paused.Id].LastRunStatus, rows[paused.Id].NextRunAt));
     }
 
-    private CollectTaskService Create(SuanpanDbContext db) => new(db, new StubParsers(), _clock);
+    private CollectTaskService Create(SuanpanDbContext db) => new(db, new StubParserCatalog(), _clock);
 
     private static CollectTaskInput Input(string name, long sourceId) => new()
     {
         Name = name,
         SourceId = sourceId,
-        ParserKey = Schedule.Key,
+        ParserKey = StubParserCatalog.Schedule.Key,
         Cron = "0 1 * * *",
         Params = "{\"series\": [\"CES0000000001\"]}",
     };
@@ -161,11 +158,4 @@ public class CollectTaskServiceTests(PostgresFixture postgres)
         => db.CollectTasks.AsNoTracking().Where(t => t.Id == taskId).Select(t => t.LastDispatchedAt).SingleAsync(Ct);
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-
-    private sealed class StubParsers : IParserCatalog
-    {
-        public IReadOnlyList<ParserDescriptor> All { get; } = [Schedule, new("us.test.news", "测试新闻", CollectTargetType.News)];
-
-        public ParserDescriptor? Find(string? key) => All.FirstOrDefault(p => p.Key == key);
-    }
 }

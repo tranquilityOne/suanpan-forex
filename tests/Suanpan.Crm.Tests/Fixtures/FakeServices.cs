@@ -218,4 +218,6 @@ public sealed class FakeCollectRunService : ICollectRunService
     public Task<EnqueueResult> EnqueueAsync(
         long taskId, CollectRunTrigger trigger, DateTime? scheduledFor, string? triggeredBy, CancellationToken ct = default)
         => throw new NotSupportedException();
+
+    public Task<bool> TryPublishAsync(long runId, CancellationToken ct = default) => throw new NotSupportedException();
 }

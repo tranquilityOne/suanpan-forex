@@ -105,29 +105,59 @@ public sealed class CollectRunService(
             return EnqueueResult.Fail($"采集任务 {task.Name} 已停用");
         }
 
-        var run = new CollectRun
+        var queuedAt = timeProvider.GetUtcNow().UtcDateTime;
+        long runId;
+        if (scheduledFor is { } point)
         {
-            TaskId = task.Id,
-            SourceId = task.SourceId,
-            Trigger = trigger,
-            ScheduledFor = scheduledFor,
-            TriggeredBy = triggeredBy,
-            Status = CollectRunStatus.Queued,
-            QueuedAt = timeProvider.GetUtcNow().UtcDateTime,
-        };
-        db.CollectRuns.Add(run);
-        await db.SaveChangesAsync(ct);
+            // 定时触发：同一任务同一时间点只创建一次（ux_col_run_task_id_scheduled_for），调度分发重复执行或中途退出后重跑，
+            // 都不会重复下发（采集设计 §4.2，后端约定 §6.4）
+            var inserted = await db.Database.SqlQuery<long>($"""
+                INSERT INTO col_run (task_id, source_id, "trigger", scheduled_for, triggered_by, status, queued_at,
+                                     attempt_count, inserted_count, updated_count, skipped_count, attempts)
+                VALUES ({task.Id}, {task.SourceId}, {(short)trigger}, {point}, {triggeredBy}, {(short)CollectRunStatus.Queued}, {queuedAt},
+                        0, 0, 0, 0, '[]'::jsonb)
+                ON CONFLICT (task_id, scheduled_for) WHERE scheduled_for IS NOT NULL DO NOTHING
+                RETURNING id AS "Value"
+                """).ToListAsync(ct);
+            if (inserted.Count == 0)
+            {
+                return EnqueueResult.Fail($"采集任务 {task.Name} 在这个时间点的运行记录已经创建");
+            }
+
+            runId = inserted[0];
+        }
+        else
+        {
+            var run = new CollectRun
+            {
+                TaskId = task.Id,
+                SourceId = task.SourceId,
+                Trigger = trigger,
+                TriggeredBy = triggeredBy,
+                Status = CollectRunStatus.Queued,
+                QueuedAt = queuedAt,
+            };
+            db.CollectRuns.Add(run);
+            await db.SaveChangesAsync(ct);
+            runId = run.Id;
+        }
 
         // 不做 Outbox（后端约定 §8.2）：发布失败时记录停在"排队"，由调度分发重新发布，这里不让整个操作失败
+        var published = await TryPublishAsync(runId, ct);
+        return new EnqueueResult(true, null, runId, published);
+    }
+
+    public async Task<bool> TryPublishAsync(long runId, CancellationToken ct = default)
+    {
         try
         {
-            await eventBus.PublishAsync(new CollectRunCommand(run.Id, Attempt: 1), ct: ct);
-            return new EnqueueResult(true, null, run.Id, Published: true);
+            await eventBus.PublishAsync(new CollectRunCommand(runId, Attempt: 1), ct: ct);
+            return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogWarning(ex, "运行记录 {RunId} 已创建，下发 CollectRunCommand 失败，等待调度分发重新发布", run.Id);
-            return new EnqueueResult(true, null, run.Id, Published: false);
+            logger.LogWarning(ex, "运行记录 {RunId} 下发 CollectRunCommand 失败，等待调度分发重新发布", runId);
+            return false;
         }
     }
 }

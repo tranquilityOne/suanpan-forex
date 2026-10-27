@@ -3,11 +3,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Collect.Enums;
 using Suanpan.Data;
-using Suanpan.Infrastructure.Messaging;
 using Suanpan.Services.Collect.Runs;
 using Suanpan.Services.Collect.Runs.Models;
 using Suanpan.Services.Tests.Fixtures;
-using Suanpan.Shared.Messages;
 using Suanpan.Shared.Messages.Collect;
 using Xunit;
 
@@ -41,7 +39,7 @@ public class CollectRunServiceTests(PostgresFixture postgres)
         Assert.Equal(
             (result.RunId, source.Id, CollectRunTrigger.Manual, CollectRunStatus.Queued, "editor1", _clock.UtcNow.UtcDateTime),
             ((long?)run.Id, run.SourceId, run.Trigger, run.Status, run.TriggeredBy, run.QueuedAt));
-        var command = Assert.Single(_bus.Published);
+        var command = Assert.IsType<CollectRunCommand>(Assert.Single(_bus.Published));
         Assert.Equal((run.Id, 1), (command.RunId, command.Attempt));
     }
 
@@ -155,24 +153,4 @@ public class CollectRunServiceTests(PostgresFixture postgres)
     };
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
-
-    /// <summary>记下发布的消息；Fail 为 true 时模拟 RabbitMQ 不可用</summary>
-    private sealed class RecordingEventBus : IEventBus
-    {
-        public List<CollectRunCommand> Published { get; } = [];
-
-        public bool Fail { get; set; }
-
-        public Task PublishAsync<TMessage>(TMessage message, TimeSpan? delay = null, CancellationToken ct = default)
-            where TMessage : IntegrationMessage
-        {
-            if (Fail)
-            {
-                throw new InvalidOperationException("RabbitMQ 不可用");
-            }
-
-            Published.Add((CollectRunCommand)(object)message);
-            return Task.CompletedTask;
-        }
-    }
 }

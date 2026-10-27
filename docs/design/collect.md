@@ -2,8 +2,8 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.7 |
-| 日期 | 2026-10-26 |
+| 版本 | v0.8 |
+| 日期 | 2026-10-27 |
 | 状态 | 已评审（2026-10-23，vivo.li；§11 第 7 项的联系邮箱待提供） |
 | 覆盖 | FR-001 数据源管理、FR-002 采集任务配置与调度；盯盘（FR-003）、快照与重新解析（FR-004）只定接入位置 |
 | 依据 | data-hub PRD v1.0.0.19（FR-001、FR-002、BR-001 ~ BR-012、§8.1.2、§10.8、§13.1.2、DEC-012、DEC-016、DEC-017、DEC-020）；后端约定 v1.27（§1.2、§7、§8、§9、§12）；前端约定 v1.9；数据库变更约定；sys 设计（§6 权限、§7 操作日志）；基础数据设计（§2.1 指标与数据源的映射） |
@@ -216,6 +216,12 @@ sequenceDiagram
 - 修改 cron、启用任务时把 `last_dispatched_at` 设为当前时间：新规则从下一个时间点开始生效（FR-002 验收第 1 条），不会因为旧的记账时间补发一次。
 - 任务模板按后端约定 §8.3：`[AutomaticRetry(Attempts = 0)]` + 分布式锁防止多实例同时分发；`ux_col_run_task_id_scheduled_for` 兜底，重复执行也不会产生两条记录。
 - **下发失败的兜底**：不做 Outbox（后端约定 §8.2），提交后发布消息失败时，运行记录停在"排队"。同一个周期任务顺带检查：排队超过 2 分钟的记录重新发布一次；超过 10 分钟仍未开始的记为失败（下发失败），由 FR-025 告警。
+- **实现**（`Services/Collect/Jobs/CollectDispatchJob`）：
+  - 分布式锁 `collect:dispatch`（5 分钟过期），拿不到锁时本轮跳过。一个任务出错（如 cron 被改坏）只记 Error 日志，不影响其他任务。
+  - 到点时调用 `ICollectRunService.EnqueueAsync`（触发方式"定时"）：定时的运行记录用 `INSERT ... ON CONFLICT DO NOTHING` 写入（后端约定 §6.4），时间点已经有记录时不再下发。下发后才把 `last_dispatched_at` 记为本轮开始的时间，中途退出时下一轮算出同一个时间点，由唯一索引去重。记账用 `ExecuteUpdateAsync`，不改任务的审计字段。
+  - `last_dispatched_at` 为空（不经后台启用的任务）时只记账、不补发。
+  - 重新发布按整分钟划分窗口：第 n 分钟的这一轮只处理在 [n-3, n-2) 分钟内排队的记录，每分钟一轮时每条记录正好重新发布一次；Job 停机错过的那一轮不再补发，10 分钟后记为失败。
+  - 记为失败用条件更新（状态仍为排队），写 `ended_at`、错误码 ERR-COL-008（`CollectErrorCodes.DispatchFailed`）和原因，并记 Error 日志。
 
 ### 4.3 执行（Collector）
 
@@ -247,7 +253,7 @@ Collector 的消息处理器 `CollectRunCommandHandler`（`Suanpan.Collector/Han
 
 ### 4.5 运行记录的清理
 
-Job 每天执行一次 `collect-run-cleanup`：删除 `queued_at` 早于保留天数的记录，保留天数取系统配置 `collect:run_retention_days`（默认 90，BR-011），分批删除，每批 5000 条。快照另有保留规则（BR-022），清理运行记录不影响快照。
+Job 每天执行一次 `collect-run-cleanup`：删除 `queued_at` 早于保留天数的记录，保留天数取系统配置 `collect:run_retention_days`（默认 90，BR-011），分批删除，每批 5000 条。快照另有保留规则（BR-022），清理运行记录不影响快照。执行时间为每天 UTC 20:00（北京时间 04:00）；分布式锁 `collect:run-cleanup`；保留天数不是正整数时按默认值清理并记警告日志（`Services/Collect/Jobs/CollectRunCleanupJob`）。
 
 ---
 
@@ -318,7 +324,7 @@ Suanpan.Core/Collect/
 ├─ Entities/      DataSource、CollectTask、CollectRun
 ├─ Enums/         DataSourceType、RateLimitUnit、ComplianceClass、RobotsResult、CollectTargetType、CollectRunTrigger、CollectRunStatus
 ├─ Parsers/       ParserCatalog、ParserDescriptor
-└─ Rules/         DataSourceRule、CollectTaskRule、CollectRunStatusRule、RetryPolicy、CollectDisplayNames（枚举的中文显示名）
+└─ Rules/         DataSourceRule、CollectTaskRule、CollectRunStatusRule、RetryPolicy、CollectDisplayNames（枚举的中文显示名）、CollectErrorCodes
 
 Suanpan.Shared/Messages/Collect/   CollectRunCommand
 
@@ -329,8 +335,11 @@ Suanpan.Infrastructure/Http/           采集用的命名 HttpClient
 Suanpan.Services/Collect/
 ├─ Sources/       IDataSourceService、DataSourceService、Models/
 ├─ Tasks/         ICollectTaskService、CollectTaskService、CronSchedule、IParserCatalog、Models/
-├─ Runs/          ICollectRunService、CollectRunService、Models/
+├─ Runs/          ICollectRunService、CollectRunService、CollectConfigKeys（§10 的系统配置）、Models/
 └─ Jobs/          CollectDispatchJob、CollectRunCleanupJob
+
+Suanpan.Job/
+└─ Registry/       RecurringJobRegistry：注册 collect-dispatch、collect-run-cleanup
 
 Suanpan.Collector/
 ├─ Execution/     CollectExecutor（§4.3 的步骤）、ICollectAdapter、FetchContext、FetchResult、IParser、StaleRunRecovery
@@ -350,7 +359,7 @@ Suanpan.Crm/
 |---|---|---|
 | `IDataSourceService` | `GetListAsync`、`GetAsync(id)`、`GetOptionsAsync`、`CreateAsync`、`UpdateAsync(id, input)`、`SetEnabledAsync`、`DeleteAsync`、`TestAsync(id)` | 数据源不多，列表不分页；`TestAsync` 返回状态码、耗时、前 500 个字符的响应片段 |
 | `ICollectTaskService` | `QueryAsync`、`GetAsync(id)`、`GetAllAsync`、`CreateAsync`、`UpdateAsync(id, input)`、`SetEnabledAsync`、`DeleteAsync`、`PreviewSchedule(cron)` | 列表带最近一次运行的状态和下次执行时间；`GetAllAsync` 供运行记录的筛选下拉框；`PreviewSchedule` 返回下 3 次执行时间（UTC，页面用 `<utc-time>` 按操作者时区显示） |
-| `ICollectRunService` | `QueryAsync(CollectRunQuery)`、`GetAsync(id)`、`EnqueueAsync(taskId, trigger, scheduledFor, triggeredBy)`、`TriggerAsync(taskId, triggeredBy, anyTargetType)` | `EnqueueAsync` 创建运行记录并发布消息，Job 和 Crm 共用，返回 `EnqueueResult`（运行记录 id；`Published` 为 false 表示已创建但发布失败）；`TriggerAsync` 是后台的"立即执行"，`anyTargetType` 为 false 时只能触发日历排期、公布值类任务（§8.2）；`CollectRunQuery` 按任务、数据源、状态、触发方式、时间筛选，分页 |
+| `ICollectRunService` | `QueryAsync(CollectRunQuery)`、`GetAsync(id)`、`EnqueueAsync(taskId, trigger, scheduledFor, triggeredBy)`、`TriggerAsync(taskId, triggeredBy, anyTargetType)` | `EnqueueAsync` 创建运行记录并发布消息，Job 和 Crm 共用，返回 `EnqueueResult`（运行记录 id；`Published` 为 false 表示已创建但发布失败）；`TriggerAsync` 是后台的"立即执行"，`anyTargetType` 为 false 时只能触发日历排期、公布值类任务（§8.2）；`TryPublishAsync(runId)` 发布第 1 次请求的指令，调度分发重新下发时也用；`CollectRunQuery` 按任务、数据源、状态、触发方式、时间筛选，分页 |
 
 ### 7.3 消息
 
@@ -440,6 +449,8 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 |---|---|---|---|
 | `collect:retry_delay_seconds` | 系统配置 | `30,120,300` | 重试间隔，逗号分隔，个数即最多重试次数（BR-009） |
 | `collect:run_retention_days` | 系统配置 | `90` | 运行记录保留天数（BR-011） |
+
+两个系统配置项登记在 `CollectConfigKeys.Definitions`，由 `ConfigDefinitions.All` 汇总，系统配置页面的"数据采集"分组中可以修改（后端约定 §7）。
 | `Collect:UserAgent` | appsettings | `SuanpanForexBot/1.0 (+mailto:待定)` | 采集请求的 User-Agent（BR-005），不涉密，写在 `appsettings.json` |
 
 ---
@@ -478,6 +489,8 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 | FR-001 #4 停用后 1 分钟内不再请求 | 单元测试分发规则（停用的数据源不分发）；Collector 集成测试：重试前数据源被停用，本条记为跳过且没有新请求 |
 | FR-001 #5 操作日志可查、凭据脱敏 | Crm 管道测试：保存数据源后，操作日志的请求参数中凭据为 `***` |
 | FR-002 #1 修改 cron 后按新规则执行 | 单元测试 `CronSchedule` 的到点计算；集成测试：修改 cron 后 `last_dispatched_at` 被重置，下一次分发按新规则 |
+| 调度分发 | 集成测试：错过的时间点只补最近一次；记账时间丢失后重跑不重复创建、不重复下发；停用的任务、停用数据源下的任务、没有 cron 的任务不分发；排队满 2 分钟的重新发布、超过 10 分钟的记为失败 |
+| BR-011 运行记录保留 90 天 | 集成测试：按配置的保留天数分批删除 |
 | FR-002 #2 手动触发后很快出现"运行中" | Collector 集成测试：发布指令后运行记录从排队变为运行中（不按秒数断言，按状态） |
 | FR-002 #3 最多重试 3 次，每次可见 | 单元测试 `RetryPolicy`；Collector 集成测试：假 HTTP 服务一直返回 500，运行记录有 4 次请求、状态为失败 |
 | FR-002 #4 同一任务不并发 | Collector 集成测试：同一任务两条排队记录同时处理，一条运行、一条跳过 |
@@ -522,3 +535,4 @@ JAN-79（指标与数据源的映射）在 FR-001.2（JAN-81）完成后可以�
 | v0.5 | 2026-10-23 | vivo.li / Claude | FR-001.2 实施：§5.4 HttpClient 的注册和跳转处理、User-Agent 的默认值；§7.2 数据源服务的方法名；§8.1 连通性测试的结果展示。数据源被采集任务引用时不能删除的检查随 FR-002.1（JAN-82）建表后实现 |
 | v0.6 | 2026-10-23 | vivo.li / Claude | FR-002.1 实施：§2.1 `attempts` 的键名，`attempts` 和计数列的初值由程序写入；§3.1 数据源删除时检查采集任务；§3.2 ~ §3.4 补充规则和 `CronSchedule` 的接口；§5.2 解析器描述和目录的测试；§9 `ReferenceUsage` 移到 `Services/Common/References/`，各模块共用；§11 第 12 项 Cronos 已登记（PRD v1.0.0.19） |
 | v0.7 | 2026-10-26 | vivo.li / Claude | FR-002.2 实施：§4.4 运行详情自动刷新、发布失败的提示；§5.2 Services 经 `IParserCatalog` 使用解析器目录；§7.1、§7.2 任务和运行记录服务的方法（`PreviewSchedule` 不带时区，新增 `GetAllAsync`、`TriggerAsync`、`EnqueueResult`）；§8 各页面的列和交互按实现补充（运行记录列表的时间列为触发时间；cron 预览在服务端计算，输入时不实时更新）；§12 补充手动触发和删除的测试 |
+| v0.8 | 2026-10-27 | vivo.li / Claude | FR-002.3 实施：§4.2 调度分发的实现（锁、`ON CONFLICT` 写入、记账时机、重新发布的整分钟窗口、记为失败）；§4.5 清理的执行时间和锁；§7.1 Job 的任务注册表、`CollectConfigKeys`、`CollectErrorCodes`；§7.2 `TryPublishAsync`；§10 配置项的登记位置；§12 补充分发和清理的测试 |

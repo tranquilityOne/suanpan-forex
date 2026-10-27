@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Suanpan.Services.Collect.Jobs;
 using Suanpan.Services.Collect.Runs;
 using Suanpan.Services.Collect.Sources;
 using Suanpan.Services.Collect.Tasks;
@@ -74,6 +75,8 @@ public static class ServicesServiceCollectionExtensions
         services.TryAddSingleton<IParserCatalog, DefaultParserCatalog>();
         services.AddScoped<ICollectTaskService, CollectTaskService>();
         services.AddScoped<ICollectRunService, CollectRunService>();
+        services.AddScoped<CollectDispatchJob>();
+        services.AddScoped<CollectRunCleanupJob>();
 
         return services;
     }

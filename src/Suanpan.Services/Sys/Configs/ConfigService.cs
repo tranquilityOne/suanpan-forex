@@ -11,7 +11,7 @@ using Suanpan.Shared.Mvc;
 
 namespace Suanpan.Services.Sys.Configs;
 
-/// <param name="definitions">代码中定义的配置项；不传时用 <see cref="SysConfigKeys.Definitions"/>（测试中可以替换）</param>
+/// <param name="definitions">代码中定义的配置项；不传时用 <see cref="ConfigDefinitions.All"/>（测试中可以替换）</param>
 public sealed class ConfigService(
     SuanpanDbContext db,
     IMemoryCache cache,
@@ -20,7 +20,7 @@ public sealed class ConfigService(
 {
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(60);
 
-    private readonly IReadOnlyList<ConfigDefinition> _definitions = definitions ?? SysConfigKeys.Definitions;
+    private readonly IReadOnlyList<ConfigDefinition> _definitions = definitions ?? ConfigDefinitions.All;
 
     /// <summary>缓存键（sys 设计 §6.5）</summary>
     public static string CacheKey(string key) => $"config:{key}";

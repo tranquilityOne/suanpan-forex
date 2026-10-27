@@ -2,8 +2,8 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.27 |
-| 日期 | 2026-10-23 |
+| 版本 | v1.28 |
+| 日期 | 2026-10-27 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
 | 相关约定 | [前端技术约定](frontend.md)、[数据库变更约定](database.md) |
@@ -210,14 +210,14 @@ Portal                 ──►  Data（只用对外视图的只读上下文）
 - 每个模块提供一个注册扩展方法，内聚该模块的全部注册，程序按需拼装：
   `AddSuanpanData`、`AddSuanpanServices`、`AddSuanpanRedis`、`AddSuanpanEventBus`、`AddSuanpanHangfire`、`AddSuanpanCollectors`、`AddSuanpanPortalRead`。
 - `AddSuanpanEventBus(configuration, "job")` 的第二个参数是程序名（crm、job、collector、portal），用作接收队列名；`AddSuanpanHangfire(configuration, runServer)` 只有 Job 传 `true`。
-- **调用 `AddSuanpanServices` 的程序必须同时注册 Redis**（部分服务依赖 `IRedisCache`，漏注册会在启动时崩溃，VVPay 踩过）。
+- **调用 `AddSuanpanServices` 的程序必须同时注册 Redis**（部分服务依赖 `IRedisCache`，漏注册会在启动时崩溃，VVPay 踩过），以及采集用的 HttpClient（`AddSuanpanCollectHttp`）和 EventBus（数据源、运行记录的服务依赖它们）。
 
 各程序的注册组合：
 
 | 程序 | 注册内容 |
 |---|---|
-| Crm | MVC（全局 `OpLogActionFilter` + `AutoPermissionConvention`）、ForwardedHeaders、Data、Services、Redis、EventBus（发布端）、Hangfire（只挂面板，`runServer: false`） |
-| Job | Data、Services、Redis、EventBus（发布 + 消费）、Hangfire（`runServer: true`）、任务注册表 |
+| Crm | MVC（全局 `OpLogActionFilter` + `AutoPermissionConvention`）、ForwardedHeaders、Data、Services、Redis、CollectHttp、EventBus（发布端）、Hangfire（只挂面板，`runServer: false`） |
+| Job | Data、Services、Redis、CollectHttp、EventBus（发布 + 消费）、Hangfire（`runServer: true`）、任务注册表 |
 | Collector | Data、Services、Redis、EventBus（发布 + 消费）、Collectors（适配器、解析器）、盯盘后台服务 |
 | Portal | MVC、ForwardedHeaders、PortalRead（对外视图的只读上下文）、Redis（可选）、EventBus（只消费缓存刷新消息）、输出缓存 |
 
@@ -348,7 +348,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 - Controller 保持精简，业务逻辑一律放进 Service。
 - 管理操作返回 `ManageResult`（成功或错误，Controller 转成 ModelState 或 TempData）；分页查询返回 `PagedResult<T>`。错误属于某个输入项时（如编码重复、时区非法），服务用 `ManageResult.Fail(提示, nameof(XxxInput.字段))` 带上字段名（Core 中的字段规则返回 `FieldError(Field, Message)`，见 `Suanpan.Core/Common/Validation/`，服务原样转成 `ManageResult.Fail(error.Message, error.Field)`），Controller 写 `ModelState.AddModelError(result.Field ?? string.Empty, result.Error!)`，提示显示在对应输入框下；ViewModel 的属性名与输入模型保持一致。
 - 查询条件用 `record XxxQuery(...)`，列表行投影用 `record XxxRow(...)`。
-- 配置键用 static class 集中定义常量，通过 `IConfigService.GetXxxAsync(key, 默认值)` 读取：键不存在时用代码默认值，`sys_config` 中有值时覆盖。默认值也定义为常量，并把配置项登记到该类的 `Definitions`（类型、默认值、分组、说明），系统配置页面才能显示和修改（参考 `SysConfigKeys`）。
+- 配置键用 static class 集中定义常量，通过 `IConfigService.GetXxxAsync(key, 默认值)` 读取：键不存在时用代码默认值，`sys_config` 中有值时覆盖。默认值也定义为常量，并把配置项登记到该类的 `Definitions`（类型、默认值、分组、说明），再加入 `ConfigDefinitions.All`（`Services/Sys/Configs/`）汇总，系统配置页面才能显示和修改（参考 `SysConfigKeys`、`CollectConfigKeys`）。
 
 ---
 
@@ -400,7 +400,7 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 
 - Server 只在 Job 中运行；Crm 只挂面板，路径 `/Sys/hangfire`，受权限码保护。
 - 存储在业务库的 `hangfire` schema（连接串 `ConnectionStrings:Main`，即应用账号），表由 Hangfire 启动时自动建立和升级（数据库变更约定 §2.4）。
-- 用依赖注入的 `IRecurringJobManager` 注册任务，所有周期任务集中在 Job 的任务注册表中。
+- 用依赖注入的 `IRecurringJobManager` 注册任务，所有周期任务集中在 Job 的任务注册表 `Suanpan.Job/Registry/RecurringJobRegistry` 中，Job 启动时注册或更新。任务类放在 `Services/{模块}/Jobs/`，在 `AddSuanpanServices` 中注册为 Scoped，任务 id 和 cron 作为任务类的常量。
 - 任务模板：`[AutomaticRetry(Attempts = 0)]`（周期任务自带下一轮）+ 分布式锁防止多实例重入 + 业务幂等（重跑安全）。
 - **cron 一律按 UTC 配置。** **【与 VVPay 不同】** VVPay 使用 `TimeZoneInfo.Local`。周期任务只通过 `AddOrUpdateUtc`（`Suanpan.Infrastructure.Hangfire`）注册，不直接调用 Hangfire 的 `AddOrUpdate`。
 - 周期任务最小粒度为 1 分钟。秒级需求（盯盘）不走 Hangfire，见 §9。
@@ -629,3 +629,4 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | v1.25 | 2026-10-23 | vivo.li / Claude | §8.2 消息清单：`CollectTaskDueCommand`、`CollectTriggerCommand` 合并为 `CollectRunCommand`（采集设计评审） |
 | v1.26 | 2026-10-23 | vivo.li / Claude | §7 Core 的字段规则统一返回 `FieldError`（FR-001.1 实施） |
 | v1.27 | 2026-10-23 | vivo.li / Claude | §12 配置键增加 `Collect:UserAgent`（FR-001.2 实施） |
+| v1.28 | 2026-10-27 | vivo.li / Claude | §4 调用 `AddSuanpanServices` 的程序还要注册采集 HttpClient 和 EventBus；§7 各模块的配置项由 `ConfigDefinitions.All` 汇总；§8.3 写明任务注册表和任务类的位置（FR-002.3 实施） |
