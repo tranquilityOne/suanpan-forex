@@ -1,0 +1,104 @@
+@model IndicatorSourceListViewModel
+@{
+    ViewData["Title"] = "指标数据源";
+    var filter = Model.Filter;
+}
+
+<div class="page-header mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col">
+            <h2 class="page-title">指标数据源</h2>
+            <div class="text-secondary">每个指标可以配置主源和备源，主源失败时改用备源（BR-034）；同一指标对同一数据源只映射一次，优先级不重复。</div>
+        </div>
+        @if (Model.HasParsers)
+        {
+            <div class="col-auto">
+                <a asp-action="Create" asp-route-indicatorCode="@filter.IndicatorCode" asp-permission="reference:indicator_source:create" class="btn btn-primary">
+                    <i class="ti ti-plus me-1"></i>新增映射
+                </a>
+            </div>
+        }
+    </div>
+</div>
+
+@if (!Model.HasParsers)
+{
+    <div class="alert alert-info">还没有可用的解析器，暂时不能新增映射。解析器随数据源的适配器一起发版加入（ENG-009）。</div>
+}
+
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label">指标编码</label>
+        <input name="IndicatorCode" value="@filter.IndicatorCode" class="form-control form-control-sm" placeholder="如：US.NFP" />
+    </div>
+    <div class="col-auto">
+        <label class="form-label">数据源</label>
+        <select name="SourceId" asp-items="@(new SelectList(Model.SourceOptions, "Value", "Text", filter.SourceId?.ToString()))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-primary">查询</button>
+        <a asp-action="Index" class="btn btn-sm">重置</a>
+    </div>
+</form>
+
+<div class="card">
+    @if (Model.Result.Items.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("没有符合条件的数据源映射")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle card-table text-nowrap">
+                <thead>
+                    <tr><th>指标</th><th>优先级</th><th>数据源</th><th>外部标识</th><th>解析器</th><th class="w-1"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var mapping in Model.Result.Items)
+                    {
+                        <tr>
+                            <td>
+                                <a asp-controller="Indicator" asp-action="Detail" asp-route-id="@mapping.IndicatorCode" asp-permission="reference:indicator:detail"><code class="small">@mapping.IndicatorCode</code></a>
+                                @mapping.IndicatorShortName.Get(ContentLanguage.Zh)
+                            </td>
+                            <td>
+                                <status-badge tone="@(mapping.Priority == IndicatorSourceRule.MainPriority ? BadgeTone.InProgress : BadgeTone.Neutral)"
+                                              text="@IndicatorSourceRule.PriorityName(mapping.Priority)" />
+                            </td>
+                            <td>
+                                @mapping.SourceName
+                                @if (!mapping.SourceEnabled)
+                                {
+                                    <status-badge tone="Attention" text="数据源停用" />
+                                }
+                            </td>
+                            <td><code class="small">@mapping.ExternalId</code></td>
+                            <td>
+                                @if (mapping.ParserName is not null)
+                                {
+                                    @mapping.ParserName
+                                }
+                                else
+                                {
+                                    <status-badge tone="Failure" text="目录中已没有" />
+                                }
+                                <div><code class="small">@mapping.ParserKey</code></div>
+                            </td>
+                            <td>
+                                <div class="btn-list flex-nowrap">
+                                    <a asp-action="Edit" asp-route-id="@mapping.Id" asp-permission="reference:indicator_source:edit" class="btn btn-sm">编辑</a>
+                                    <confirm-form asp-action="Delete" asp-route-id="@mapping.Id" asp-route-returnIndicatorCode="@filter.IndicatorCode"
+                                                  asp-permission="reference:indicator_source:delete" button-text="删除"
+                                                  message="@($"删除 {mapping.IndicatorCode} 与数据源 {mapping.SourceName} 的映射？删除后不再从这个数据源采集该指标。")" />
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <partial name="_Pager" model="Model.Result" />
+    }
+</div>

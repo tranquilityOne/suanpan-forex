@@ -644,6 +644,77 @@ namespace Suanpan.Data.Migrations
                     b.ToTable("ref_indicator", (string)null);
                 });
 
+            modelBuilder.Entity("Suanpan.Core.Reference.Entities.IndicatorSource", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("external_id");
+
+                    b.Property<string>("IndicatorCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("indicator_code");
+
+                    b.Property<string>("ParserKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("parser_key");
+
+                    b.Property<short>("Priority")
+                        .HasColumnType("smallint")
+                        .HasColumnName("priority");
+
+                    b.Property<long>("SourceId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_id");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_ref_indicator_source");
+
+                    b.HasIndex("SourceId")
+                        .HasDatabaseName("ix_ref_indicator_source_source_id");
+
+                    b.HasIndex("IndicatorCode", "Priority")
+                        .IsUnique()
+                        .HasDatabaseName("ux_ref_indicator_source_indicator_code_priority");
+
+                    b.HasIndex("IndicatorCode", "SourceId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_ref_indicator_source_indicator_code_source_id");
+
+                    b.ToTable("ref_indicator_source", (string)null);
+                });
+
             modelBuilder.Entity("Suanpan.Core.Sys.Entities.SysConfig", b =>
                 {
                     b.Property<int>("Id")

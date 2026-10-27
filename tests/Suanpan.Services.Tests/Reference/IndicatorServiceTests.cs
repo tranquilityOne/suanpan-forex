@@ -1,3 +1,4 @@
+using Suanpan.Core.Reference.Entities;
 using Suanpan.Core.Reference.Enums;
 using Suanpan.Services.Reference.Currencies;
 using Suanpan.Services.Reference.Currencies.Models;
@@ -149,7 +150,26 @@ public class IndicatorServiceTests(PostgresFixture postgres)
         Assert.Equal((high, "美国"), (row.Code, row.EconomyName.Zh));
     }
 
-    /// <summary>BR-153：没有被引用的指标可以删除（被引用时不能删除的情况随数据源映射、日历等模块一起实现）</summary>
+    /// <summary>BR-153：配置了数据源映射的指标不能删除，提示中列出数据源（日历等引用方随各模块加入）</summary>
+    [Fact]
+    public async Task Delete_RejectsIndicatorWithSourceMapping()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var service = new IndicatorService(db);
+        var code = TestData.IndicatorCode();
+        await service.CreateAsync(TestData.Indicator(code), Ct);
+        var source = await TestData.AddDataSourceAsync(db, Ct);
+        db.IndicatorSources.Add(new IndicatorSource { IndicatorCode = code, SourceId = source.Id, ExternalId = "S1", ParserKey = "us.test.release", Priority = 1 });
+        await db.SaveChangesAsync(Ct);
+
+        var result = await service.DeleteAsync(code, Ct);
+
+        Assert.False(result.Success);
+        Assert.Contains(source.Name, result.Error);
+        Assert.NotNull(await service.GetAsync(code, Ct));
+    }
+
+    /// <summary>BR-153：没有被引用的指标可以删除</summary>
     [Fact]
     public async Task Delete_RemovesUnreferencedIndicator()
     {

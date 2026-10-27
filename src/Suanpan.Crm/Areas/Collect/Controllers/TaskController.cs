@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Collect.Enums;
-using Suanpan.Core.Collect.Rules;
 using Suanpan.Crm.Models.Collect;
 using Suanpan.Services.Collect.Runs;
 using Suanpan.Services.Collect.Runs.Models;
@@ -169,23 +168,10 @@ public sealed class TaskController(
             .Select(s => new SelectListItem(s.IsEnabled ? s.Name : $"{s.Name}（停用）", s.Id.ToString()))
             .ToList();
 
-        var groups = new Dictionary<string, SelectListGroup>(StringComparer.Ordinal);
-        var parserOptions = parsers.All
-            .OrderBy(p => p.Key, StringComparer.Ordinal)
-            .Select(p => new SelectListItem($"{p.Name}（{p.Key}，{CollectDisplayNames.Get(p.TargetType)}）", p.Key)
-            {
-                Group = groups.TryGetValue(p.AdapterKey, out var group) ? group : groups[p.AdapterKey] = new SelectListGroup { Name = p.AdapterKey },
-            })
-            .ToList();
-        if (existing is not null && parsers.Find(existing.ParserKey) is null)
-        {
-            parserOptions.Insert(0, new SelectListItem($"{existing.ParserKey}（目录中已没有）", existing.ParserKey));
-        }
-
         model.Options = new CollectTaskFormOptions
         {
             Sources = sourceOptions,
-            Parsers = parserOptions,
+            Parsers = ParserSelectOptions.Build(parsers, existing?.ParserKey),
             TargetType = existing?.TargetType,
             Preview = tasks.PreviewSchedule(model.Cron),
         };

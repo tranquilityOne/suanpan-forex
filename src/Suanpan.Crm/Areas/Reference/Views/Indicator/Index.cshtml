@@ -63,7 +63,7 @@
         <div class="table-responsive">
             <table class="table table-hover table-sm align-middle card-table text-nowrap">
                 <thead>
-                    <tr><th>编码</th><th>简称</th><th>经济体</th><th>重要性</th><th>影响方向</th><th>频率</th><th>状态</th><th class="w-1"></th></tr>
+                    <tr><th>编码</th><th>简称</th><th>经济体</th><th>重要性</th><th>影响方向</th><th>频率</th><th class="text-end">数据源</th><th>状态</th><th class="w-1"></th></tr>
                 </thead>
                 <tbody>
                     @foreach (var indicator in Model.Result.Items)
@@ -75,6 +75,16 @@
                             <td>@Zh(indicator.Importance)</td>
                             <td>@Zh(indicator.Direction)</td>
                             <td>@Zh(indicator.Frequency)</td>
+                            <td class="text-end">
+                                @if (indicator.SourceCount > 0)
+                                {
+                                    <a asp-controller="IndicatorSource" asp-action="Index" asp-route-IndicatorCode="@indicator.Code" class="font-monospace">@indicator.SourceCount</a>
+                                }
+                                else
+                                {
+                                    <span class="font-monospace text-secondary">0</span>
+                                }
+                            </td>
                             <td><status-badge tone="@(indicator.IsEnabled ? BadgeTone.Success : BadgeTone.Neutral)" text="@(indicator.IsEnabled ? "启用" : "停用")" /></td>
                             <td>
                                 <div class="btn-list flex-nowrap">
@@ -90,8 +100,15 @@
                                         <confirm-form asp-action="SetStatus" asp-route-id="@indicator.Code" asp-route-enabled="true" asp-permission="reference:indicator:set_status"
                                                       message="@($"启用指标 {indicator.Code}？")" button-text="启用" button-class="btn btn-sm btn-outline-success" />
                                     }
-                                    <confirm-form asp-action="Delete" asp-route-id="@indicator.Code" asp-permission="reference:indicator:delete" button-text="删除"
-                                                  message="@($"删除指标 {indicator.Code}？删除后不能恢复；被引用的指标不能删除，可以停用。")" />
+                                    @if (indicator.SourceCount == 0)
+                                    {
+                                        <confirm-form asp-action="Delete" asp-route-id="@indicator.Code" asp-permission="reference:indicator:delete" button-text="删除"
+                                                      message="@($"删除指标 {indicator.Code}？删除后不能恢复；被引用的指标不能删除，可以停用。")" />
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-danger" disabled title="已配置数据源映射的指标不能删除，可以停用" asp-permission="reference:indicator:delete">删除</button>
+                                    }
                                 </div>
                             </td>
                         </tr>

@@ -4,6 +4,7 @@ using Suanpan.Core.Reference.Entities;
 using Suanpan.Core.Reference.Rules;
 using Suanpan.Data;
 using Suanpan.Services.Common.Querying;
+using Suanpan.Services.Common.References;
 using Suanpan.Services.Reference.Indicators.Models;
 using Suanpan.Shared.Mvc;
 using Suanpan.Shared.Paging;
@@ -16,8 +17,17 @@ public sealed class IndicatorService(SuanpanDbContext db) : IIndicatorService
         => (from i in Filter(query)
             join e in db.Economies on i.EconomyCode equals e.Code
             orderby e.Sort, i.Code
-            select new IndicatorRow(i.Code, i.ShortName, i.EconomyCode, e.Name, i.Importance, i.Direction, i.Frequency, i.IsEnabled))
+            select new IndicatorRow(
+                i.Code, i.ShortName, i.EconomyCode, e.Name, i.Importance, i.Direction, i.Frequency, i.IsEnabled,
+                db.IndicatorSources.Count(m => m.IndicatorCode == i.Code)))
             .ToPagedResultAsync(query.Page, query.PageSize, ct);
+
+    public async Task<IReadOnlyList<Indicator>> GetOptionsAsync(CancellationToken ct = default)
+        => await (from i in db.Indicators.AsNoTracking()
+                  where i.IsEnabled
+                  join e in db.Economies on i.EconomyCode equals e.Code
+                  orderby e.Sort, i.Code
+                  select i).ToListAsync(ct);
 
     public Task<Indicator?> GetAsync(string code, CancellationToken ct = default)
     {
@@ -105,8 +115,18 @@ public sealed class IndicatorService(SuanpanDbContext db) : IIndicatorService
             return ManageResult.Fail("指标不存在");
         }
 
-        // 引用方（基础数据设计 §3.5、BR-153）：指标与数据源的映射（JAN-79）、日历事件、快讯模板、央行加入后在这里补充，
-        // 用 ReferenceUsage 拼提示
+        // 引用方（基础数据设计 §3.5、BR-153）：日历事件、快讯模板、央行加入后在这里补充
+        var sources = await (
+            from m in db.IndicatorSources.AsNoTracking()
+            where m.IndicatorCode == indicator.Code
+            join s in db.DataSources on m.SourceId equals s.Id
+            orderby m.Priority
+            select s.Name).ToListAsync(ct);
+        if (ReferenceUsage.DescribeOrNull(("数据源映射", sources)) is { } usage)
+        {
+            return ManageResult.Fail(usage);
+        }
+
         db.Indicators.Remove(indicator);
         await db.SaveChangesAsync(ct);
         return ManageResult.Ok;

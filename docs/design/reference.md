@@ -2,10 +2,10 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.12 |
-| 日期 | 2026-10-23 |
+| 版本 | v0.13 |
+| 日期 | 2026-10-27 |
 | 状态 | 已评审（2026-10-22，vivo.li） |
-| 覆盖 | FR-005 经济体与货币管理、FR-006 指标字典管理（指标与数据源的映射只定表结构） |
+| 覆盖 | FR-005 经济体与货币管理、FR-006 指标字典管理（含指标与数据源的映射） |
 | 依据 | data-hub PRD v1.0.0.15；web-portal PRD（FR-005 指标详情页，BR-015、BR-017）；后端约定 v1.26；前端约定 v1.9；数据库变更约定 |
 
 > 本文只写"怎么实现"。需求、业务规则和验收标准以 PRD 为准，这里引用编号，不复述。
@@ -15,10 +15,9 @@
 
 ## 1. 范围
 
-**包含**：货币、经济体、指标字典三类主数据的表结构、领域规则、服务和后台页面；预置的 9 种货币和 10 个经济体；首批指标（PRD §10.9）的导入方式；指标与数据源映射的表结构。
+**包含**：货币、经济体、指标字典三类主数据的表结构、领域规则、服务和后台页面；预置的 9 种货币和 10 个经济体；首批指标（PRD §10.9）的导入方式；指标与数据源的映射（FR-006.4，在数据源管理 FR-001 完成后实现）。
 
 **不包含**：
-- 指标与数据源映射的页面和服务：映射要选择已存在的数据源，数据源由采集模块（FR-001）提供，等 FR-001 完成后再做（§2.1 已定表结构）。
 - 主源失败时改用备源（FR-006 验收第 3 条）：属于采集执行，在采集模块实现。
 - 盯盘范围（FR-003）、预告快讯（FR-015）、前台缓存刷新（FR-023）：它们读取本模块的数据，见 §4。
 - 质量校验（FR-026）：本模块只存校验参数（`range_min`、`range_max`、`sigma_n`），校验逻辑在 FR-026 实现。
@@ -28,7 +27,7 @@
 | 需求 | 本文章节 |
 |---|---|
 | FR-005 经济体与货币（BR-026 ~ BR-028） | §2、§3.1 ~ §3.3、§3.6、§6 |
-| FR-006 指标字典（BR-029 ~ BR-035） | §2、§3.1、§3.4 ~ §3.6、§4、§6 |
+| FR-006 指标字典（BR-029 ~ BR-035） | §2、§3.1、§3.4 ~ §3.6、§3.8、§4、§6 |
 | PRD §8.4 初始化数据 | §2.4 |
 
 ---
@@ -86,7 +85,7 @@
 | `description_zh`、`description_en` | `text` | 是 | 说明（定义、计算方式、为什么重要），前台指标详情页使用；为空时前台不展示（BR-033） |
 | `is_enabled` | `boolean` | 否 | |
 
-**`ref_indicator_source`（指标与数据源的映射）** —— 带审计四件套；本文只定结构，建表随 FR-001 之后的子任务一起做
+**`ref_indicator_source`（指标与数据源的映射）** —— 带审计四件套；FR-006.4（JAN-79）建表，迁移 `AddReferenceIndicatorSource`
 
 | 列 | 类型 | 可空 | 说明 |
 |---|---|---|---|
@@ -179,7 +178,7 @@
 |---|---|---|
 | 货币 | 经济体、指标 | 央行（`cb_bank`）、参考汇率 |
 | 经济体 | 指标、数据源（`col_source.economy_code`，JAN-81 加入） | 央行 |
-| 指标 | —（引用它的表都还没建） | 指标与数据源的映射（JAN-79）、日历事件、快讯模板、央行（决议指标） |
+| 指标 | 数据源映射（JAN-79，提示中列出数据源名称） | 日历事件、快讯模板、央行（决议指标） |
 
 指标按 BR-153 处理：被引用的只能停用，没有被引用的可以删除。
 
@@ -213,6 +212,16 @@
 - 繁体中文（web-portal Q-002，v1.1）一般由简体在显示时自动转换，不需要另存，不改表。
 - 需要人工维护的新语言：把这些字段的存储改成 `jsonb`（按语言存），`BilingualText` 内部改成按语言的字典，`Get` 的调用方不变。表都不大，按数据库变更约定分两次发布：先新增 `jsonb` 列、回填并切换读写，再删除旧列。
 
+### 3.8 指标与数据源的映射（`IndicatorSourceRule`，BR-034）
+
+- 一个指标可以映射多个数据源：优先级 1 为主源，2 起为备源，数字越小越优先；主源失败时改用备源由采集模块实现。
+- `IndicatorSourceRule.Validate(映射)` 校验外部标识必填、优先级从 1 开始；`PriorityName(优先级)` 给出页面上的名称（主源、备源 N）。
+- 服务中校验：
+  - 指标必须存在；新增时必须是启用的指标（BR-028）。修改时指标不能改。
+  - 数据源必须存在；停用的数据源照样保存，由页面警告（ERR-IND-003）。
+  - 解析器必须在解析器目录中（BR-012，经 `IParserCatalog` 读取，与采集任务相同）。M1 目录为空，映射页面提示"还没有可用的解析器"，不能新增。
+  - 同一指标对同一数据源只映射一次、优先级不重复（唯一索引兜底，服务先查出来在对应字段提示，修改时排除自己）。主备互换时先把其中一个改成没人用的优先级。
+
 ---
 
 ## 4. 与其他模块的关系
@@ -239,7 +248,7 @@ Suanpan.Core/Common/Localization/   BilingualText、ContentLanguage（跨模块�
 Suanpan.Core/Reference/
 ├─ Entities/      Currency、Economy、Indicator、IndicatorSource
 ├─ Enums/         IndicatorCategory、IndicatorValueType、IndicatorUnit、ReleaseFrequency、Importance、ImpactDirection
-└─ Rules/         ReferenceCodeRule、TimeZoneRule、IndicatorRule、ReferenceDisplayNames（枚举的中英文显示名）
+└─ Rules/         ReferenceCodeRule、TimeZoneRule、IndicatorRule、IndicatorSourceRule、ReferenceDisplayNames（枚举的中英文显示名）
 
 Suanpan.Data/
 ├─ SuanpanDbContext.Reference.cs
@@ -248,10 +257,11 @@ Suanpan.Data/
 Suanpan.Services/Reference/
 ├─ Currencies/    ICurrencyService、CurrencyService、Models/
 ├─ Economies/     IEconomyService、EconomyService、Models/
-└─ Indicators/    IIndicatorService、IndicatorService、Models/
+├─ Indicators/    IIndicatorService、IndicatorService、Models/
+└─ IndicatorSources/  IIndicatorSourceService、IndicatorSourceService、Models/
 
 Suanpan.Crm/
-├─ Areas/Reference/   Controllers/（Economy、Currency、Indicator）、Views/
+├─ Areas/Reference/   Controllers/（Economy、Currency、Indicator、IndicatorSource）、Views/
 └─ Models/Reference/  各页面的 ViewModel
 ```
 
@@ -263,7 +273,8 @@ Suanpan.Crm/
 |---|---|---|
 | `ICurrencyService` | `GetListAsync`、`GetAsync(code)`、`GetOptionsAsync`、`CreateAsync`、`UpdateAsync`、`SetEnabledAsync(code, enabled)`、`DeleteAsync(code)` | `GetOptionsAsync` 只返回启用的，供下拉框使用 |
 | `IEconomyService` | 同上，另有 `GetNextSortAsync` | 列表按 `sort` 排序，带各经济体的指标数；新增页的显示顺序默认取当前最大值加 10 |
-| `IIndicatorService` | `QueryAsync(IndicatorQuery)`、`GetAsync(code)`、`CreateAsync`、`UpdateAsync`、`SetEnabledAsync`、`DeleteAsync` | `IndicatorQuery`：经济体、类别、重要性、启用状态、关键字（编码或名称包含），分页；`UpdateAsync` 的输入带 `Reason` |
+| `IIndicatorService` | `QueryAsync(IndicatorQuery)`、`GetOptionsAsync`、`GetAsync(code)`、`CreateAsync`、`UpdateAsync`、`SetEnabledAsync`、`DeleteAsync` | `IndicatorQuery`：经济体、类别、重要性、启用状态、关键字（编码或名称包含），分页，每行带映射的数据源数；`GetOptionsAsync` 只返回启用的；`UpdateAsync` 的输入带 `Reason` |
+| `IIndicatorSourceService` | `QueryAsync(IndicatorSourceQuery)`、`GetByIndicatorAsync(code)`、`GetAsync(id)`、`CreateAsync`、`UpdateAsync(id, input)`、`DeleteAsync(id)` | `IndicatorSourceQuery`：指标编码、数据源，分页；按指标编码、优先级排序，每行带数据源是否启用和解析器名称；修改时指标不能改 |
 
 删除被拒时，`ManageResult` 的提示中列出引用方，如"被以下数据引用，不能删除，可以停用：指标 US.NFP、US.CPI.YOY"（每类最多列 10 个，其余给出总数），由 `Services/Common/References/ReferenceUsage` 拼写（采集模块也用它）。
 
@@ -284,9 +295,11 @@ Suanpan.Crm/
 | 指标详情 | `/Reference/Indicator/Detail/{code}` | `reference:indicator:detail` | 只读，显示全部字段（含说明），供没有编辑权限的角色查看 |
 | 新增 / 编辑指标 | `/Reference/Indicator/Create`、`/Edit/{code}` | `reference:indicator:create` / `edit` | 字段分组：基本信息、数值、发布、说明、质量校验参数。新增时货币默认取经济体的货币；编辑时编码、经济体只读。修改影响方向时"修改理由"必填 |
 | 启用 / 停用、删除指标 | POST | `reference:indicator:set_status` / `delete` | 二次确认 |
-| 指标的数据源映射 | 待 FR-001 完成后设计 | `reference:indicator_source:*` | 管理员、采集工程师可编辑（PRD §13.1.2） |
+| 指标数据源 | `/Reference/IndicatorSource` | `reference:indicator_source:index` | 见 §6.2 |
+| 新增 / 编辑映射 | `/Reference/IndicatorSource/Create`、`/Edit/{id}` | `reference:indicator_source:create` / `edit` | 见 §6.2；管理员、采集工程师可编辑（PRD §13.1.2） |
+| 删除映射 | POST | `reference:indicator_source:delete` | 二次确认 |
 
-菜单排序：经济体 10、货币 20、指标字典 30。列表页、表单页的写法按前端约定 §5，操作按钮按权限隐藏（`asp-permission`）。
+菜单排序：经济体 10、货币 20、指标字典 30、指标数据源 40。列表页、表单页的写法按前端约定 §5，操作按钮按权限隐藏（`asp-permission`）。
 
 权限码的第一段是 Area 名转成的 snake_case（`Reference` → `reference`，sys 设计 §4.4），不是表名前缀 `ref_`。路由中的 `{code}` 不区分大小写。指标详情的 action 名为 `Detail`（前端约定 §3.3 的详情页命名，默认显示名"详情"），权限码为 `reference:indicator:detail`。
 
@@ -304,6 +317,13 @@ Suanpan.Crm/
 | 编辑 `editor` | `reference:*:index`、`reference:*:detail`、`reference:economy:*`、`reference:currency:*`、`reference:indicator:*` |
 | 只读 `viewer` | `reference:*:index`、`reference:*:detail` |
 
+### 6.2 指标数据源
+
+- **列表** `/Reference/IndicatorSource`：筛选指标编码（不区分大小写）、数据源；列：指标（编码链接到指标详情、简称）、优先级、数据源（停用的标"数据源停用"）、外部标识、解析器（名称和标识，不在目录中时标出）。
+- **新增 / 编辑**：指标（新增时下拉框只列启用的指标，编辑时只读）、数据源（全部，停用的标"（停用）"）、优先级（默认 1）、外部标识、解析器（按适配器分组，与采集任务共用 `ParserSelectOptions`）。保存后回到这个指标的映射列表。
+- **指标列表**增加"数据源"列：映射数大于 0 时链接到映射列表，删除按钮置灰（BR-153）。
+- **指标详情**增加"数据源"卡片：按优先级列出映射，所有能看详情的角色都能看到；有权限时显示"新增映射"和"管理"。
+
 ---
 
 ## 7. 错误码
@@ -315,7 +335,7 @@ Suanpan.Crm/
 | ERR-REF-003 | 时区非法 | 服务校验（§3.2），表单在时区字段提示；页面只提供下拉选择 |
 | ERR-IND-001 | 指标编码重复 | 同 ERR-REF-001 |
 | ERR-IND-002 | 修改影响方向未填理由 | 表单在"修改理由"字段提示 |
-| ERR-IND-003 | 映射的数据源已停用 | 警告但不阻止保存；随数据源映射一起实现 |
+| ERR-IND-003 | 映射的数据源已停用 | 照样保存，保存后的提示中警告"启用前不会从它采集"；映射列表和指标详情中标出"数据源停用"（§6.2） |
 
 ---
 
@@ -343,7 +363,7 @@ Suanpan.Crm/
 | FR-005 #3 被引用的不能删除 | 集成测试：有指标引用的经济体、货币删除失败，提示中有引用方；未被引用的可以删除 |
 | FR-006 #1 首批指标录入并经编辑确认 | 集成测试：导入的 50 个指标都符合编码规则和指标规则、经济体和货币是预置的；内容是否正确由编辑在后台逐条复核 |
 | FR-006 #2 修改影响方向必须填理由，审计日志可查 | 单元测试 `IndicatorRule`；集成测试：方向变化且理由为空时失败；Crm 管道测试：带理由修改后，操作日志的 `reason` 为该理由 |
-| FR-006 #3 主备数据源 | 采集模块实现，M2 验证 |
+| FR-006 #3 主备数据源 | 映射的配置：单元测试 `IndicatorSourceRule`；集成测试：主源和备源按优先级排列，同一数据源、同一优先级不能重复，修改时排除自己，停用的数据源照样保存；被映射的指标、数据源不能删除。主源失败改用备源由采集模块实现，M2 验证 |
 | FR-006 #4 重要性改为"高"后进入盯盘计划 | 采集模块实现，M2 验证 |
 | BR-029 指标编码格式 | 单元测试：合法、非法、前缀与经济体不符 |
 | 停用的数据不能被新选用 | 集成测试：选用停用的货币或经济体保存失败 |
@@ -382,3 +402,4 @@ Suanpan.Crm/
 | v0.10 | 2026-10-23 | vivo.li / Claude | FR-006.3 实施：§2.4 首批指标清单确认（[reference-indicators.md](reference-indicators.md)），导入迁移 `ImportReferenceInitialIndicators`；§3.6 单位增加"千个"，英文显示名确认；§8、§9 同步 |
 | v0.11 | 2026-10-23 | vivo.li / Claude | FR-001.1 实施：§3.4 校验失败改用各模块共用的 `FieldError`；§3.5 经济体的引用方增加数据源 |
 | v0.12 | 2026-10-23 | vivo.li / Claude | FR-002.1（JAN-82）：§5.2 `ReferenceUsage` 移到 `Services/Common/References/`，供采集模块共用 |
+| v0.13 | 2026-10-27 | vivo.li / Claude | FR-006.4（JAN-79）实施：§1 映射纳入范围；§2.1 建表；新增 §3.8 映射的规则、§6.2 指标数据源页面；§3.5 指标的引用方增加数据源映射；§5 接口；§6 权限码和菜单；§7 ERR-IND-003 的实现；§9 FR-006 #3 的测试 |

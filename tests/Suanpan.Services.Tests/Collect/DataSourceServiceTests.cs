@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Collect.Enums;
+using Suanpan.Core.Reference.Entities;
 using Suanpan.Data;
 using Suanpan.Infrastructure.Redis;
 using Suanpan.Services.Collect.Sources;
@@ -125,6 +126,26 @@ public class DataSourceServiceTests(PostgresFixture postgres)
 
         Assert.False(result.Success);
         Assert.Contains(task, result.Error);
+        Assert.NotNull(await service.GetAsync(id, Ct));
+    }
+
+    /// <summary>BR-006、ERR-SRC-003：被指标映射引用时不能删除，提示中列出指标（BR-034）</summary>
+    [Fact]
+    public async Task Delete_RejectsSourceMappedToIndicator()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var service = Create(db);
+        var name = TestData.Unique("源");
+        await service.CreateAsync(Input(name), Ct);
+        var id = await IdOf(db, name);
+        var code = TestData.IndicatorCode();
+        db.IndicatorSources.Add(new IndicatorSource { IndicatorCode = code, SourceId = id, ExternalId = "S1", ParserKey = "us.test.release", Priority = 1 });
+        await db.SaveChangesAsync(Ct);
+
+        var result = await service.DeleteAsync(id, Ct);
+
+        Assert.False(result.Success);
+        Assert.Contains(code, result.Error);
         Assert.NotNull(await service.GetAsync(id, Ct));
     }
 

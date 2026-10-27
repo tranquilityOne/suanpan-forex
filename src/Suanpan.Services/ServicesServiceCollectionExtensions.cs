@@ -8,6 +8,7 @@ using Suanpan.Services.Collect.Tasks;
 using Suanpan.Services.Common.Alerts;
 using Suanpan.Services.Reference.Currencies;
 using Suanpan.Services.Reference.Economies;
+using Suanpan.Services.Reference.IndicatorSources;
 using Suanpan.Services.Reference.Indicators;
 using Suanpan.Services.Sys.Auth;
 using Suanpan.Services.Sys.Configs;
@@ -69,6 +70,7 @@ public static class ServicesServiceCollectionExtensions
         services.AddScoped<ICurrencyService, CurrencyService>();
         services.AddScoped<IEconomyService, EconomyService>();
         services.AddScoped<IIndicatorService, IndicatorService>();
+        services.AddScoped<IIndicatorSourceService, IndicatorSourceService>();
 
         // Collect：数据采集
         services.AddScoped<IDataSourceService, DataSourceService>();

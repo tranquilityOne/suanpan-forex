@@ -163,6 +163,8 @@ public sealed class FakeIndicatorService : IIndicatorService
 
     public Task<PagedResult<IndicatorRow>> QueryAsync(IndicatorQuery query, CancellationToken ct = default) => throw new NotSupportedException();
 
+    public Task<IReadOnlyList<Indicator>> GetOptionsAsync(CancellationToken ct = default) => throw new NotSupportedException();
+
     public Task<ManageResult> CreateAsync(IndicatorInput input, CancellationToken ct = default) => throw new NotSupportedException();
 
     public Task<ManageResult> SetEnabledAsync(string code, bool enabled, CancellationToken ct = default) => throw new NotSupportedException();

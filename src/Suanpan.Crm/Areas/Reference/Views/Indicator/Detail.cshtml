@@ -89,3 +89,44 @@
         </div>
     </div>
 </div>
+
+<div class="card mt-3" style="max-width: 60rem">
+    <div class="card-header">
+        <h3 class="card-title">数据源</h3>
+        <div class="card-actions btn-list">
+            <a asp-controller="IndicatorSource" asp-action="Create" asp-route-indicatorCode="@indicator.Code" asp-permission="reference:indicator_source:create" class="btn btn-sm">新增映射</a>
+            <a asp-controller="IndicatorSource" asp-action="Index" asp-route-IndicatorCode="@indicator.Code" asp-permission="reference:indicator_source:index" class="btn btn-sm">管理</a>
+        </div>
+    </div>
+    @if (Model.Sources.Count == 0)
+    {
+        <div class="card-body text-secondary">还没有配置数据源（BR-034：一个指标可以配置主源和备源）</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle card-table">
+                <thead>
+                    <tr><th>优先级</th><th>数据源</th><th>外部标识</th><th>解析器</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var source in Model.Sources)
+                    {
+                        <tr>
+                            <td><status-badge tone="@(source.Priority == IndicatorSourceRule.MainPriority ? BadgeTone.InProgress : BadgeTone.Neutral)" text="@IndicatorSourceRule.PriorityName(source.Priority)" /></td>
+                            <td>
+                                @source.SourceName
+                                @if (!source.SourceEnabled)
+                                {
+                                    <status-badge tone="Attention" text="数据源停用" />
+                                }
+                            </td>
+                            <td><code class="small">@source.ExternalId</code></td>
+                            <td>@(source.ParserName ?? "（目录中已没有）") <code class="small">@source.ParserKey</code></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

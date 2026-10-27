@@ -7,6 +7,7 @@ using Suanpan.Core.Reference.Rules;
 using Suanpan.Crm.Models.Reference;
 using Suanpan.Services.Reference.Currencies;
 using Suanpan.Services.Reference.Economies;
+using Suanpan.Services.Reference.IndicatorSources;
 using Suanpan.Services.Reference.Indicators;
 using Suanpan.Services.Reference.Indicators.Models;
 using Suanpan.Shared.Auth;
@@ -20,7 +21,11 @@ namespace Suanpan.Crm.Areas.Reference.Controllers;
 /// </summary>
 [Area("Reference")]
 [PermMenu("指标字典", Icon = "list-details", Sort = 30)]
-public sealed class IndicatorController(IIndicatorService indicators, IEconomyService economies, ICurrencyService currencies) : Controller
+public sealed class IndicatorController(
+    IIndicatorService indicators,
+    IEconomyService economies,
+    ICurrencyService currencies,
+    IIndicatorSourceService mappings) : Controller
 {
     private const string Module = "基础数据";
 
@@ -43,7 +48,12 @@ public sealed class IndicatorController(IIndicatorService indicators, IEconomySe
             return NotFound();
         }
 
-        return View(new IndicatorDetailViewModel { Indicator = indicator, Economy = await economies.GetAsync(indicator.EconomyCode, ct) });
+        return View(new IndicatorDetailViewModel
+        {
+            Indicator = indicator,
+            Economy = await economies.GetAsync(indicator.EconomyCode, ct),
+            Sources = await mappings.GetByIndicatorAsync(indicator.Code, ct),
+        });
     }
 
     /// <summary>持平容差默认 0（基础数据设计 §2.1）；选了经济体后，页面脚本把货币默认设为经济体的货币</summary>

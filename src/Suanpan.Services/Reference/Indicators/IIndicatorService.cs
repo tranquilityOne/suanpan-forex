@@ -11,6 +11,9 @@ public interface IIndicatorService
     /// <summary>按经济体的显示顺序、指标编码排序</summary>
     Task<PagedResult<IndicatorRow>> QueryAsync(IndicatorQuery query, CancellationToken ct = default);
 
+    /// <summary>下拉框选项：只有启用的指标，按经济体的显示顺序、指标编码排序</summary>
+    Task<IReadOnlyList<Indicator>> GetOptionsAsync(CancellationToken ct = default);
+
     Task<Indicator?> GetAsync(string code, CancellationToken ct = default);
 
     /// <summary>

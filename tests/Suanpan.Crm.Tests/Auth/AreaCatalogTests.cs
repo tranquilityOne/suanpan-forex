@@ -62,6 +62,7 @@ public partial class AreaCatalogTests
             "reference:currency:index", "reference:currency:create", "reference:currency:edit", "reference:currency:set_status", "reference:currency:delete",
             "reference:indicator:index", "reference:indicator:detail", "reference:indicator:create", "reference:indicator:edit",
             "reference:indicator:set_status", "reference:indicator:delete",
+            "reference:indicator_source:index", "reference:indicator_source:create", "reference:indicator_source:edit", "reference:indicator_source:delete",
             "collect:source:index", "collect:source:detail", "collect:source:create", "collect:source:edit",
             "collect:source:set_status", "collect:source:delete", "collect:source:test",
             "collect:task:index", "collect:task:create", "collect:task:edit", "collect:task:set_status", "collect:task:delete",

@@ -1,0 +1,74 @@
+@model IndicatorSourceEditViewModel
+@{
+    // 编辑页的地址带 id（/Edit/{id}），新增页没有
+    var isNew = ViewContext.RouteData.Values["id"] is null;
+    ViewData["Title"] = isNew ? "新增指标数据源映射" : "编辑指标数据源映射";
+    var options = Model.Options!;
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">@ViewData["Title"]</h2>
+</div>
+
+<div class="card" style="max-width: 50rem">
+    <form asp-action="@(isNew ? "Create" : "Edit")" asp-route-id="@(isNew ? null : ViewContext.RouteData.Values["id"])" method="post" class="card-body" autocomplete="off">
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+
+        <div class="mb-3">
+            <label asp-for="IndicatorCode" class="form-label required"></label>
+            @if (isNew)
+            {
+                <select asp-for="IndicatorCode" asp-items="options.Indicators" class="form-select">
+                    <option value="">请选择</option>
+                </select>
+                <div class="form-text">只列出启用的指标</div>
+            }
+            else
+            {
+                <input value="@options.Indicators.FirstOrDefault()?.Text" class="form-control" readonly />
+            }
+            <span asp-validation-for="IndicatorCode"></span>
+        </div>
+
+        <div class="row">
+            <div class="col-md-8 mb-3">
+                <label asp-for="SourceId" class="form-label required"></label>
+                <select asp-for="SourceId" asp-items="options.Sources" class="form-select">
+                    <option value="">请选择</option>
+                </select>
+                <div class="form-text">停用的数据源也可以选，但启用前不会从它采集</div>
+                <span asp-validation-for="SourceId"></span>
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="Priority" class="form-label required"></label>
+                <input asp-for="Priority" class="form-control" min="1" style="max-width: 8rem" />
+                <div class="form-text">1 为主源，2 起为备源</div>
+                <span asp-validation-for="Priority"></span>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="ExternalId" class="form-label required"></label>
+            <input asp-for="ExternalId" class="form-control font-monospace" placeholder="如：CES0000000001" />
+            <div class="form-text">数据源中这个指标的标识，如 BLS 的序列 ID</div>
+            <span asp-validation-for="ExternalId"></span>
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="ParserKey" class="form-label required"></label>
+            <select asp-for="ParserKey" asp-items="options.Parsers" class="form-select">
+                <option value="">请选择</option>
+            </select>
+            <span asp-validation-for="ParserKey"></span>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">保存</button>
+            <a asp-action="Index" asp-route-IndicatorCode="@(isNew ? null : Model.IndicatorCode)" class="btn">取消</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
