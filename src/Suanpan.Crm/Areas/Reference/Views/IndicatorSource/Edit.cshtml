@@ -1,9 +1,11 @@
+@using Suanpan.Core.Reference.Enums
 @model IndicatorSourceEditViewModel
 @{
     // 编辑页的地址带 id（/Edit/{id}），新增页没有
     var isNew = ViewContext.RouteData.Values["id"] is null;
     ViewData["Title"] = isNew ? "新增指标数据源映射" : "编辑指标数据源映射";
     var options = Model.Options!;
+    var isSchedule = Model.Purpose == IndicatorSourcePurpose.Schedule;
 }
 
 <div class="page-header mb-3">
@@ -11,7 +13,7 @@
 </div>
 
 <div class="card" style="max-width: 50rem">
-    <form asp-action="@(isNew ? "Create" : "Edit")" asp-route-id="@(isNew ? null : ViewContext.RouteData.Values["id"])" method="post" class="card-body" autocomplete="off">
+    <form id="indicator-source-form" asp-action="@(isNew ? "Create" : "Edit")" asp-route-id="@(isNew ? null : ViewContext.RouteData.Values["id"])" method="post" class="card-body" autocomplete="off">
         <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
 
         <div class="mb-3">
@@ -30,6 +32,20 @@
             <span asp-validation-for="IndicatorCode"></span>
         </div>
 
+        <div class="mb-3">
+            <label asp-for="Purpose" class="form-label required"></label>
+            @if (isNew)
+            {
+                <select asp-for="Purpose" asp-items="options.Purposes" class="form-select" style="max-width: 12rem" data-schedule-value="@IndicatorSourcePurpose.Schedule"></select>
+            }
+            else
+            {
+                <input value="@ReferenceDisplayNames.Get(Model.Purpose!.Value).Get(ContentLanguage.Zh)" class="form-control" style="max-width: 12rem" readonly />
+            }
+            <div class="form-text">公布值：按序列 ID 等取数，可配主源和备源。排期：按官方日程中的发布标识建日历事件，同一份报告的几个指标填同一个标识。保存后不能修改</div>
+            <span asp-validation-for="Purpose"></span>
+        </div>
+
         <div class="row">
             <div class="col-md-8 mb-3">
                 <label asp-for="SourceId" class="form-label required"></label>
@@ -40,17 +56,24 @@
                 <span asp-validation-for="SourceId"></span>
             </div>
             <div class="col-md-4 mb-3">
-                <label asp-for="Priority" class="form-label required"></label>
-                <input asp-for="Priority" class="form-control" min="1" style="max-width: 8rem" />
-                <div class="form-text">1 为主源，2 起为备源</div>
+                <label asp-for="Priority" id="priority-label" class="form-label @(isSchedule ? "" : "required")"></label>
+                @if (isSchedule)
+                {
+                    <input asp-for="Priority" class="form-control" min="1" style="max-width: 8rem" disabled />
+                }
+                else
+                {
+                    <input asp-for="Priority" class="form-control" min="1" style="max-width: 8rem" />
+                }
+                <div class="form-text">公布值映射：1 为主源，2 起为备源；排期映射不填</div>
                 <span asp-validation-for="Priority"></span>
             </div>
         </div>
 
         <div class="mb-3">
             <label asp-for="ExternalId" class="form-label required"></label>
-            <input asp-for="ExternalId" class="form-control font-monospace" placeholder="如：CES0000000001" />
-            <div class="form-text">数据源中这个指标的标识，如 BLS 的序列 ID</div>
+            <input asp-for="ExternalId" class="form-control font-monospace" placeholder="如：CES0000000001、empsit" />
+            <div class="form-text">公布值映射填数据源中这个指标的标识，如 BLS 的序列 ID；排期映射填官方日程中的发布标识，如 BLS 就业报告的 empsit</div>
             <span asp-validation-for="ExternalId"></span>
         </div>
 
@@ -59,6 +82,7 @@
             <select asp-for="ParserKey" asp-items="options.Parsers" class="form-select">
                 <option value="">请选择</option>
             </select>
+            <div class="form-text">公布值映射选"公布值"类的解析器，排期映射选"日历排期"类的解析器</div>
             <span asp-validation-for="ParserKey"></span>
         </div>
 
@@ -71,4 +95,5 @@
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    <script src="~/js/reference/indicator-source-edit.js" asp-append-version="true"></script>
 }

@@ -50,7 +50,7 @@
 | 6 | 中国 LPR 的公布时间是 9:00 还是 9:30 | 9:00：中国人民银行公告，自 2024-07-22 起由 9:15 改为 9:00 |
 | 7 | 枚举的英文显示名（§4）是否合适 | 按 §4 |
 | 8 | 编码写法（§1）是否认可 | 按 §1 |
-| 9 | 非政府机构的 7 个指标（`US.ISM.MFG`、`US.ISM.SVC`、`US.UMCSI.PRELIM`、`EA.PMI.MFG.PRELIM`、`EA.PMI.SVC.PRELIM`、`DE.IFO`、`DE.ZEW`）怎么维护 | 暂不纳入日历（PRD Q-004、DEC-024）：在指标字典中停用，由日历的 FR-007.1（JAN-87）用数据迁移执行；法务确认授权后（v1.1）再启用并接入数据源。v0.3 新增 |
+| 9 | 非政府机构的 7 个指标（`US.ISM.MFG`、`US.ISM.SVC`、`US.UMCSI.PRELIM`、`EA.PMI.MFG.PRELIM`、`EA.PMI.SVC.PRELIM`、`DE.IFO`、`DE.ZEW`）怎么维护 | 暂不纳入日历（PRD Q-004、DEC-024）：在指标字典中停用，由日历的 FR-007.1（JAN-87）用数据迁移 `DisableNonOfficialIndicators` 执行（已经停用的不动）；法务确认授权后（v1.1）再启用并接入数据源。v0.3 新增 |
 
 ---
 

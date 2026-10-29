@@ -1,9 +1,13 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Suanpan.Core.Reference.Enums;
 
 namespace Suanpan.Crm.Models.Reference;
 
-/// <summary>新增或编辑指标与数据源的映射（基础数据设计 §3.8、§6.2）。字段规则由服务校验，属性名与服务的输入一致；编辑时指标只读</summary>
+/// <summary>
+/// 新增或编辑指标与数据源的映射（基础数据设计 §3.8、§6.2）。字段规则由服务校验，属性名与服务的输入一致；编辑时指标和用途只读。
+/// 优先级只在公布值映射时填写，排期映射留空（由服务按用途校验）
+/// </summary>
 public sealed class IndicatorSourceEditViewModel
 {
     [Display(Name = "指标")]
@@ -12,6 +16,10 @@ public sealed class IndicatorSourceEditViewModel
     [Required]
     [Display(Name = "数据源")]
     public long? SourceId { get; set; }
+
+    [Required]
+    [Display(Name = "用途")]
+    public IndicatorSourcePurpose? Purpose { get; set; }
 
     [Required]
     [StringLength(128)]
@@ -23,7 +31,6 @@ public sealed class IndicatorSourceEditViewModel
     [Display(Name = "解析器")]
     public string? ParserKey { get; set; }
 
-    [Required]
     [Range(1, short.MaxValue)]
     [Display(Name = "优先级")]
     public short? Priority { get; set; }

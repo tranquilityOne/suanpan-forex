@@ -48,7 +48,8 @@ public class ReferencePresetDataTests(PostgresFixture postgres)
 
     /// <summary>
     /// 首批指标（JAN-78，docs/design/reference-indicators.md）：迁移导入 50 个高重要性指标，都符合编码规则和指标规则，
-    /// 经济体和货币是预置的，前台地址不重复。数据是否正确由编辑在后台逐条复核（FR-006 验收第 1 条）
+    /// 经济体和货币是预置的，前台地址不重复。数据是否正确由编辑在后台逐条复核（FR-006 验收第 1 条）。
+    /// 其中 7 个非政府机构的指标暂不纳入日历，由迁移停用（首批指标清单 §2 第 9 项，JAN-87）
     /// </summary>
     [Fact]
     public async Task Migration_ImportsInitialIndicatorsThatPassTheRules()
@@ -66,8 +67,11 @@ public class ReferencePresetDataTests(PostgresFixture postgres)
             Assert.Null(IndicatorRule.Validate(i));
             Assert.Contains(i.EconomyCode, economies);
             Assert.Contains(i.CurrencyCode, currencies);
-            Assert.True(i.IsEnabled && i.Importance == Importance.High);
+            Assert.Equal(Importance.High, i.Importance);
         });
+        Assert.Equal(
+            ["DE.IFO", "DE.ZEW", "EA.PMI.MFG.PRELIM", "EA.PMI.SVC.PRELIM", "US.ISM.MFG", "US.ISM.SVC", "US.UMCSI.PRELIM"],
+            indicators.Where(i => !i.IsEnabled).Select(i => i.Code).Order(StringComparer.Ordinal));
         Assert.Equal(indicators.Count, indicators.Select(i => ReferenceCodeRule.ToSlug(i.Code)).Distinct().Count());
 
         // 抽查清单中特殊的几项：区间型的利率决议、单位"千个"、德国用欧元

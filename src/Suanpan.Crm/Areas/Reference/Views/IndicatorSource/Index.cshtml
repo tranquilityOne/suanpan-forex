@@ -8,7 +8,7 @@
     <div class="row g-2 align-items-center">
         <div class="col">
             <h2 class="page-title">指标数据源</h2>
-            <div class="text-secondary">每个指标可以配置主源和备源，主源失败时改用备源（BR-034）；同一指标对同一数据源只映射一次，优先级不重复。</div>
+            <div class="text-secondary">公布值映射可以配置主源和备源，主源失败时改用备源；排期映射用官方日程中的发布标识建日历事件（BR-034）。同一指标对同一数据源每种用途只映射一次。</div>
         </div>
         @if (Model.HasParsers)
         {
@@ -38,6 +38,12 @@
         </select>
     </div>
     <div class="col-auto">
+        <label class="form-label">用途</label>
+        <select name="Purpose" asp-items="@(new SelectList(Model.PurposeOptions, "Value", "Text", filter.Purpose?.ToString()))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
         <button type="submit" class="btn btn-sm btn-primary">查询</button>
         <a asp-action="Index" class="btn btn-sm">重置</a>
     </div>
@@ -53,7 +59,7 @@
         <div class="table-responsive">
             <table class="table table-hover table-sm align-middle card-table text-nowrap">
                 <thead>
-                    <tr><th>指标</th><th>优先级</th><th>数据源</th><th>外部标识</th><th>解析器</th><th class="w-1"></th></tr>
+                    <tr><th>指标</th><th>用途</th><th>优先级</th><th>数据源</th><th>外部标识</th><th>解析器</th><th class="w-1"></th></tr>
                 </thead>
                 <tbody>
                     @foreach (var mapping in Model.Result.Items)
@@ -63,9 +69,17 @@
                                 <a asp-controller="Indicator" asp-action="Detail" asp-route-id="@mapping.IndicatorCode" asp-permission="reference:indicator:detail"><code class="small">@mapping.IndicatorCode</code></a>
                                 @mapping.IndicatorShortName.Get(ContentLanguage.Zh)
                             </td>
+                            <td>@ReferenceDisplayNames.Get(mapping.Purpose).Get(ContentLanguage.Zh)</td>
                             <td>
-                                <status-badge tone="@(mapping.Priority == IndicatorSourceRule.MainPriority ? BadgeTone.InProgress : BadgeTone.Neutral)"
-                                              text="@IndicatorSourceRule.PriorityName(mapping.Priority)" />
+                                @if (mapping.Priority is { } priority)
+                                {
+                                    <status-badge tone="@(priority == IndicatorSourceRule.MainPriority ? BadgeTone.InProgress : BadgeTone.Neutral)"
+                                                  text="@IndicatorSourceRule.PriorityName(priority)" />
+                                }
+                                else
+                                {
+                                    <span class="text-secondary">—</span>
+                                }
                             </td>
                             <td>
                                 @mapping.SourceName
@@ -91,7 +105,7 @@
                                     <a asp-action="Edit" asp-route-id="@mapping.Id" asp-permission="reference:indicator_source:edit" class="btn btn-sm">编辑</a>
                                     <confirm-form asp-action="Delete" asp-route-id="@mapping.Id" asp-route-returnIndicatorCode="@filter.IndicatorCode"
                                                   asp-permission="reference:indicator_source:delete" button-text="删除"
-                                                  message="@($"删除 {mapping.IndicatorCode} 与数据源 {mapping.SourceName} 的映射？删除后不再从这个数据源采集该指标。")" />
+                                                  message="@($"删除 {mapping.IndicatorCode} 与数据源 {mapping.SourceName} 的{ReferenceDisplayNames.Get(mapping.Purpose).Get(ContentLanguage.Zh)}映射？删除后不再从这个数据源采集该指标的{ReferenceDisplayNames.Get(mapping.Purpose).Get(ContentLanguage.Zh)}。")" />
                                 </div>
                             </td>
                         </tr>

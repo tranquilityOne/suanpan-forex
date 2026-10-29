@@ -42,6 +42,9 @@ public static class ReferenceDisplayNames
         [ImpactDirection.HigherIsBullish] = new("越高越利好本币", "Higher is bullish for the currency"),
         [ImpactDirection.HigherIsBearish] = new("越高越利空本币", "Higher is bearish for the currency"),
         [ImpactDirection.Neutral] = new("无方向", "No direction"),
+
+        [IndicatorSourcePurpose.Release] = new("公布值", "Release"),
+        [IndicatorSourcePurpose.Schedule] = new("排期", "Schedule"),
     };
 
     /// <summary>取枚举值的中英文显示名；没有登记的值两种语言都显示枚举名</summary>

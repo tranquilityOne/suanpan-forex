@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Suanpan.Core.Collect.Rules;
 using Suanpan.Core.Reference.Entities;
+using Suanpan.Core.Reference.Enums;
 using Suanpan.Core.Reference.Rules;
 using Suanpan.Data;
 using Suanpan.Services.Collect.Tasks;
@@ -24,6 +26,11 @@ public sealed class IndicatorSourceService(SuanpanDbContext db, IParserCatalog p
         if (query.SourceId is { } sourceId)
         {
             mappings = mappings.Where(m => m.SourceId == sourceId);
+        }
+
+        if (query.Purpose is { } purpose)
+        {
+            mappings = mappings.Where(m => m.Purpose == purpose);
         }
 
         var result = await Rows(mappings).ToPagedResultAsync(query.Page, query.PageSize, ct);
@@ -53,7 +60,7 @@ public sealed class IndicatorSourceService(SuanpanDbContext db, IParserCatalog p
             return ManageResult.Fail($"指标 {code} 已停用，不能选用", nameof(IndicatorSourceInput.IndicatorCode));
         }
 
-        var mapping = new IndicatorSource { IndicatorCode = code };
+        var mapping = new IndicatorSource { IndicatorCode = code, Purpose = input.Purpose };
         if (await ApplyAndValidateAsync(mapping, input, ct) is { } invalid)
         {
             return invalid;
@@ -94,8 +101,8 @@ public sealed class IndicatorSourceService(SuanpanDbContext db, IParserCatalog p
     }
 
     /// <summary>
-    /// 把输入写到实体上再校验：字段规则、解析器在目录中（BR-012）、数据源存在；同一指标对同一数据源只映射一次，
-    /// 优先级不重复（唯一索引兜底，这里先查出来给出字段提示）
+    /// 把输入写到实体上再校验（用途在新增时已定，不随输入改）：字段规则、解析器在目录中（BR-012）且目标数据类型与用途一致、
+    /// 数据源存在；同一指标对同一数据源每种用途只映射一次，公布值映射的优先级不重复（唯一索引兜底，这里先查出来给出字段提示）
     /// </summary>
     private async Task<ManageResult?> ApplyAndValidateAsync(IndicatorSource mapping, IndicatorSourceInput input, CancellationToken ct)
     {
@@ -109,9 +116,17 @@ public sealed class IndicatorSourceService(SuanpanDbContext db, IParserCatalog p
             return ManageResult.Fail(error.Message, error.Field);
         }
 
-        if (parsers.Find(mapping.ParserKey) is null)
+        if (parsers.Find(mapping.ParserKey) is not { } parser)
         {
             return ManageResult.Fail("请选择解析器", nameof(IndicatorSourceInput.ParserKey));
+        }
+
+        var targetType = IndicatorSourceRule.ParserTargetType(mapping.Purpose);
+        if (parser.TargetType != targetType)
+        {
+            return ManageResult.Fail(
+                $"{ReferenceDisplayNames.Get(mapping.Purpose).Zh}映射要用目标数据类型为\"{CollectDisplayNames.Get(targetType)}\"的解析器",
+                nameof(IndicatorSourceInput.ParserKey));
         }
 
         if (await db.DataSources.AsNoTracking().FirstOrDefaultAsync(s => s.Id == mapping.SourceId, ct) is not { } source)
@@ -119,21 +134,29 @@ public sealed class IndicatorSourceService(SuanpanDbContext db, IParserCatalog p
             return ManageResult.Fail("数据源不存在", nameof(IndicatorSourceInput.SourceId));
         }
 
-        var others = db.IndicatorSources.AsNoTracking().Where(m => m.IndicatorCode == mapping.IndicatorCode && m.Id != mapping.Id);
+        var others = db.IndicatorSources.AsNoTracking()
+            .Where(m => m.IndicatorCode == mapping.IndicatorCode && m.Purpose == mapping.Purpose && m.Id != mapping.Id);
         if (await others.AnyAsync(m => m.SourceId == mapping.SourceId, ct))
         {
-            return ManageResult.Fail($"指标 {mapping.IndicatorCode} 已经映射过数据源 {source.Name}", nameof(IndicatorSourceInput.SourceId));
+            return ManageResult.Fail(
+                $"指标 {mapping.IndicatorCode} 已经有数据源 {source.Name} 的{ReferenceDisplayNames.Get(mapping.Purpose).Zh}映射",
+                nameof(IndicatorSourceInput.SourceId));
+        }
+
+        if (mapping.Priority is not { } priority)
+        {
+            return null;
         }
 
         var samePriority = await (
             from m in others
-            where m.Priority == mapping.Priority
+            where m.Priority == priority
             join s in db.DataSources on m.SourceId equals s.Id
             select s.Name).FirstOrDefaultAsync(ct);
         return samePriority is null
             ? null
             : ManageResult.Fail(
-                $"优先级 {mapping.Priority}（{IndicatorSourceRule.PriorityName(mapping.Priority)}）已被数据源 {samePriority} 使用，请换一个",
+                $"优先级 {priority}（{IndicatorSourceRule.PriorityName(priority)}）已被数据源 {samePriority} 使用，请换一个",
                 nameof(IndicatorSourceInput.Priority));
     }
 
@@ -141,8 +164,8 @@ public sealed class IndicatorSourceService(SuanpanDbContext db, IParserCatalog p
         => from m in mappings
            join i in db.Indicators on m.IndicatorCode equals i.Code
            join s in db.DataSources on m.SourceId equals s.Id
-           orderby m.IndicatorCode, m.Priority
-           select new IndicatorSourceRow(m.Id, m.IndicatorCode, i.ShortName, m.SourceId, s.Name, s.IsEnabled, m.ExternalId, m.ParserKey, m.Priority);
+           orderby m.IndicatorCode, m.Purpose, m.Priority, s.Name
+           select new IndicatorSourceRow(m.Id, m.IndicatorCode, i.ShortName, m.SourceId, s.Name, s.IsEnabled, m.Purpose, m.ExternalId, m.ParserKey, m.Priority);
 
     private List<IndicatorSourceRow> WithParserNames(IEnumerable<IndicatorSourceRow> rows)
         => rows.Select(row => row with { ParserName = parsers.Find(row.ParserKey)?.Name }).ToList();

@@ -1,3 +1,4 @@
+using Suanpan.Core.Reference.Enums;
 using Suanpan.Data;
 using Suanpan.Services.Reference.IndicatorSources;
 using Suanpan.Services.Reference.IndicatorSources.Models;
@@ -8,7 +9,7 @@ using Xunit;
 namespace Suanpan.Services.Tests.Reference;
 
 /// <summary>
-/// 指标与数据源的映射（基础数据设计 §3.8，BR-034）。字段规则的分支在 Core 的 IndicatorSourceRuleTests 中测试，
+/// 指标与数据源的映射（基础数据设计 §3.8，BR-034，用途分公布值和排期）。字段规则的分支在 Core 的 IndicatorSourceRuleTests 中测试，
 /// 这里测服务接上了规则，以及需要查库或读解析器目录的校验。解析器目录在 M1 为空，用替身
 /// </summary>
 [Trait(TestCategory.Key, TestCategory.Integration)]
@@ -30,7 +31,37 @@ public class IndicatorSourceServiceTests(PostgresFixture postgres)
         Assert.True(backupResult.Success && mainResult.Success, backupResult.Error ?? mainResult.Error);
         var rows = await service.GetByIndicatorAsync(code, Ct);
         Assert.Equal([(main.Id, (short)1, true), (backup.Id, (short)2, false)], rows.Select(r => (r.SourceId, r.Priority, r.SourceEnabled)));
-        Assert.Equal(StubParserCatalog.Schedule.Name, rows[0].ParserName);
+        Assert.Equal(StubParserCatalog.Release.Name, rows[0].ParserName);
+    }
+
+    /// <summary>
+    /// 同一指标对同一数据源可以各有一条公布值映射和一条排期映射（排期不设优先级），列表先列公布值；
+    /// 同一用途重复映射在数据源字段提示；解析器的目标数据类型要与用途一致；修改时用途不变
+    /// </summary>
+    [Fact]
+    public async Task Purposes_AreMappedSeparatelyPerSource()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var service = Create(db);
+        var code = await AddIndicatorAsync(db);
+        var source = await TestData.AddDataSourceAsync(db, Ct);
+
+        var schedule = await service.CreateAsync(Schedule(code, source.Id), Ct);
+        var release = await service.CreateAsync(Input(code, source.Id, priority: 1), Ct);
+        var sameSchedule = await service.CreateAsync(Schedule(code, source.Id), Ct);
+        var wrongParser = await service.CreateAsync(Schedule(code, source.Id) with { ParserKey = StubParserCatalog.Release.Key }, Ct);
+
+        Assert.True(schedule.Success && release.Success, schedule.Error ?? release.Error);
+        Assert.Equal((false, nameof(IndicatorSourceInput.SourceId)), (sameSchedule.Success, sameSchedule.Field));
+        Assert.Equal((false, nameof(IndicatorSourceInput.ParserKey)), (wrongParser.Success, wrongParser.Field));
+        var rows = await service.GetByIndicatorAsync(code, Ct);
+        Assert.Equal([(IndicatorSourcePurpose.Release, (short?)1), (IndicatorSourcePurpose.Schedule, (short?)null)], rows.Select(r => (r.Purpose, r.Priority)));
+
+        var update = await service.UpdateAsync(rows[0].Id, Input(code, source.Id, priority: 2) with { Purpose = IndicatorSourcePurpose.Schedule }, Ct);
+        Assert.True(update.Success, update.Error);
+        var updated = await service.GetAsync(rows[0].Id, Ct);
+        Assert.Equal((IndicatorSourcePurpose.Release, (short?)2), (updated!.Purpose, updated.Priority));
+        Assert.Single((await service.QueryAsync(new(code, Purpose: IndicatorSourcePurpose.Schedule), Ct)).Items);
     }
 
     /// <summary>
@@ -87,9 +118,21 @@ public class IndicatorSourceServiceTests(PostgresFixture postgres)
     {
         IndicatorCode = indicatorCode,
         SourceId = sourceId,
+        Purpose = IndicatorSourcePurpose.Release,
         ExternalId = " CES0000000001 ",
-        ParserKey = StubParserCatalog.Schedule.Key,
+        ParserKey = StubParserCatalog.Release.Key,
         Priority = priority,
+    };
+
+    /// <summary>排期映射：发布标识，日历排期的解析器，不设优先级</summary>
+    private static IndicatorSourceInput Schedule(string indicatorCode, long sourceId) => new()
+    {
+        IndicatorCode = indicatorCode,
+        SourceId = sourceId,
+        Purpose = IndicatorSourcePurpose.Schedule,
+        ExternalId = "empsit",
+        ParserKey = StubParserCatalog.Schedule.Key,
+        Priority = null,
     };
 
     private static async Task<string> AddIndicatorAsync(SuanpanDbContext db, bool enabled = true)

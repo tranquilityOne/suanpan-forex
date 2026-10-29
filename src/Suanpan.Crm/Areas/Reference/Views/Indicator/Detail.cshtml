@@ -100,20 +100,30 @@
     </div>
     @if (Model.Sources.Count == 0)
     {
-        <div class="card-body text-secondary">还没有配置数据源（BR-034：一个指标可以配置主源和备源）</div>
+        <div class="card-body text-secondary">还没有配置数据源（BR-034：公布值可以配置主源和备源，排期配置官方日程中的发布标识）</div>
     }
     else
     {
         <div class="table-responsive">
             <table class="table table-sm align-middle card-table">
                 <thead>
-                    <tr><th>优先级</th><th>数据源</th><th>外部标识</th><th>解析器</th></tr>
+                    <tr><th>用途</th><th>优先级</th><th>数据源</th><th>外部标识</th><th>解析器</th></tr>
                 </thead>
                 <tbody>
                     @foreach (var source in Model.Sources)
                     {
                         <tr>
-                            <td><status-badge tone="@(source.Priority == IndicatorSourceRule.MainPriority ? BadgeTone.InProgress : BadgeTone.Neutral)" text="@IndicatorSourceRule.PriorityName(source.Priority)" /></td>
+                            <td>@ReferenceDisplayNames.Get(source.Purpose).Get(ContentLanguage.Zh)</td>
+                            <td>
+                                @if (source.Priority is { } priority)
+                                {
+                                    <status-badge tone="@(priority == IndicatorSourceRule.MainPriority ? BadgeTone.InProgress : BadgeTone.Neutral)" text="@IndicatorSourceRule.PriorityName(priority)" />
+                                }
+                                else
+                                {
+                                    <span class="text-secondary">—</span>
+                                }
+                            </td>
                             <td>
                                 @source.SourceName
                                 @if (!source.SourceEnabled)

@@ -1,5 +1,7 @@
+using Suanpan.Core.Collect.Enums;
 using Suanpan.Core.Common.Validation;
 using Suanpan.Core.Reference.Entities;
+using Suanpan.Core.Reference.Enums;
 
 namespace Suanpan.Core.Reference.Rules;
 
@@ -12,7 +14,9 @@ public static class IndicatorSourceRule
     /// <summary>主源的优先级；2 起为备源</summary>
     public const short MainPriority = 1;
 
-    /// <summary>外部标识必填；优先级从 1 开始。返回第一条错误，全部通过时返回 null</summary>
+    /// <summary>
+    /// 外部标识必填；公布值映射的优先级必填且从 1 开始，排期映射不设优先级。返回第一条错误，全部通过时返回 null
+    /// </summary>
     public static FieldError? Validate(IndicatorSource mapping)
     {
         if (string.IsNullOrWhiteSpace(mapping.ExternalId))
@@ -20,10 +24,21 @@ public static class IndicatorSourceRule
             return new(nameof(IndicatorSource.ExternalId), "请填写外部标识");
         }
 
-        return mapping.Priority < MainPriority
-            ? new(nameof(IndicatorSource.Priority), "优先级从 1 开始：1 为主源，2 起为备源")
-            : null;
+        return mapping.Purpose switch
+        {
+            IndicatorSourcePurpose.Release when mapping.Priority is null
+                => new(nameof(IndicatorSource.Priority), "公布值映射请填写优先级：1 为主源，2 起为备源"),
+            IndicatorSourcePurpose.Release when mapping.Priority < MainPriority
+                => new(nameof(IndicatorSource.Priority), "优先级从 1 开始：1 为主源，2 起为备源"),
+            IndicatorSourcePurpose.Schedule when mapping.Priority is not null
+                => new(nameof(IndicatorSource.Priority), "排期映射不设优先级，请留空"),
+            _ => null,
+        };
     }
+
+    /// <summary>用途要求的解析器目标数据类型：排期用"日历排期"的解析器，公布值用"公布值"的解析器</summary>
+    public static CollectTargetType ParserTargetType(IndicatorSourcePurpose purpose)
+        => purpose == IndicatorSourcePurpose.Schedule ? CollectTargetType.Calendar : CollectTargetType.Release;
 
     /// <summary>页面上的优先级名称：1 为主源，其余为备源 N</summary>
     public static string PriorityName(short priority) => priority == MainPriority ? "主源" : $"备源 {priority - MainPriority}";

@@ -814,9 +814,13 @@ namespace Suanpan.Data.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("parser_key");
 
-                    b.Property<short>("Priority")
+                    b.Property<short?>("Priority")
                         .HasColumnType("smallint")
                         .HasColumnName("priority");
+
+                    b.Property<short>("Purpose")
+                        .HasColumnType("smallint")
+                        .HasColumnName("purpose");
 
                     b.Property<long>("SourceId")
                         .HasColumnType("bigint")
@@ -834,16 +838,17 @@ namespace Suanpan.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_ref_indicator_source");
 
-                    b.HasIndex("SourceId")
-                        .HasDatabaseName("ix_ref_indicator_source_source_id");
-
                     b.HasIndex("IndicatorCode", "Priority")
                         .IsUnique()
-                        .HasDatabaseName("ux_ref_indicator_source_indicator_code_priority");
+                        .HasDatabaseName("ux_ref_indicator_source_indicator_code_priority")
+                        .HasFilter("purpose = 1");
 
-                    b.HasIndex("IndicatorCode", "SourceId")
+                    b.HasIndex("IndicatorCode", "SourceId", "Purpose")
                         .IsUnique()
-                        .HasDatabaseName("ux_ref_indicator_source_indicator_code_source_id");
+                        .HasDatabaseName("ux_ref_indicator_source_indicator_code_source_id_purpose");
+
+                    b.HasIndex("SourceId", "Purpose", "ExternalId")
+                        .HasDatabaseName("ix_ref_indicator_source_source_id_purpose_external_id");
 
                     b.ToTable("ref_indicator_source", (string)null);
                 });

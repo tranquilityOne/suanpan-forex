@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Suanpan.Core.Common.Localization;
 using Suanpan.Core.Reference.Entities;
+using Suanpan.Core.Reference.Enums;
 using Suanpan.Core.Reference.Rules;
 using Suanpan.Crm.Models.Collect;
 using Suanpan.Crm.Models.Reference;
@@ -16,7 +17,7 @@ using Suanpan.Shared.Mvc;
 namespace Suanpan.Crm.Areas.Reference.Controllers;
 
 /// <summary>
-/// 指标与数据源的映射（基础数据设计 §6.2，FR-006、BR-034）：一个指标配置主源和备源。管理员、采集工程师可以编辑，
+/// 指标与数据源的映射（基础数据设计 §6.2，FR-006、BR-034）：公布值映射配置主源和备源，排期映射配置官方日程中的发布标识。管理员、采集工程师可以编辑，
 /// 其他角色只能查看（PRD §13.1.2）。映射到停用的数据源时照样保存，提示中给出警告（ERR-IND-003）
 /// </summary>
 [Area("Reference")]
@@ -36,14 +37,28 @@ public sealed class IndicatorSourceController(
             Filter = filter,
             Result = await mappings.QueryAsync(filter.ToQuery(page), ct),
             SourceOptions = (await sources.GetListAsync(ct)).Select(s => new SelectListItem(s.Name, s.Id.ToString())).ToList(),
+            PurposeOptions = PurposeOptions(),
             HasParsers = parsers.All.Count > 0,
         });
 
-    /// <summary>从指标详情页进来时带上指标编码；优先级默认为主源</summary>
+    /// <summary>
+    /// 从指标详情页进来时带上指标编码；从日历的未匹配条目进来时预填数据源、用途"排期"和发布标识（日历设计 §9.1）。
+    /// 用途默认为公布值，优先级默认为主源；排期映射不填优先级
+    /// </summary>
     [HttpGet]
-    public async Task<IActionResult> Create(string? indicatorCode, CancellationToken ct)
-        => View("Edit", await WithOptionsAsync(
-            new IndicatorSourceEditViewModel { IndicatorCode = indicatorCode, Priority = IndicatorSourceRule.MainPriority }, existing: null, ct));
+    public async Task<IActionResult> Create(
+        string? indicatorCode, long? sourceId, IndicatorSourcePurpose? purpose, string? externalId, CancellationToken ct)
+    {
+        var model = new IndicatorSourceEditViewModel
+        {
+            IndicatorCode = indicatorCode,
+            SourceId = sourceId,
+            Purpose = purpose ?? IndicatorSourcePurpose.Release,
+            ExternalId = externalId,
+        };
+        model.Priority = model.Purpose == IndicatorSourcePurpose.Release ? IndicatorSourceRule.MainPriority : null;
+        return View("Edit", await WithOptionsAsync(model, existing: null, ct));
+    }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
@@ -53,6 +68,12 @@ public sealed class IndicatorSourceController(
         if (string.IsNullOrWhiteSpace(model.IndicatorCode))
         {
             ModelState.AddModelError(nameof(model.IndicatorCode), "请选择指标");
+        }
+
+        // 排期映射不设优先级：表单上的优先级输入框此时停用不提交，没有脚本时也不让残留的值导致校验失败
+        if (model.Purpose == IndicatorSourcePurpose.Schedule)
+        {
+            model.Priority = null;
         }
 
         if (ModelState.IsValid)
@@ -81,6 +102,7 @@ public sealed class IndicatorSourceController(
         {
             IndicatorCode = mapping.IndicatorCode,
             SourceId = mapping.SourceId,
+            Purpose = mapping.Purpose,
             ExternalId = mapping.ExternalId,
             ParserKey = mapping.ParserKey,
             Priority = mapping.Priority,
@@ -99,6 +121,13 @@ public sealed class IndicatorSourceController(
         }
 
         model.IndicatorCode = mapping.IndicatorCode;
+        model.Purpose = mapping.Purpose;
+        ModelState.Remove(nameof(model.Purpose));
+        if (mapping.Purpose == IndicatorSourcePurpose.Schedule)
+        {
+            model.Priority = null;
+        }
+
         if (ModelState.IsValid)
         {
             var result = await mappings.UpdateAsync(id, ToInput(model, mapping.IndicatorCode), ct);
@@ -137,9 +166,10 @@ public sealed class IndicatorSourceController(
     {
         IndicatorCode = indicatorCode,
         SourceId = model.SourceId!.Value,
+        Purpose = model.Purpose!.Value,
         ExternalId = model.ExternalId!,
         ParserKey = model.ParserKey!,
-        Priority = model.Priority!.Value,
+        Priority = model.Priority,
     };
 
     private async Task<IndicatorSourceEditViewModel> WithOptionsAsync(IndicatorSourceEditViewModel model, IndicatorSource? existing, CancellationToken ct)
@@ -164,9 +194,16 @@ public sealed class IndicatorSourceController(
         model.Options = new IndicatorSourceFormOptions
         {
             Indicators = indicatorOptions,
+            Purposes = PurposeOptions(),
             Sources = sourceOptions,
             Parsers = ParserSelectOptions.Build(parsers, existing?.ParserKey),
         };
         return model;
     }
+
+    /// <summary>用途的下拉框选项：值为枚举名，文字为中文显示名</summary>
+    private static List<SelectListItem> PurposeOptions()
+        => Enum.GetValues<IndicatorSourcePurpose>()
+            .Select(value => new SelectListItem(ReferenceDisplayNames.Get(value).Get(ContentLanguage.Zh), value.ToString()))
+            .ToList();
 }

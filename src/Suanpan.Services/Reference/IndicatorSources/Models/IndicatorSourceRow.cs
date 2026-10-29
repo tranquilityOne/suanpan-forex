@@ -1,4 +1,5 @@
 using Suanpan.Core.Common.Localization;
+using Suanpan.Core.Reference.Enums;
 
 namespace Suanpan.Services.Reference.IndicatorSources.Models;
 
@@ -10,9 +11,10 @@ public sealed record IndicatorSourceRow(
     long SourceId,
     string SourceName,
     bool SourceEnabled,
+    IndicatorSourcePurpose Purpose,
     string ExternalId,
     string ParserKey,
-    short Priority)
+    short? Priority)
 {
     /// <summary>解析器的中文名；解析器已不在目录中时为空</summary>
     public string? ParserName { get; init; }

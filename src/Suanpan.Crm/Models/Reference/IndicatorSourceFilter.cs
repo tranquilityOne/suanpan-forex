@@ -1,3 +1,4 @@
+using Suanpan.Core.Reference.Enums;
 using Suanpan.Services.Reference.IndicatorSources.Models;
 
 namespace Suanpan.Crm.Models.Reference;
@@ -9,5 +10,7 @@ public sealed class IndicatorSourceFilter
 
     public long? SourceId { get; set; }
 
-    public IndicatorSourceQuery ToQuery(int page = 1) => new(IndicatorCode, SourceId, page);
+    public IndicatorSourcePurpose? Purpose { get; set; }
+
+    public IndicatorSourceQuery ToQuery(int page = 1) => new(IndicatorCode, SourceId, Purpose, page);
 }
