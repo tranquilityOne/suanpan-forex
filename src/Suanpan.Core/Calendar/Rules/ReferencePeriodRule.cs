@@ -38,6 +38,34 @@ public static partial class ReferencePeriodRule
     /// <summary>比较同一频率的两个参考期：小于 0 表示 a 在前</summary>
     public static int Compare(string a, string b) => string.CompareOrdinal(a, b);
 
+    /// <summary>
+    /// 上一期的参考期：月为上个月、季为上个季度、周为 7 天前；不定期（如议息会议）没有固定间隔，返回 null，
+    /// 由调用方取更早的最近一期。参考期写法不对时也返回 null
+    /// </summary>
+    public static string? Previous(string period, ReleaseFrequency frequency)
+    {
+        if (Validate(period, frequency) is not null)
+        {
+            return null;
+        }
+
+        switch (frequency)
+        {
+            case ReleaseFrequency.Monthly:
+                var month = DateOnly.ParseExact(period + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture).AddMonths(-1);
+                return month.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+            case ReleaseFrequency.Quarterly:
+                var year = int.Parse(period[..4], CultureInfo.InvariantCulture);
+                var quarter = period[^1] - '0';
+                return quarter == 1 ? $"{year - 1}-Q4" : $"{year}-Q{quarter - 1}";
+            case ReleaseFrequency.Weekly:
+                var weekEnd = DateOnly.ParseExact(period, "yyyy-MM-dd", CultureInfo.InvariantCulture).AddDays(-7);
+                return weekEnd.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            default:
+                return null;
+        }
+    }
+
     private static string Example(ReleaseFrequency frequency) => frequency switch
     {
         ReleaseFrequency.Monthly => " YYYY-MM（如 2026-09）",

@@ -40,4 +40,16 @@ public class ReferencePeriodRuleTests
         Assert.True(ReferencePeriodRule.Compare(earlier, later) < 0);
         Assert.True(ReferencePeriodRule.Compare(later, earlier) > 0);
     }
+
+    /// <summary>上一期：跨年、跨季度；不定期没有固定间隔、写法不对时返回 null</summary>
+    [Theory]
+    [InlineData("2026-10", ReleaseFrequency.Monthly, "2026-09")]
+    [InlineData("2026-01", ReleaseFrequency.Monthly, "2025-12")]
+    [InlineData("2026-Q3", ReleaseFrequency.Quarterly, "2026-Q2")]
+    [InlineData("2026-Q1", ReleaseFrequency.Quarterly, "2025-Q4")]
+    [InlineData("2026-01-03", ReleaseFrequency.Weekly, "2025-12-27")]
+    [InlineData("2026-10-29", ReleaseFrequency.Irregular, null)]
+    [InlineData("2026-9", ReleaseFrequency.Monthly, null)]
+    public void Previous_StepsBackOnePeriod(string period, ReleaseFrequency frequency, string? expected)
+        => Assert.Equal(expected, ReferencePeriodRule.Previous(period, frequency));
 }

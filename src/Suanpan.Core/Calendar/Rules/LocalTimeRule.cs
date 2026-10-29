@@ -43,6 +43,19 @@ public static class LocalTimeRule
         return new LocalTimeConversion(TimeZoneInfo.ConvertTimeToUtc(local, zone), LocalTimeResolution.Exact);
     }
 
+    /// <summary>某个 UTC 时刻在机构当地是哪一天（如判断"仅日期"的排期是否已经过去，日历设计 §4.2）</summary>
+    /// <exception cref="ArgumentException">不是合法的 IANA 时区</exception>
+    public static DateOnly LocalDate(DateTime utc, string ianaTimeZone)
+    {
+        if (!TimeZoneRule.IsValid(ianaTimeZone))
+        {
+            throw new ArgumentException($"不是合法的 IANA 时区：{ianaTimeZone}", nameof(ianaTimeZone));
+        }
+
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(ianaTimeZone);
+        return DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone));
+    }
+
     private static DateTime Utc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
 }
 

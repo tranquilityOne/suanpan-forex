@@ -15,6 +15,46 @@ namespace Suanpan.Core.Calendar.Rules;
 /// </summary>
 public static class ScheduleRule
 {
+    /// <summary>日程条目的日期时间是否齐全：精确到分钟要有日期和时间，仅日期要有日期，待定可以都没有。齐全时返回 null</summary>
+    public static string? ValidateEntry(DateOnly? localDate, TimeOnly? localTime, TimePrecision precision) => precision switch
+    {
+        TimePrecision.Minute when localDate is null || localTime is null => "精确到分钟的排期缺少日期或时间",
+        TimePrecision.DateOnly when localDate is null => "仅日期的排期缺少日期",
+        _ => null,
+    };
+
+    /// <summary>
+    /// 把机构当地的日期时间换算成排期（日历设计 §4.3 第 1 步，BR-037）：精确到分钟的按 LocalTimeRule 换算；
+    /// 仅日期、待定的取当地日期 00:00（只用于排序）；待定且没有日期时都为空。调用前先用 <see cref="ValidateEntry"/> 校验
+    /// </summary>
+    public static ResolvedSchedule Resolve(DateOnly? localDate, TimeOnly? localTime, TimePrecision precision, string ianaTimeZone)
+    {
+        if (localDate is not { } date)
+        {
+            return new ResolvedSchedule(null, null, LocalTimeResolution.Exact);
+        }
+
+        var time = precision == TimePrecision.Minute ? localTime!.Value : TimeOnly.MinValue;
+        var conversion = LocalTimeRule.ToUtc(date, time, ianaTimeZone);
+        return new ResolvedSchedule(date.ToDateTime(time, DateTimeKind.Unspecified), conversion.Utc, conversion.Resolution);
+    }
+
+    /// <summary>
+    /// 只处理未来的条目（日历设计 §4.2）：精确到分钟的按 UTC 时间判断；仅日期、待定的按机构当地的日期判断，当天算未来；
+    /// 待定且没有日期的算未来
+    /// </summary>
+    public static bool IsFuture(ResolvedSchedule schedule, TimePrecision precision, string ianaTimeZone, DateTime nowUtc)
+    {
+        if (schedule.Local is not { } local)
+        {
+            return true;
+        }
+
+        return precision == TimePrecision.Minute
+            ? schedule.Utc > nowUtc
+            : DateOnly.FromDateTime(local) >= LocalTimeRule.LocalDate(nowUtc, ianaTimeZone);
+    }
+
     public static ScheduleDecision Decide(CalendarEvent current, DateTime? scheduledAt, TimePrecision precision)
     {
         if (!CalendarEventStatusRule.IsUnreleased(current.Status))
@@ -37,6 +77,12 @@ public static class ScheduleRule
         return new ScheduleDecision(false, reschedule, newStatus);
     }
 }
+
+/// <summary>
+/// 换算后的排期：Local 为机构当地时间（Kind 为 Unspecified，仅日期时为 00:00），Utc 为 UTC 时间，
+/// Resolution 为当地时刻属于哪种情况（BR-037）；待定且没有日期时 Local、Utc 都为空
+/// </summary>
+public sealed record ResolvedSchedule(DateTime? Local, DateTime? Utc, LocalTimeResolution Resolution);
 
 /// <summary>排期比较的结果：Ignored 为事件已结束不处理；Reschedule 为要改期；NewStatus 为要改成的状态（不改时为空）</summary>
 public sealed record ScheduleDecision(bool Ignored, bool Reschedule, CalendarEventStatus? NewStatus)

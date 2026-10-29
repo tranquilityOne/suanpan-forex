@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.4 |
+| 版本 | v0.5 |
 | 日期 | 2026-10-29 |
 | 状态 | 已评审（2026-10-29，vivo.li：§12 均按建议执行） |
 | 覆盖 | FR-007 日历排期采集、FR-008 公布值与前值采集；事件管理（FR-009）、预期值（FR-010）、字段锁定（FR-011）只定数据结构和自动流程中的处理，页面和人工操作随各自的设计补充 |
@@ -201,6 +201,7 @@
 
 - `ReferencePeriodRule.Validate(参考期, 频率)` 校验格式和日期合法；解析器输出的参考期用它校验，不合法的条目按"时间解析失败"处理（ERR-PARSE-005）。
 - `Compare(a, b)` 比较同一频率的两个参考期；"数据中最新一期""上一期"都按它判断（§3.5）。
+- `Previous(参考期, 频率)` 给出上一期：月为上个月、季为上个季度、周为 7 天前；不定期没有固定间隔，返回空，由调用方取更早的最近一期（新建事件预填前值时用，§4.3）。
 
 ### 3.2 事件状态（`CalendarEventStatusRule`）
 
@@ -317,9 +318,15 @@ stateDiagram-v2
 3. 处理"从日程中消失"（§4.4），清理未匹配条目（§4.5）。
 4. 整个入库在一个事务中完成（§6.1），返回新增、更新、跳过、失败、因锁定跳过的条数。
 
+**实现**（FR-007.3，`Services/Calendar/Schedules/`）：
+- 日期时间的校验、换算和"是否未来"放在 Core：`ScheduleRule.ValidateEntry`（精确到分钟要有日期和时间，仅日期要有日期）、`ScheduleRule.Resolve`（返回 `ResolvedSchedule(当地时间, UTC, 换算情况)`）、`ScheduleRule.IsFuture`；当地日期用 `LocalTimeRule.LocalDate`。
+- 时区：匹配到指标时取指标所属经济体的时区；未匹配的条目取数据源所属经济体的时区，数据源没有经济体时按 `Etc/UTC`。
+- "有映射"指这个发布标识有排期映射，指标已停用的也算：这类条目不建事件，也不进未匹配条目。参考期按每个指标的频率校验；未匹配条目只要求有参考期。记录类型不是 `ScheduleEntryRecord` 时计为失败（解析器与目标数据类型不符）。
+- 入库结束时清空 DbContext 的跟踪：执行器在同一个 DbContext 中继续改运行记录，入库失败回滚后不能留下改动。
+
 ### 4.3 写入（`ScheduleApplier`）
 
-排期入库和未匹配条目的重新匹配共用 `ScheduleApplier.ApplyAsync(指标, 参考期, 当地日期时间, 精度, 来源)`：
+排期入库和未匹配条目的重新匹配共用 `ScheduleApplier.ApplyAsync(ScheduleTarget)`（指标、参考期、换算好的排期、精度、数据源、发布标识、发布批次、运行记录）：
 
 1. 用 `LocalTimeRule.ToUtc` 把当地时间换算成 UTC（时区取指标所属经济体），记下换算情况（`local_time_resolution`）。不存在、重复的当地时刻只标记、记 Warning 日志，不改状态，不需要人工复核（BR-037）。
 2. 按 `(indicator_code, reference_period)` 找事件，行锁读取（§6.1）：
@@ -330,12 +337,15 @@ stateDiagram-v2
      - 按 `ScheduleRule.Decide`（§3.4）：不变计为跳过；改期、回到待公布计为更新。
 3. 改了的事件 `row_version` 加一，写变更历史；提交后发出消息（§6.3）。
 
+实现：先 `SELECT id ... FOR UPDATE` 锁住这个"指标 + 参考期"的事件再读；发布标识或发布批次变了也算接管（改期后发布批次中的日期跟着变）。变更历史的写法集中在 `Services/Calendar/Events/EventChanges`，原因写"官方改期""重新出现在官方日程""从官方日程中消失"。新建的事件预填前值：按 `ReferencePeriodRule.Previous` 找上一期，有公布值才填。
+
 ### 4.4 从日程中消失（BR-040）
 
 一次排期入库结束前，对本次出现过的每个发布标识：本数据源维护的（`schedule_source_id` = 本数据源、`schedule_release_key` = 该标识）、状态为"待公布"、排期在未来的事件，如果不在本次的条目中，改为"待确认"，写变更历史（原因"从官方日程中消失"），计为更新。
 
 - 只检查本次出现过的发布标识：某个发布页没有取到（请求失败时整次运行失败，不会入库）或解析出 0 条时，不会把它的事件都标成待确认。
 - 状态被锁定的事件不改。
+- 实现：候选事件按 `id` 顺序 `SELECT ... FOR UPDATE`；"在条目中"按条目里出现过的"指标 + 参考期"判断，参考期写法不对而入库失败的条目也算出现过，不会被误标成待确认。
 - 编辑"保留"待确认的事件时，事件与数据源脱钩（`schedule_source_id`、`schedule_release_key` 置空），以后不再被这个数据源判为消失；它重新出现在日程中时由数据源接管（§4.3）。编辑"取消"后事件不再参与自动处理。
 
 ### 4.5 未匹配条目（ERR-EVT-003、BR-156）
@@ -434,7 +444,7 @@ stateDiagram-v2
 
 ### 6.1 事务与并发
 
-- 一次入库（一条运行记录的一次请求）在一个事务中完成（`InTransactionAsync`）：要改的事件按 `id` 排序后 `SELECT ... FOR UPDATE`，避免与另一个入库（如盯盘和普通补采同时拿到值）或人工保存交错。新建事件用 `INSERT ... ON CONFLICT (indicator_code, reference_period) DO NOTHING` 后再读，兜底并发新建。
+- 一次入库（一条运行记录的一次请求）在一个事务中完成（`InTransactionAsync`）：要改的事件按 `id` 排序后 `SELECT ... FOR UPDATE`，避免与另一个入库（如盯盘和普通补采同时拿到值）或人工保存交错。新建事件直接插入，由唯一索引兜底：同一指标同一参考期的并发新建只可能来自排期入库（未来的参考期）和补建（已经公布的参考期），两者不会撞上；万一撞上，这次入库失败回滚，运行记录记为失败，下一次同步再建。（v0.5 实施时改：原定 `INSERT ... ON CONFLICT DO NOTHING` 后再读。）
 - 每次修改事件都把 `row_version` 加一：编辑正在修改的事件被采集改动后，编辑保存时提示刷新后重试（ERR-EVT-009）。
 - 入库失败时整个事务回滚，运行记录记为失败（采集设计 §4.3 第 6 步）；同样的数据重新入库结果不变（幂等），运行记录可以安全地重新执行。
 
@@ -496,9 +506,9 @@ Suanpan.Data/
 └─ Configurations/Calendar/         六张表的实体配置
 
 Suanpan.Services/Calendar/
-├─ Schedules/     CalendarScheduleIngestor、ScheduleApplier
+├─ Schedules/     CalendarScheduleIngestor、ScheduleApplier、Models/（ScheduleTarget、ScheduleIndicator、ScheduleApplyResult）
 ├─ Releases/      CalendarReleaseIngestor、IReleaseValidator、PassThroughReleaseValidator、Models/
-├─ Events/        ICalendarEventService、CalendarEventService（待确认事件的保留、取消；FR-009 起扩充）、Models/
+├─ Events/        EventChanges（变更历史的写法，FR-007.3）；ICalendarEventService、CalendarEventService（待确认事件的保留、取消；FR-009 起扩充）、Models/
 └─ Unmatched/     IUnmatchedEntryService、UnmatchedEntryService、Models/
 
 Suanpan.Crm/
@@ -646,3 +656,4 @@ FR-007.4 与 FR-008.1 可以并行。ENG-009.1 开始前需要 BLS 的 API Key�
 | v0.2 | 2026-10-29 | vivo.li / Claude | 同步 PRD v1.0.0.23（DEC-024：排期只来自数据源）：去掉人工新增和批量导入（原 §4.6、两个页面、`CsvReader`、ERR-EVT-005）；排期不可锁定，去掉排期锁定冲突（ERR-EVT-004）；`EventOrigin` 只剩排期采集、补建，`EventField` 去掉排期时间、时间精度；§12 删去原第 8、10 项；FR-007.1 加入停用 7 个非官方指标 |
 | v0.3 | 2026-10-29 | vivo.li / Claude | 评审通过：§12 改为评审结论（9 项均按建议执行），第 6、7 项同步 PRD v1.0.0.24（状态机补"待公布 → 待复核"、BR-129 告警级别）；§14 回填 Linear 工单号（JAN-87 ~ JAN-89、JAN-91 ~ JAN-93） |
 | v0.4 | 2026-10-29 | vivo.li / Claude | FR-007.2（JAN-88）实施：§2.1 `locked_fields` 改为 jsonb 数组（`EventFieldLock`），`forecast_type`、`resolution` 的枚举；§2.2 增加 `ix_cal_event_actual_source_id`、`ix_cal_lock_conflict_source_id`（删除数据源前检查）；§3.2 ~ §3.4 规则的接口；§3.6 枚举增加 `LockConflictResolution`、`ForecastType`；§6.3 消息已登记到后端约定；§7 删除数据源时也检查锁定冲突；§8.1 目录按实现调整；日历事件的状态登记到 Crm 的 `StatusBadges` |
+| v0.5 | 2026-10-29 | vivo.li / Claude | FR-007.3（JAN-89）实施：§3.1 `ReferencePeriodRule.Previous`；§4.2 ~ §4.4 实现说明（`ScheduleRule.ValidateEntry / Resolve / IsFuture`、时区的取法、指标停用的映射、行锁、`EventChanges`、前值预填、消失判断按条目中出现过的指标和参考期）；§6.1 新建事件改为直接插入、由唯一索引兜底；§8.1 目录 |

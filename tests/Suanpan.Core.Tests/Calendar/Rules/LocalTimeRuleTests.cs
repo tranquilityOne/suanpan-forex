@@ -57,6 +57,14 @@ public class LocalTimeRuleTests
     public void ToUtc_RejectsNonIanaTimeZone(string zone)
         => Assert.Throws<ArgumentException>(() => Convert(zone, "2026-03-06 08:30"));
 
+    /// <summary>同一个 UTC 时刻在东京已是第二天、在纽约还是前一天</summary>
+    [Theory]
+    [InlineData("Asia/Tokyo", "2026-11-06 16:00", "2026-11-07")]
+    [InlineData("America/New_York", "2026-11-06 03:00", "2026-11-05")]
+    [InlineData("Europe/London", "2026-11-06 03:00", "2026-11-06")]
+    public void LocalDate_UsesTheAgencyTimeZone(string zone, string utc, string expected)
+        => Assert.Equal(DateOnly.Parse(expected, CultureInfo.InvariantCulture), LocalTimeRule.LocalDate(Time(utc), zone));
+
     [Fact]
     public void ToUtc_ReturnsUtcKind()
         => Assert.Equal(DateTimeKind.Utc, Convert("Asia/Tokyo", "2026-03-09 08:50").Utc.Kind);

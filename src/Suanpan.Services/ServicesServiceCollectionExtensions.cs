@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Suanpan.Services.Calendar.Schedules;
+using Suanpan.Services.Collect.Ingest;
 using Suanpan.Services.Collect.Jobs;
 using Suanpan.Services.Collect.Runs;
 using Suanpan.Services.Collect.Snapshots;
@@ -83,6 +85,10 @@ public static class ServicesServiceCollectionExtensions
         services.AddScoped<CollectDispatchJob>();
         services.AddScoped<CollectRunCleanupJob>();
         services.AddScoped<CollectSnapshotCleanupJob>();
+
+        // Calendar：财经日历。入库服务注册为 ICollectIngestor，Collector 按目标数据类型取用（采集设计 §5.3）
+        services.AddScoped<ScheduleApplier>();
+        services.AddScoped<ICollectIngestor, CalendarScheduleIngestor>();
 
         return services;
     }

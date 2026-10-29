@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Suanpan.Collector.Execution;
 using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Collect.Enums;
@@ -40,6 +41,8 @@ public sealed class CollectorApp(string connectionString, string redis, string r
         {
             services.AddSingleton<ICollectAdapter, FakeAdapter>();
             services.AddSingleton<IParser, FakeParser>();
+            // 换掉真实的入库服务：执行框架的测试用假的日历排期入库（日历的入库在 Services.Tests 中测试）
+            services.RemoveAll<ICollectIngestor>();
             services.AddSingleton<ICollectIngestor, FakeIngestor>();
             services.AddSingleton<SnapshotFaults>();
             services.AddScoped<SnapshotService>();
