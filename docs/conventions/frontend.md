@@ -2,8 +2,8 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.9 |
-| 日期 | 2026-10-23 |
+| 版本 | v1.10 |
+| 日期 | 2026-10-29 |
 | 适用范围 | 后台 Suanpan.Crm 和前台 Suanpan.Portal 的页面、视图、静态资源 |
 | 依据 | data-hub PRD v1.0.0.2（DEC-014、NFR-131、§10.10）；web-portal PRD v1.0.0.2（DEC-005 ~ DEC-007、NFR-120 ~ NFR-124）；VVPay `doc/frontend.md` |
 | 相关约定 | [后端技术约定](backend.md) |
@@ -235,7 +235,7 @@ Suanpan.Crm/
 
 ### 7.2 时间、数字、外部内容
 
-- **时间**：数据库存 UTC，页面一律通过 `<utc-time>` 按操作者时区显示（默认 Asia/Shanghai，data-hub BR-048）。需要录入当地时间的地方（如 CSV 导入），必须明确标出时区。
+- **时间**：数据库存 UTC，页面一律通过 `<utc-time>` 按操作者时区显示（默认 Asia/Shanghai，data-hub BR-048）。需要录入当地时间的地方，必须明确标出时区。
 - **数字**：解析和格式化用 `CultureInfo.InvariantCulture`；指标数值按指标字典的小数位和单位显示。
 - **外部内容**（快照、新闻标题和摘要）：一律按纯文本转义输出，**禁止使用 `Html.Raw`**；快照用 `<pre>` 显示源码，不渲染（data-hub BR-025）。
 - **CSV 导出**：UTF-8 带 BOM，保证 Excel 打开中文不乱码；时间按操作者时区，表头写明时区；以 `=`、`+`、`-`、`@` 开头的单元格前加单引号，防止在 Excel 中被当作公式执行（CSV 注入）。统一用 `Suanpan.Services.Common.Csv.CsvWriter` 写出；Controller 先用 `Suanpan.Crm.Mvc.CsvDownload.Begin` 设置响应头（中文文件名放 `filename*`），再边查边写入 `Response.Body`，不在内存中攒整个文件。导出 action 以 `Export` 开头，标 `[OpLog]`（BR-150）。
@@ -403,3 +403,4 @@ Suanpan.Portal/
 | v1.7 | 2026-10-21 | vivo.li / Claude | §5.1 新增标题区写法：标题靠左，带按钮时用 `row` / `col` / `col-auto`，不在 `page-header` 上加 `align-items-center`（会让标题居中） |
 | v1.8 | 2026-10-21 | vivo.li / Claude | ENG-005.3 实施：§6 `asp-permission` 的写法要点（可用于 `confirm-form`、表单页按钮不用标、多个权限码时注入 `CurrentPermissions` 判断、权限码由约定测试检查） |
 | v1.9 | 2026-10-23 | vivo.li / Claude | FR-006.2 实施：§5.2 小数、时间输入框的格式；下拉框选项放进可空对象，不记进操作日志 |
+| v1.10 | 2026-10-29 | vivo.li / Claude | §7.2 时间一条去掉"CSV 导入"的例子：日历排期只来自数据源，不再支持导入（data-hub PRD DEC-024） |
