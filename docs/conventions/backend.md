@@ -2,8 +2,8 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.32 |
-| 日期 | 2026-10-27 |
+| 版本 | v1.33 |
+| 日期 | 2026-10-29 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
 | 相关约定 | [前端技术约定](frontend.md)、[数据库变更约定](database.md) |
@@ -394,6 +394,7 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 |---|---|---|---|---|
 | `CollectRunCommand` | 指令 | Job、Crm、Collector | Collector | 执行一条采集运行记录：定时到点、手动触发都先由发送方创建运行记录再下发；Collector 重试时延时发给自己（PRD FR-002，采集设计 §4、§7.3） |
 | `ReparseCommand` | 指令 | Crm | Collector | 重新解析快照（PRD FR-004） |
+| `EventRescheduledEvent` | 事件 | Collector | Job、Portal | 日历事件改期（EV-003）：预告快讯（PRD FR-015）、前台缓存刷新（PRD FR-023），接收方随这两项实现（日历设计 §6.3） |
 | `EventReleasedEvent` | 事件 | Collector、Crm | Job | 公布值入库（EV-004），触发快讯生成 |
 | `EventHeldForReviewEvent` | 事件 | Collector | Job | 事件进入待复核（EV-005），触发告警 |
 | `PublicDataChangedEvent` | 事件 | Collector、Job、Crm | Portal | 对外数据变化，前台让对应缓存失效（PRD FR-023） |
@@ -638,3 +639,4 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | v1.30 | 2026-10-27 | vivo.li / Claude | ENG-008.1 实施：§2 依赖方向由 Core.Tests 的架构测试检查，新增项目要登记层级；§13.4 容器夹具的标签检查覆盖到 Collector；§1、§1.2 测试目录补充 Architecture/ 和 Collector 的执行框架测试、快照样例复制到输出目录 |
 | v1.31 | 2026-10-27 | vivo.li / Claude | §10 当地时间换算 UTC 统一用 `LocalTimeRule`，写明夏令时切换当天的处理（ENG-008.3 实施，PRD BR-037） |
 | v1.32 | 2026-10-27 | vivo.li / Claude | §1、§14 四个程序的 Dockerfile（位置、多阶段构建、非 root、UTC、带时区库的基础镜像）和 compose 的 apps 配置组（ENG-006.3 实施） |
+| v1.33 | 2026-10-29 | vivo.li / Claude | §8.2 消息清单增加 `EventRescheduledEvent`（EV-003，日历设计 §6.3，FR-007.2 实施） |

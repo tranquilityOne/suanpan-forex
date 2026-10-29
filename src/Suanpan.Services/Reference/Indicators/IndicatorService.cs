@@ -115,14 +115,20 @@ public sealed class IndicatorService(SuanpanDbContext db) : IIndicatorService
             return ManageResult.Fail("指标不存在");
         }
 
-        // 引用方（基础数据设计 §3.5、BR-153）：日历事件、快讯模板、央行加入后在这里补充
-        var sources = await (
+        // 引用方（基础数据设计 §3.5、BR-153）：快讯模板、央行加入后在这里补充
+        // 同一数据源可能有公布值和排期两条映射，名称只列一次
+        var sources = (await (
             from m in db.IndicatorSources.AsNoTracking()
             where m.IndicatorCode == indicator.Code
             join s in db.DataSources on m.SourceId equals s.Id
-            orderby m.Priority
-            select s.Name).ToListAsync(ct);
-        if (ReferenceUsage.DescribeOrNull(("数据源映射", sources)) is { } usage)
+            orderby m.Purpose, m.Priority
+            select s.Name).ToListAsync(ct)).Distinct().ToList();
+        var events = await db.CalendarEvents.AsNoTracking()
+            .Where(e => e.IndicatorCode == indicator.Code)
+            .OrderBy(e => e.ReferencePeriod)
+            .Select(e => e.ReferencePeriod)
+            .ToListAsync(ct);
+        if (ReferenceUsage.DescribeOrNull(("数据源映射", sources), ("日历事件", events)) is { } usage)
         {
             return ManageResult.Fail(usage);
         }

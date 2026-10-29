@@ -1,3 +1,5 @@
+using Suanpan.Core.Calendar.Enums;
+using Suanpan.Core.Calendar.Rules;
 using Suanpan.Core.Collect.Enums;
 using Suanpan.Core.Collect.Rules;
 using Suanpan.Core.Sys.Enums;
@@ -24,6 +26,15 @@ public static class StatusBadges
         [CollectRunStatus.PartiallySucceeded] = (BadgeTone.Attention, CollectDisplayNames.Get(CollectRunStatus.PartiallySucceeded)),
         [CollectRunStatus.Failed] = (BadgeTone.Failure, CollectDisplayNames.Get(CollectRunStatus.Failed)),
         [CollectRunStatus.Skipped] = (BadgeTone.Neutral, CollectDisplayNames.Get(CollectRunStatus.Skipped)),
+
+        // Calendar：日历事件的状态（日历设计 §3.2），文字与 CalendarDisplayNames 一致
+        [CalendarEventStatus.Scheduled] = (BadgeTone.Neutral, CalendarDisplayNames.Get(CalendarEventStatus.Scheduled)),
+        [CalendarEventStatus.Watching] = (BadgeTone.InProgress, CalendarDisplayNames.Get(CalendarEventStatus.Watching)),
+        [CalendarEventStatus.Released] = (BadgeTone.Success, CalendarDisplayNames.Get(CalendarEventStatus.Released)),
+        [CalendarEventStatus.PendingReview] = (BadgeTone.Attention, CalendarDisplayNames.Get(CalendarEventStatus.PendingReview)),
+        [CalendarEventStatus.Delayed] = (BadgeTone.Abnormal, CalendarDisplayNames.Get(CalendarEventStatus.Delayed)),
+        [CalendarEventStatus.Unconfirmed] = (BadgeTone.Attention, CalendarDisplayNames.Get(CalendarEventStatus.Unconfirmed)),
+        [CalendarEventStatus.Cancelled] = (BadgeTone.Neutral, CalendarDisplayNames.Get(CalendarEventStatus.Cancelled)),
     };
 
     /// <summary>已登记的枚举类型</summary>

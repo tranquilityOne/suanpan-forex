@@ -108,7 +108,7 @@ public sealed class DataSourceService(
             return ManageResult.Fail("数据源不存在");
         }
 
-        // 引用方（BR-006、ERR-SRC-003，采集设计 §3.1）：新闻加入后在这里补充
+        // 引用方（BR-006、ERR-SRC-003，采集设计 §3.1，日历设计 §7）：新闻加入后在这里补充
         var tasks = await db.CollectTasks.AsNoTracking()
             .Where(t => t.SourceId == source.Id)
             .OrderBy(t => t.Name)
@@ -119,7 +119,20 @@ public sealed class DataSourceService(
             .OrderBy(m => m.IndicatorCode)
             .Select(m => m.IndicatorCode)
             .ToListAsync(ct);
-        if (ReferenceUsage.DescribeOrNull(("采集任务", tasks), ("指标映射", indicators)) is { } usage)
+        // 日历事件：排期或公布值来自它、有它的数值或锁定冲突；日程中的发布标识：未匹配条目、已忽略的发布
+        var eventIds = db.CalendarEvents.Where(e => e.ScheduleSourceId == source.Id || e.ActualSourceId == source.Id).Select(e => e.Id)
+            .Union(db.CalendarEventValues.Where(v => v.SourceId == source.Id).Select(v => v.EventId))
+            .Union(db.LockConflicts.Where(c => c.SourceId == source.Id).Select(c => c.EventId));
+        var events = await db.CalendarEvents.AsNoTracking()
+            .Where(e => eventIds.Contains(e.Id))
+            .OrderBy(e => e.IndicatorCode).ThenBy(e => e.ReferencePeriod)
+            .Select(e => e.IndicatorCode + " " + e.ReferencePeriod)
+            .ToListAsync(ct);
+        var releases = await db.UnmatchedEntries.Where(u => u.SourceId == source.Id).Select(u => u.ReleaseKey)
+            .Union(db.IgnoredReleases.Where(i => i.SourceId == source.Id).Select(i => i.ReleaseKey))
+            .OrderBy(key => key)
+            .ToListAsync(ct);
+        if (ReferenceUsage.DescribeOrNull(("采集任务", tasks), ("指标映射", indicators), ("日历事件", events), ("日程发布标识", releases)) is { } usage)
         {
             return ManageResult.Fail(usage);
         }

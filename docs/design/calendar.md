@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.3 |
+| 版本 | v0.4 |
 | 日期 | 2026-10-29 |
 | 状态 | 已评审（2026-10-29，vivo.li：§12 均按建议执行） |
 | 覆盖 | FR-007 日历排期采集、FR-008 公布值与前值采集；事件管理（FR-009）、预期值（FR-010）、字段锁定（FR-011）只定数据结构和自动流程中的处理，页面和人工操作随各自的设计补充 |
@@ -70,12 +70,12 @@
 | `detected_at` | `timestamptz` | 是 | 检测时间（BR-045），入库时延 = 检测时间 − 排期时间（BR-019） |
 | `source_snapshot_id` | `bigint` | 是 | 来源快照（BR-045，FR-004 验收第 1 条） |
 | `forecast`、`forecast_upper` | `numeric(18,6)` | 是 | 预期值（FR-010） |
-| `forecast_type` | `smallint` | 是 | 预期值来源类型（BR-053），第一阶段只有"人工录入" |
+| `forecast_type` | `smallint` | 是 | 预期值来源类型（`ForecastType`，BR-053），第一阶段只有"人工录入" = 1，其他类型启用时再加取值 |
 | `forecast_note` | `varchar(100)` | 是 | 来源说明，仅内部可见（BR-054） |
 | `previous`、`previous_upper` | `numeric(18,6)` | 是 | 前值（BR-044）；区间型指标的上限放 `previous_upper` |
 | `previous_revised` | `numeric(18,6)` | 是 | 前值修正：本次发布中上一期的修正值（BR-044） |
 | `revised_value` | `numeric(18,6)` | 是 | 本期的修正后数值：以后各次发布对本期的修正（BR-044） |
-| `locked_fields` | `jsonb` | 否 | 已锁定的字段：`{"字段": {"by": 登录名, "at": UTC 时间, "reason": 原因}}`（§3.3）；新建时由程序写入 `{}` |
+| `locked_fields` | `jsonb` | 否 | 已锁定的字段，jsonb 数组，每项 `{"Field": 字段, "LockedBy": 登录名, "LockedAt": UTC 时间, "Reason": 原因}`（`EventFieldLock`，§3.3）；新建时为 `[]` |
 | `row_version` | `integer` | 否 | 乐观锁（ERR-EVT-009）：每次修改加一，人工保存时带上读取时的值 |
 
 **`cal_event_value`（各数据源的数值）** —— 不带审计四件套（系统写入），每个事件每个数据源一行，只保留最新值
@@ -123,7 +123,7 @@
 | `run_id` | `bigint` | 否 | 最近一次产生冲突的运行记录 |
 | `first_detected_at`、`last_detected_at` | `timestamptz` | 否 | |
 | `status` | `smallint` | 否 | 待处理 / 已处理 |
-| `resolved_by`、`resolved_at`、`resolution` | — | 是 | 编辑的处理：保持锁定 / 解锁并采用采集值（FR-011 实现） |
+| `resolved_by`、`resolved_at`、`resolution` | — | 是 | 编辑的处理（`LockConflictResolution`）：保持锁定 / 解锁并采用采集值（FR-011 实现） |
 
 同一事件同一字段只有一条"待处理"的冲突（条件唯一索引），再次冲突时更新采集值和最近时间；采集值与锁定值相同时不产生冲突。排期不可锁定（DEC-024），冲突只涉及公布值、前值、前值修正和状态。
 
@@ -164,6 +164,7 @@
 | `cal_event` | `ux_cal_event_indicator_code_reference_period` | 事件唯一键（BR-036），入库时按它 `INSERT ... ON CONFLICT` |
 | | `ix_cal_event_scheduled_at` | 按日期范围筛选（BR-048）；盯盘扫描未来 10 分钟的事件（FR-003） |
 | | `ix_cal_event_schedule_source_id_schedule_release_key` | 判断从日程中消失（§4.4） |
+| | `ix_cal_event_actual_source_id` | 删除数据源前检查引用（后端约定 §6.1：关联列加普通索引） |
 | | `ix_cal_event_release_batch_id` | 快讯按发布批次合并（BR-076） |
 | | `ix_cal_event_status`（条件：待复核、延迟、待确认） | 待处理清单 |
 | `cal_event_value` | `ux_cal_event_value_event_id_source_id` | 每个事件每个数据源一行 |
@@ -171,6 +172,7 @@
 | `cal_event_change` | `ix_cal_event_change_event_id` | 事件详情的变更历史 |
 | `cal_lock_conflict` | `ux_cal_lock_conflict_event_id_field`（条件：待处理） | 同一字段只有一条待处理的冲突 |
 | | `ix_cal_lock_conflict_status` | 冲突列表 |
+| | `ix_cal_lock_conflict_source_id` | 删除数据源前检查引用 |
 | `cal_unmatched_entry` | `ux_cal_unmatched_entry_source_id_release_key_reference_period` | 同一条目重复出现时更新 |
 | `cal_ignored_release` | `ux_cal_ignored_release_source_id_release_key` | |
 
@@ -235,7 +237,7 @@ stateDiagram-v2
 ```
 
 - `Scheduled → Review`：普通任务补采到值、校验未通过时进入待复核（FR-026 主流程第 2 步），与 `Scheduled → Released`（补采）对称；评审时确认，PRD v1.0.0.24 补进状态机（§12 第 6 项）。
-- 状态只能按上图流转：`CalendarEventStatusRule.CanTransition(旧, 新)` 对应每条边，服务和入库在改状态前检查；人工操作不符合时提示当前状态允许的操作（ERR-EVT-010，FR-009 实现）。
+- 状态只能按上图流转：`CalendarEventStatusRule.CanTransition(旧, 新)` 对应每条边（`NextStatuses(旧)` 列出允许的下一个状态），服务和入库在改状态前检查；人工操作不符合时提示当前状态允许的操作（ERR-EVT-010，FR-009 实现）。
 - "已公布""待复核""取消"之外的状态统称"未公布"（`IsUnreleased`），排期入库只处理未公布的事件（§4.3）。
 
 ### 3.3 字段锁定（`EventLockRule`）
@@ -243,11 +245,11 @@ stateDiagram-v2
 - 可锁定的字段（BR-060）：公布值（连同上限）、预期值、前值、前值修正、状态。排期时间、时间精度不可锁定，也不能人工修改（DEC-024）。枚举 `EventField`，`locked_fields` 的键用它的名字。
 - 加锁（BR-061）：人工保存这些字段时由服务自动加上（FR-009、FR-010）。
 - 自动流程遇到锁定字段（BR-062）：不覆盖；采集值与锁定值不同时写入或更新 `cal_lock_conflict`，入库结果计入"因锁定跳过"（`IngestResult.Locked`，采集设计 §5.3）。状态被锁定时，自动流程不改状态，只记 Warning 日志。
-- 实现：`EventLockRule.IsLocked(locked_fields, 字段)`；锁定信息的读写用 `EventLocks`（`locked_fields` 的值对象），由实体配置映射成 `jsonb`。
+- 实现：`EventLockRule.IsLocked / Lock / Unlock` 读写事件的 `LockedFields`（`List<EventFieldLock>`，EF Core 的复杂类型集合映射成 jsonb 数组）；同一字段只有一条锁定信息，再次锁定时换成新的锁定人、时间和原因。
 
 ### 3.4 排期的比较（`ScheduleRule`）
 
-一个日程条目落到已有事件上时，按事件状态和锁定决定怎么做（`ScheduleRule.Decide(事件, 新排期)`，返回下表的一种）：
+一个日程条目落到已有事件上时，按事件状态和锁定决定怎么做（`ScheduleRule.Decide(事件, 新的 UTC 时间, 新的精度)`，返回 `ScheduleDecision(Ignored, Reschedule, NewStatus)`，即下表的一种）：
 
 | 事件状态 | 排期相同 | 排期不同（时间或精度） |
 |---|---|---|
@@ -278,6 +280,8 @@ stateDiagram-v2
 | `EventChangeKind` | Rescheduled=1、Status=2、Actual=3、Previous=4、PreviousRevised=5、RevisedValue=6、Forecast=7、Locked=8、Unlocked=9 | 改期、状态、公布值、前值、前值修正、修正后数值、预期值、锁定、解锁 |
 | `ChangeActorKind` | Collector=1、User=2 | 采集、人工 |
 | `LockConflictStatus` | Pending=1、Resolved=2 | 待处理、已处理 |
+| `LockConflictResolution` | KeepLocked=1、AdoptCollected=2 | 保持锁定、解锁并采用采集值 |
+| `ForecastType` | Manual=1 | 人工录入 |
 
 中文显示名放 `CalendarDisplayNames`，登记到 Crm 的 `StatusBadges`（状态徽标）。`LocalTimeResolution` 已有（JAN-61）。
 
@@ -454,7 +458,7 @@ stateDiagram-v2
 | `EventHeldForReviewEvent` | EV-005 | 事件进入"待复核" | Job（告警以外的后续处理，FR-025） | `EventId`、`IndicatorCode`、`Reason`（命中的规则或"官方更正"） |
 
 - 公布值不放进消息：接收方按 `EventId` 读库，拿到的总是最新值。
-- `EventRescheduledEvent` 是新增的消息，FR-007.2 加入消息契约时登记到后端约定 §8.2 的消息清单；接收方在 FR-015、FR-023 实现，之前发出的消息没有队列接收会被丢弃，不影响本模块。
+- `EventRescheduledEvent` 是新增的消息，已登记到后端约定 §8.2 的消息清单（v1.33）；接收方在 FR-015、FR-023 实现，之前发出的消息没有队列接收会被丢弃，不影响本模块。
 - `EventReleasedEvent` 发布失败时快讯不会生成。快讯模块（FR-014）实现时补一个兜底：定期找"已公布但没有快讯"的事件。
 - 前台缓存刷新的 `PublicDataChangedEvent` 由 FR-023 定义，届时在本文的改期、公布、修正处接入。
 
@@ -465,7 +469,7 @@ stateDiagram-v2
 | 模块 | 关系 |
 |---|---|
 | 基础数据（Reference） | 事件引用指标，有事件的指标不能删除（BR-153，指标删除时检查 `cal_event`）；时区取指标所属经济体；排期、公布值的匹配用指标与数据源的映射（用途分排期、公布值，BR-034）；指标的小数位、单位、值类型、重要性用于入库和告警 |
-| 采集（Collect） | 两个入库服务实现 `ICollectIngestor`，由 Collector 调用；`IngestRequest` 带快照 id，事件和各数据源数值记下来源快照，并把快照标记为"被入库数据引用"（BR-022，采集设计 §5.5）；删除数据源前检查日历表（`cal_event` 的排期和公布值来源、`cal_event_value`、`cal_unmatched_entry`、`cal_ignored_release`）的引用 |
+| 采集（Collect） | 两个入库服务实现 `ICollectIngestor`，由 Collector 调用；`IngestRequest` 带快照 id，事件和各数据源数值记下来源快照，并把快照标记为"被入库数据引用"（BR-022，采集设计 §5.5）；删除数据源前检查日历表（`cal_event` 的排期和公布值来源、`cal_event_value`、`cal_lock_conflict`、`cal_unmatched_entry`、`cal_ignored_release`）的引用 |
 | 运维（Ops） | 质量校验的实现（FR-026，§5.6）；告警（FR-025）；锁定冲突、待复核的数量进看板（FR-027） |
 | 快讯（Flash） | 消费 `EventReleasedEvent` 生成快讯；按发布批次合并（BR-076） |
 | 前台发布（Publish） | 对外视图 `v_pub_calendar` 读事件表（FR-023） |
@@ -478,12 +482,12 @@ stateDiagram-v2
 
 ```
 Suanpan.Core/Calendar/
-├─ Entities/      CalendarEvent、CalendarEventValue、CalendarEventChange、LockConflict、UnmatchedEntry、IgnoredRelease
+├─ Entities/      CalendarEvent、EventFieldLock、CalendarEventValue、CalendarEventChange、LockConflict、UnmatchedEntry、IgnoredRelease
 ├─ Enums/         CalendarEventStatus、EventOrigin、TimePrecision、EventField、EventChangeKind、ChangeActorKind、LockConflictStatus、
-│                 LocalTimeResolution（已有）
+│                 LockConflictResolution、ForecastType、LocalTimeResolution（已有）
 ├─ Records/       ScheduleEntryRecord、ReleaseValueRecord（解析器的输出，§4.1、§5.1）
-└─ Rules/         LocalTimeRule（已有）、ReferencePeriodRule、CalendarEventStatusRule、EventLockRule、EventLocks、ScheduleRule、
-                  ReleaseValueRule、CalendarDisplayNames、CalendarErrorCodes
+└─ Rules/         LocalTimeRule（已有）、ReferencePeriodRule、CalendarEventStatusRule、EventLockRule、ScheduleRule（含 ScheduleDecision）、
+                  CalendarDisplayNames；ReleaseValueRule、CalendarErrorCodes 随入库加入（FR-008.1、FR-007.3）
 
 Suanpan.Shared/Messages/Calendar/   EventRescheduledEvent、EventReleasedEvent、EventHeldForReviewEvent
 
@@ -641,3 +645,4 @@ FR-007.4 与 FR-008.1 可以并行。ENG-009.1 开始前需要 BLS 的 API Key�
 | v0.1 | 2026-10-28 | vivo.li / Claude | 初稿：FR-007、FR-008 的表结构、规则、排期和公布值的入库、后台页面和权限；同步 PRD v1.0.0.22 确认的规则；列出 11 个待评审问题 |
 | v0.2 | 2026-10-29 | vivo.li / Claude | 同步 PRD v1.0.0.23（DEC-024：排期只来自数据源）：去掉人工新增和批量导入（原 §4.6、两个页面、`CsvReader`、ERR-EVT-005）；排期不可锁定，去掉排期锁定冲突（ERR-EVT-004）；`EventOrigin` 只剩排期采集、补建，`EventField` 去掉排期时间、时间精度；§12 删去原第 8、10 项；FR-007.1 加入停用 7 个非官方指标 |
 | v0.3 | 2026-10-29 | vivo.li / Claude | 评审通过：§12 改为评审结论（9 项均按建议执行），第 6、7 项同步 PRD v1.0.0.24（状态机补"待公布 → 待复核"、BR-129 告警级别）；§14 回填 Linear 工单号（JAN-87 ~ JAN-89、JAN-91 ~ JAN-93） |
+| v0.4 | 2026-10-29 | vivo.li / Claude | FR-007.2（JAN-88）实施：§2.1 `locked_fields` 改为 jsonb 数组（`EventFieldLock`），`forecast_type`、`resolution` 的枚举；§2.2 增加 `ix_cal_event_actual_source_id`、`ix_cal_lock_conflict_source_id`（删除数据源前检查）；§3.2 ~ §3.4 规则的接口；§3.6 枚举增加 `LockConflictResolution`、`ForecastType`；§6.3 消息已登记到后端约定；§7 删除数据源时也检查锁定冲突；§8.1 目录按实现调整；日历事件的状态登记到 Crm 的 `StatusBadges` |

@@ -169,6 +169,24 @@ public class IndicatorServiceTests(PostgresFixture postgres)
         Assert.NotNull(await service.GetAsync(code, Ct));
     }
 
+    /// <summary>BR-153：有日历事件的指标不能删除，提示中列出参考期（日历设计 §7）</summary>
+    [Fact]
+    public async Task Delete_RejectsIndicatorWithCalendarEvents()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var service = new IndicatorService(db);
+        var code = TestData.IndicatorCode();
+        await service.CreateAsync(TestData.Indicator(code), Ct);
+        db.CalendarEvents.Add(TestData.Event(code, "2026-09"));
+        await db.SaveChangesAsync(Ct);
+
+        var result = await service.DeleteAsync(code, Ct);
+
+        Assert.False(result.Success);
+        Assert.Contains("2026-09", result.Error);
+        Assert.NotNull(await service.GetAsync(code, Ct));
+    }
+
     /// <summary>BR-153：没有被引用的指标可以删除</summary>
     [Fact]
     public async Task Delete_RemovesUnreferencedIndicator()

@@ -2,6 +2,8 @@ using System.Net;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Suanpan.Core.Calendar.Entities;
+using Suanpan.Core.Calendar.Enums;
 using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Collect.Enums;
 using Suanpan.Core.Reference.Entities;
@@ -146,6 +148,71 @@ public class DataSourceServiceTests(PostgresFixture postgres)
 
         Assert.False(result.Success);
         Assert.Contains(code, result.Error);
+        Assert.NotNull(await service.GetAsync(id, Ct));
+    }
+
+    /// <summary>
+    /// BR-006、ERR-SRC-003：被日历引用时不能删除（日历设计 §7）——事件的排期或公布值来自它、有它的数值或锁定冲突，
+    /// 或者它的日程中有未匹配、已忽略的发布标识；提示中列出事件或发布标识
+    /// </summary>
+    [Theory]
+    [InlineData("schedule")]
+    [InlineData("actual")]
+    [InlineData("value")]
+    [InlineData("conflict")]
+    [InlineData("unmatched")]
+    [InlineData("ignored")]
+    public async Task Delete_RejectsSourceReferencedByCalendar(string reference)
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var service = Create(db);
+        var name = TestData.Unique("源");
+        await service.CreateAsync(Input(name), Ct);
+        var id = await IdOf(db, name);
+        var code = TestData.IndicatorCode();
+        var calendarEvent = TestData.Event(code);
+        db.CalendarEvents.Add(calendarEvent);
+        await db.SaveChangesAsync(Ct);
+        var expected = $"{code} {calendarEvent.ReferencePeriod}";
+        var at = new DateTime(2026, 10, 29, 0, 0, 0, DateTimeKind.Utc);
+        switch (reference)
+        {
+            case "schedule":
+                calendarEvent.ScheduleSourceId = id;
+                break;
+            case "actual":
+                calendarEvent.ActualSourceId = id;
+                break;
+            case "value":
+                db.CalendarEventValues.Add(new CalendarEventValue { EventId = calendarEvent.Id, SourceId = id, Value = 1, Raw = "1", RunId = 1, DetectedAt = at });
+                break;
+            case "conflict":
+                db.LockConflicts.Add(new LockConflict
+                {
+                    EventId = calendarEvent.Id, Field = EventField.Actual, LockedValue = "\"1\"", CollectedValue = "\"2\"", SourceId = id, RunId = 1,
+                    FirstDetectedAt = at, LastDetectedAt = at,
+                });
+                break;
+            case "unmatched":
+                expected = TestData.Unique("rel");
+                db.UnmatchedEntries.Add(new UnmatchedEntry
+                {
+                    SourceId = id, ReleaseKey = expected, ReleaseName = "Productivity and Costs", ReferencePeriod = "2026-Q3",
+                    TimePrecision = TimePrecision.Minute, FirstSeenAt = at, LastSeenAt = at,
+                });
+                break;
+            case "ignored":
+                expected = TestData.Unique("rel");
+                db.IgnoredReleases.Add(new IgnoredRelease { SourceId = id, ReleaseKey = expected, ReleaseName = "Real Earnings" });
+                break;
+        }
+
+        await db.SaveChangesAsync(Ct);
+
+        var result = await service.DeleteAsync(id, Ct);
+
+        Assert.False(result.Success);
+        Assert.Contains(expected, result.Error);
         Assert.NotNull(await service.GetAsync(id, Ct));
     }
 

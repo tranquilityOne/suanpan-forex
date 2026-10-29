@@ -1,3 +1,5 @@
+using Suanpan.Core.Calendar.Entities;
+using Suanpan.Core.Calendar.Enums;
 using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Collect.Enums;
 using Suanpan.Core.Reference.Enums;
@@ -101,6 +103,18 @@ internal static class TestData
     };
 
     /// <summary>字段齐全的数据源（不需要凭据），名称带随机后缀</summary>
+    /// <summary>待公布的日历事件（未保存），排期为纽约时间 2026-11-06 08:30</summary>
+    public static CalendarEvent Event(string indicatorCode, string referencePeriod = "2026-10") => new()
+    {
+        IndicatorCode = indicatorCode,
+        ReferencePeriod = referencePeriod,
+        Origin = EventOrigin.Collected,
+        TimeZone = "America/New_York",
+        ScheduledLocal = new DateTime(2026, 11, 6, 8, 30, 0, DateTimeKind.Unspecified),
+        ScheduledAt = new DateTime(2026, 11, 6, 13, 30, 0, DateTimeKind.Utc),
+        TimePrecision = TimePrecision.Minute,
+    };
+
     public static async Task<DataSource> AddDataSourceAsync(SuanpanDbContext db, CancellationToken ct, bool enabled = true)
     {
         var source = new DataSource

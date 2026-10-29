@@ -23,6 +23,516 @@ namespace Suanpan.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Suanpan.Core.Calendar.Entities.CalendarEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal?>("Actual")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("actual");
+
+                    b.Property<string>("ActualRaw")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("actual_raw");
+
+                    b.Property<long?>("ActualSourceId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("actual_source_id");
+
+                    b.Property<decimal?>("ActualUpper")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("actual_upper");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTime?>("DetectedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("detected_at");
+
+                    b.Property<decimal?>("Forecast")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("forecast");
+
+                    b.Property<string>("ForecastNote")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("forecast_note");
+
+                    b.Property<short?>("ForecastType")
+                        .HasColumnType("smallint")
+                        .HasColumnName("forecast_type");
+
+                    b.Property<decimal?>("ForecastUpper")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("forecast_upper");
+
+                    b.Property<string>("IndicatorCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("indicator_code");
+
+                    b.Property<short>("LocalTimeResolution")
+                        .HasColumnType("smallint")
+                        .HasColumnName("local_time_resolution");
+
+                    b.Property<short>("Origin")
+                        .HasColumnType("smallint")
+                        .HasColumnName("origin");
+
+                    b.Property<decimal?>("Previous")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("previous");
+
+                    b.Property<decimal?>("PreviousRevised")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("previous_revised");
+
+                    b.Property<decimal?>("PreviousUpper")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("previous_upper");
+
+                    b.Property<string>("ReferencePeriod")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("reference_period");
+
+                    b.Property<string>("ReleaseBatchId")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("release_batch_id");
+
+                    b.Property<decimal?>("RevisedValue")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("revised_value");
+
+                    b.Property<int>("RowVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("row_version");
+
+                    b.Property<string>("ScheduleReleaseKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("schedule_release_key");
+
+                    b.Property<long?>("ScheduleSourceId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("schedule_source_id");
+
+                    b.Property<DateTime?>("ScheduledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("scheduled_at");
+
+                    b.Property<DateTime?>("ScheduledLocal")
+                        .HasColumnType("timestamp without time zone")
+                        .HasColumnName("scheduled_local");
+
+                    b.Property<long?>("SourceSnapshotId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_snapshot_id");
+
+                    b.Property<short>("Status")
+                        .HasColumnType("smallint")
+                        .HasColumnName("status");
+
+                    b.Property<short>("TimePrecision")
+                        .HasColumnType("smallint")
+                        .HasColumnName("time_precision");
+
+                    b.Property<string>("TimeZone")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("time_zone");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("updated_by");
+
+                    b.ComplexCollection(typeof(List<Dictionary<string, object>>), "LockedFields", "Suanpan.Core.Calendar.Entities.CalendarEvent.LockedFields#EventFieldLock", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<short>("Field");
+
+                            b1.Property<DateTime>("LockedAt");
+
+                            b1.Property<string>("LockedBy")
+                                .IsRequired();
+
+                            b1.Property<string>("Reason")
+                                .IsRequired();
+
+                            b1
+                                .ToJson("locked_fields")
+                                .HasColumnType("jsonb");
+                        });
+
+                    b.HasKey("Id")
+                        .HasName("pk_cal_event");
+
+                    b.HasIndex("ActualSourceId")
+                        .HasDatabaseName("ix_cal_event_actual_source_id");
+
+                    b.HasIndex("ReleaseBatchId")
+                        .HasDatabaseName("ix_cal_event_release_batch_id");
+
+                    b.HasIndex("ScheduledAt")
+                        .HasDatabaseName("ix_cal_event_scheduled_at");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_cal_event_status")
+                        .HasFilter("status IN (4, 5, 6)");
+
+                    b.HasIndex("IndicatorCode", "ReferencePeriod")
+                        .IsUnique()
+                        .HasDatabaseName("ux_cal_event_indicator_code_reference_period");
+
+                    b.HasIndex("ScheduleSourceId", "ScheduleReleaseKey")
+                        .HasDatabaseName("ix_cal_event_schedule_source_id_schedule_release_key");
+
+                    b.ToTable("cal_event", (string)null);
+                });
+
+            modelBuilder.Entity("Suanpan.Core.Calendar.Entities.CalendarEventChange", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<short>("ActorKind")
+                        .HasColumnType("smallint")
+                        .HasColumnName("actor_kind");
+
+                    b.Property<DateTime>("ChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("changed_at");
+
+                    b.Property<string>("ChangedBy")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("changed_by");
+
+                    b.Property<long>("EventId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("event_id");
+
+                    b.Property<short>("Kind")
+                        .HasColumnType("smallint")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("NewValue")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("new_value");
+
+                    b.Property<string>("OldValue")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("old_value");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<long?>("RunId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("run_id");
+
+                    b.Property<long?>("SourceId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_cal_event_change");
+
+                    b.HasIndex("EventId")
+                        .HasDatabaseName("ix_cal_event_change_event_id");
+
+                    b.ToTable("cal_event_change", (string)null);
+                });
+
+            modelBuilder.Entity("Suanpan.Core.Calendar.Entities.CalendarEventValue", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("DetectedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("detected_at");
+
+                    b.Property<long>("EventId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("event_id");
+
+                    b.Property<string>("Raw")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("raw");
+
+                    b.Property<long>("RunId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("run_id");
+
+                    b.Property<long?>("SnapshotId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("snapshot_id");
+
+                    b.Property<long>("SourceId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_id");
+
+                    b.Property<decimal>("Value")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("value");
+
+                    b.Property<decimal?>("ValueUpper")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("value_upper");
+
+                    b.HasKey("Id")
+                        .HasName("pk_cal_event_value");
+
+                    b.HasIndex("SourceId")
+                        .HasDatabaseName("ix_cal_event_value_source_id");
+
+                    b.HasIndex("EventId", "SourceId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_cal_event_value_event_id_source_id");
+
+                    b.ToTable("cal_event_value", (string)null);
+                });
+
+            modelBuilder.Entity("Suanpan.Core.Calendar.Entities.IgnoredRelease", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("ReleaseKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("release_key");
+
+                    b.Property<string>("ReleaseName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("release_name");
+
+                    b.Property<long>("SourceId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_cal_ignored_release");
+
+                    b.HasIndex("SourceId", "ReleaseKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_cal_ignored_release_source_id_release_key");
+
+                    b.ToTable("cal_ignored_release", (string)null);
+                });
+
+            modelBuilder.Entity("Suanpan.Core.Calendar.Entities.LockConflict", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CollectedValue")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("collected_value");
+
+                    b.Property<long>("EventId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("event_id");
+
+                    b.Property<short>("Field")
+                        .HasColumnType("smallint")
+                        .HasColumnName("field");
+
+                    b.Property<DateTime>("FirstDetectedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_detected_at");
+
+                    b.Property<DateTime>("LastDetectedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_detected_at");
+
+                    b.Property<string>("LockedValue")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("locked_value");
+
+                    b.Property<short?>("Resolution")
+                        .HasColumnType("smallint")
+                        .HasColumnName("resolution");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<string>("ResolvedBy")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("resolved_by");
+
+                    b.Property<long>("RunId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("run_id");
+
+                    b.Property<long?>("SnapshotId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("snapshot_id");
+
+                    b.Property<long>("SourceId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_id");
+
+                    b.Property<short>("Status")
+                        .HasColumnType("smallint")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_cal_lock_conflict");
+
+                    b.HasIndex("SourceId")
+                        .HasDatabaseName("ix_cal_lock_conflict_source_id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_cal_lock_conflict_status");
+
+                    b.HasIndex("EventId", "Field")
+                        .IsUnique()
+                        .HasDatabaseName("ux_cal_lock_conflict_event_id_field")
+                        .HasFilter("status = 1");
+
+                    b.ToTable("cal_lock_conflict", (string)null);
+                });
+
+            modelBuilder.Entity("Suanpan.Core.Calendar.Entities.UnmatchedEntry", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("FirstSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_seen_at");
+
+                    b.Property<long>("LastRunId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("last_run_id");
+
+                    b.Property<DateTime>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<DateOnly?>("LocalDate")
+                        .HasColumnType("date")
+                        .HasColumnName("local_date");
+
+                    b.Property<TimeOnly?>("LocalTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("local_time");
+
+                    b.Property<string>("ReferencePeriod")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("reference_period");
+
+                    b.Property<string>("ReleaseKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("release_key");
+
+                    b.Property<string>("ReleaseName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("release_name");
+
+                    b.Property<long>("SourceId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_id");
+
+                    b.Property<short>("TimePrecision")
+                        .HasColumnType("smallint")
+                        .HasColumnName("time_precision");
+
+                    b.HasKey("Id")
+                        .HasName("pk_cal_unmatched_entry");
+
+                    b.HasIndex("SourceId", "ReleaseKey", "ReferencePeriod")
+                        .IsUnique()
+                        .HasDatabaseName("ux_cal_unmatched_entry_source_id_release_key_reference_period");
+
+                    b.ToTable("cal_unmatched_entry", (string)null);
+                });
+
             modelBuilder.Entity("Suanpan.Core.Collect.Entities.CollectRun", b =>
                 {
                     b.Property<long>("Id")
