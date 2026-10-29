@@ -5,8 +5,7 @@ using Xunit;
 namespace Suanpan.Core.Tests.Collect.Parsers;
 
 /// <summary>
-/// 解析器目录的写法（采集设计 §5.2）：标识为 {经济体}.{机构}.{内容}，全部小写，不重复。
-/// M1 目录为空，ENG-009 起加入解析器后由这里把关
+/// 解析器目录的写法（采集设计 §5.2）：标识为 {经济体}.{数据源}.{内容}，全部小写，不重复
 /// </summary>
 public partial class ParserCatalogTests
 {

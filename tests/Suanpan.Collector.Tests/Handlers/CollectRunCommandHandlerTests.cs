@@ -64,6 +64,20 @@ public class CollectRunCommandHandlerTests(CollectorFixture fixture)
         Assert.Equal([(1, 500), (2, 500), (3, 500), (4, 500)], (await app.GetSnapshotsAsync(run.Id)).Select(s => ((int)s.Attempt, (int)s.HttpStatus)));
     }
 
+    /// <summary>任务参数不符合适配器的要求：不发请求、不重试，运行记为失败</summary>
+    [Fact]
+    public async Task InvalidParameters_FailWithoutRequestOrRetry()
+    {
+        var app = await fixture.GetAppAsync();
+        var host = fixture.Http.NewHost();
+        var task = await app.AddTaskAsync(host, parameters: "{\"pages\": 0}");
+
+        var run = await app.WaitUntilFinishedAsync(await app.TriggerAsync(task));
+
+        Assert.Equal((CollectRunStatus.Failed, CollectErrorCodes.RequestFailed, (short)1), (run.Status, run.ErrorCode, run.AttemptCount));
+        Assert.Empty(fixture.Http.Requests(host));
+    }
+
     /// <summary>
     /// FR-004、硬性规则 14：每个响应先存为快照再解析，入库服务收到与响应一一对应的快照 id（BR-045 的前提）；
     /// 解析结果存进运行记录（FR-004 主流程第 2 步），入库服务报告的因锁定跳过的条数写进运行记录

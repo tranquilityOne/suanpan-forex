@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.8 |
+| 版本 | v0.9 |
 | 日期 | 2026-10-29 |
 | 状态 | 已评审（2026-10-29，vivo.li：§12 均按建议执行） |
 | 覆盖 | FR-007 日历排期采集、FR-008 公布值与前值采集；事件管理（FR-009）、预期值（FR-010）、字段锁定（FR-011）只定数据结构和自动流程中的处理，页面和人工操作随各自的设计补充 |
@@ -306,6 +306,8 @@ stateDiagram-v2
 
 **以 BLS 为例**：BLS 每种发布有单独的日程页（如就业报告 `https://www.bls.gov/schedule/news_release/empsit.htm`），表格列出参考月份、发布日期和时间。适配器按任务参数中的发布标识（`empsit`、`cpi`、`ppi`、`jolts`）逐页请求，解析器把每一行输出为一条记录：`("empsit", "Employment Situation", "2026-10", 2026-11-06, 08:30, 精确到分钟, 0)`。时区不由解析器给出，入库时取指标所属经济体的时区（美国 America/New_York）。
 
+实现（ENG-009.1）：数据源"BLS 发布日程"（官方网页，基础地址 `https://www.bls.gov/schedule/news_release/`，不需要凭据），适配器 `us.blsweb`、解析器 `us.blsweb.schedule`（`Collector/Sources/US/Bls/`）。任务参数 `{"releases": ["empsit", "cpi", "ppi", "jolts"]}`，逐页 GET `{基础地址}{发布标识}.htm`，某一页失败时不再请求后面的页。解析器读表格 `release-list`（列为 Reference Month、Release Date、Release Time）：发布标识取页面文件名，发布名称取标题（"Schedule of Releases for the …"），日期认 `Nov. 06, 2026`、`May 07, 2027`、`Sept. 08, 2027` 这类写法，没有发布时间的行为"仅日期"；写法不认识的字段为空，由入库计为失败。没有这个表格时解析失败（页面改版），内容是 Access Denied 拦截页时快照无效。
+
 ### 4.2 匹配
 
 `CalendarScheduleIngestor`（`Services/Calendar/Schedules/`，`TargetType = 日历排期`）：
@@ -381,7 +383,30 @@ stateDiagram-v2
 
 解析器每次输出数据中能取到的各期（不只最新一期），入库服务据此判断最新一期和修正（§5.2、§5.3）。
 
-**以 BLS 为例**：API 返回的是水平值，计算方式写在外部标识中，格式 `{序列 ID}` 或 `{序列 ID}:{计算方式}`：不带计算方式为直接取值（如失业率 `LNS14000000`）；`chg` 为较上期变动（非农 `CES0000000001:chg`，本期就业人数 − 上期）；`pct` 为较上期变动率（CPI 月率 `CUSR0000SA0:pct`）；`pct12` 为较 12 期前的变动率（CPI 年率 `CUUR0000SA0:pct12`）。任务参数列出要请求的外部标识，解析器按计算方式算出每一期的值（BR-043）。具体的请求方式、参数格式在 ENG-009（JAN-14）实现时写进适配器的说明。
+**以 BLS 为例**：API 返回的是水平值，计算方式写在外部标识中，格式 `{序列 ID}` 或 `{序列 ID}:{计算方式}`：不带计算方式为直接取值（如失业率 `LNS14000000`）；`chg` 为较上期变动（非农 `CES0000000001:chg`，本期就业人数 − 上期）；`pct` 为较上期变动率（CPI 月率 `CUSR0000SA0:pct`）；`pct12` 为较 12 期前的变动率（CPI 年率 `CUUR0000SA0:pct12`）。任务参数列出要请求的外部标识，解析器按计算方式算出每一期的值（BR-043）。
+
+实现（ENG-009.1）：数据源"BLS API"（官方 API，基础地址 `https://api.bls.gov/publicAPI/v2/`，凭据为 API Key），适配器 `us.blsapi`、解析器 `us.blsapi.release`。
+
+- 任务参数 `{"series": [外部标识, …]}`，与公布值映射的外部标识一致。适配器去掉计算方式、去重后每 50 个序列 POST 一次 `{基础地址}timeseries/data/`，请求体 `{"seriesid": [...], "registrationkey": Key}`；不指定年份，API 返回最近 3 年（够算 12 期前的变动率）。Key 只在请求体中，快照的请求标识为 `POST /publicAPI/v2/timeseries/data/ series=…`。
+- 解析器只取月度数据（M01 ~ M12，不取年均值 M13）。值为 "-" 的月份（如 2025 年 10 月停摆）没有值，依赖它的变动、变动率也不输出（如 2025 年 11 月的 CPI 月率）。
+- 单位：变动率为百分比；取值和变动的单位按 BLS 序列编号判断：CES 数据类型 01 为千人，LNS14 / LNU04 为百分比，JOLTS 的 JOL 为千个、比率为百分比，CU、WP 为指数。没有登记单位的序列（如平均时薪的美元值）和响应中没有数据的序列记为缺失项，运行部分成功。
+- 原始字符串记参与计算的序列和数值，如 `CES0000000001 2026-09=159044 2026-08=159015`。API 没有处理请求（`status` 不是 `REQUEST_SUCCEEDED`，如 Key 无效、超过每日限额）时快照无效，提示信息写进原因。
+
+首批 9 个指标的映射（排期映射在"BLS 发布日程"，公布值映射在"BLS API"，优先级 1）：
+
+| 指标 | 排期的发布标识 | 公布值的外部标识 |
+|---|---|---|
+| US.NFP | `empsit` | `CES0000000001:chg` |
+| US.UNEMP | `empsit` | `LNS14000000` |
+| US.AHE.MOM | `empsit` | `CES0500000003:pct` |
+| US.CPI.MOM | `cpi` | `CUSR0000SA0:pct` |
+| US.CPI.YOY | `cpi` | `CUUR0000SA0:pct12` |
+| US.CORECPI.MOM | `cpi` | `CUSR0000SA0L1E:pct` |
+| US.CORECPI.YOY | `cpi` | `CUUR0000SA0L1E:pct12` |
+| US.PPI.MOM | `ppi` | `WPSFD4:pct` |
+| US.JOLTS | `jolts` | `JTS000000000000000JOL` |
+
+月率、年率按季调（CUSR、WPSFD4）和非季调（CUUR）序列分别取，与 BLS 新闻稿的口径一致。
 
 ### 5.2 按指标处理
 
@@ -663,9 +688,9 @@ PRD 中的业务规则已在 v1.0.0.22 ~ v1.0.0.24 由 vivo.li 确认（BR-034�
 | FR-007.3 排期入库 | JAN-89 | JAN-21 | `ScheduleApplier`、`CalendarScheduleIngestor`（匹配、写入、消失、未匹配条目、告警、消息）；集成测试 | FR-007.1、FR-007.2、FR-004.1 |
 | FR-007.4 排期的后台页面 | JAN-91 | JAN-21 | 待确认事件、未匹配条目；预置角色规则；集成测试、管道测试 | FR-007.3 |
 | FR-008.1 公布值入库 | JAN-92 | JAN-22 | `ReleaseValueRule` 及单元测试；`CalendarReleaseIngestor`、`IReleaseValidator`；集成测试 | FR-007.3 |
-| ENG-009.1 BLS 适配器与解析器 | JAN-93 | JAN-14 | 适配器、排期和公布值两个解析器、解析器目录登记；基于真实快照的测试；本地跑通一次真实采集 | FR-008.1 |
+| ENG-009.1 BLS 适配器与解析器 | JAN-93 | JAN-14 | 官网日程（`us.blsweb`）和 API（`us.blsapi`）两个适配器、排期和公布值两个解析器、解析器目录登记；基于真实快照的测试；本地跑通一次真实采集 | FR-008.1 |
 
-FR-007.4 与 FR-008.1 可以并行。ENG-009.1 开始前需要 BLS 的 API Key（D-001，填在后台 BLS 数据源的凭据中）；User-Agent 的联系邮箱已提供（采集设计 §11 第 7 项）。
+FR-007.4 与 FR-008.1 可以并行。ENG-009.1 的前置条件已满足：BLS 的 API Key（D-001）填在后台"BLS API"数据源的凭据中，User-Agent 的联系邮箱为部署配置（采集设计 §11 第 7 项）。
 
 ---
 
@@ -681,3 +706,4 @@ FR-007.4 与 FR-008.1 可以并行。ENG-009.1 开始前需要 BLS 的 API Key�
 | v0.6 | 2026-10-29 | vivo.li / Claude | FR-008.1（JAN-92）实施：§3.5 `ReleaseValueRule` 的接口；§5.2 实现说明（行锁范围、补建的写法、各数据源数值的更新、来源快照、计数）；§8.1 不建 `CalendarErrorCodes`，`Releases/` 不分 Models |
 | v0.7 | 2026-10-29 | vivo.li / Claude | FR-007.4（JAN-91）实施：§4.4、§4.5 保留、取消、重新匹配的实现说明；§8.1 目录；§8.2 增加 `GetUnconfirmedAsync`、列表筛选；§9.1 实现说明（取消用表单页、已忽略用页签、"新增映射"链接的权限） |
 | v0.8 | 2026-10-29 | vivo.li / Claude | §14 ENG-009.1 的前置条件：User-Agent 的联系邮箱已提供，API Key 填在后台 BLS 数据源的凭据中；变更记录按版本排序 |
+| v0.9 | 2026-10-29 | vivo.li / Claude | ENG-009.1（JAN-93）实施：BLS 拆成"BLS 发布日程"（官网）和"BLS API"两个数据源，各一个适配器（`us.blsweb`、`us.blsapi`），解析器标识改为 `us.blsweb.schedule`、`us.blsapi.release`；§4.1、§5.1 补充请求方式、任务参数、日期写法、缺值月份、单位的判断和首批 9 个指标的映射；§14 前置条件已满足 |

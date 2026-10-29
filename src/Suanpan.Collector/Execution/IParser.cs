@@ -6,7 +6,7 @@ namespace Suanpan.Collector.Execution;
 /// </summary>
 public interface IParser
 {
-    /// <summary>解析器目录（ParserCatalog）中的标识，如 us.bls.release</summary>
+    /// <summary>解析器目录（ParserCatalog）中的标识，如 us.blsapi.release</summary>
     string Key { get; }
 
     ParseResult Parse(FetchResult fetched, string? parameters);

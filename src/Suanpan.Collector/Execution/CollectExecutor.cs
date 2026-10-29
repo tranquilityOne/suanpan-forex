@@ -179,6 +179,10 @@ public sealed class CollectExecutor(
             error = ex.Message;
             retryable = true;
         }
+        catch (FetchParametersException ex)
+        {
+            error = $"任务参数不正确：{ex.Message}";
+        }
         catch (HttpRequestException ex)
         {
             httpStatus = (int?)ex.StatusCode;

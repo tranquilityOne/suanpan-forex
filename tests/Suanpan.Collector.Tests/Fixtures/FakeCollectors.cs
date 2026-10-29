@@ -8,7 +8,7 @@ namespace Suanpan.Collector.Tests.Fixtures;
 
 // 测试用的适配器、解析器和入库服务（采集设计 §11 第 6 项）：M1 没有真实的解析器，用它们验证执行框架
 
-/// <summary>按任务参数 {"pages": n} 请求 {基础地址}page/1 ~ page/n，默认 1 页</summary>
+/// <summary>按任务参数 {"pages": n} 请求 {基础地址}page/1 ~ page/n，默认 1 页；n 小于 1 时参数不正确</summary>
 public sealed class FakeAdapter : ICollectAdapter
 {
     public const string AdapterKey = "zz.test";
@@ -18,6 +18,11 @@ public sealed class FakeAdapter : ICollectAdapter
     public async Task<FetchResult> FetchAsync(FetchContext context, CancellationToken ct)
     {
         var pages = context.Parameters is { } json && JsonDocument.Parse(json).RootElement.TryGetProperty("pages", out var value) ? value.GetInt32() : 1;
+        if (pages < 1)
+        {
+            throw new FetchParametersException("pages 应为正整数");
+        }
+
         var responses = new List<FetchedResponse>();
         for (var page = 1; page <= pages; page++)
         {

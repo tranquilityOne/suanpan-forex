@@ -6,8 +6,11 @@ namespace Suanpan.Collector.Execution;
 /// </summary>
 public interface ICollectAdapter
 {
-    /// <summary>适配器标识，与解析器标识的前两段一致，如 us.bls</summary>
+    /// <summary>适配器标识，与解析器标识的前两段一致，如 us.blsapi</summary>
     string Key { get; }
 
     Task<FetchResult> FetchAsync(FetchContext context, CancellationToken ct);
 }
+
+/// <summary>任务参数不符合适配器的要求：不发请求，运行记为失败、不重试，参数改对后再执行</summary>
+public sealed class FetchParametersException(string message) : Exception(message);

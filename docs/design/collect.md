@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.14 |
+| 版本 | v0.15 |
 | 日期 | 2026-10-29 |
 | 状态 | FR-001、FR-002 部分已评审（2026-10-23，vivo.li；§11 第 7 项的联系邮箱 2026-10-29 提供）；v0.11 新增的快照与重新解析（FR-004）已评审（2026-10-29，vivo.li：§11 第 14 ~ 20 项均按建议执行） |
 | 覆盖 | FR-001 数据源管理、FR-002 采集任务配置与调度、FR-004 原始快照与重新解析；盯盘（FR-003）只定接入位置 |
@@ -318,25 +318,25 @@ Job 每天执行一次 `collect-snapshot-cleanup`（UTC 20:30，分布式锁 `co
 
 ### 5.1 适配器（`Suanpan.Collector/Sources/{经济体}/{机构}/`）
 
-- 一个数据源一个适配器（后端约定 §9），负责"怎么请求"：拼地址、放凭据、分页。接口：
+- 一个数据源一个适配器（后端约定 §9），负责"怎么请求"：拼地址、放凭据、分页。同一机构的多个数据源（如 BLS 的官网日程和 API）各一个适配器，放在同一个机构目录下。接口：
 
   ```csharp
   public interface ICollectAdapter
   {
-      string Key { get; }                       // 与解析器标识的前缀一致，如 "us.bls"
+      string Key { get; }                       // 与解析器标识的前两段一致，如 "us.blsapi"
       Task<FetchResult> FetchAsync(FetchContext context, CancellationToken ct);
   }
   ```
 
-  `FetchContext` 带数据源配置（`Source`）、解密后的凭据（`Credential`）、任务参数（`Parameters`），请求一律通过它的 `SendAsync` / `GetAsync` 发出：每次请求前申请频率配额，超时取数据源的 `timeout_seconds`（超时抛出 `FetchTimeoutException`），User-Agent 由采集用的 HttpClient 设置。`FetchResult` 是一个或多个响应（`FetchedResponse`：地址、状态码、内容类型、原始内容，`Text()` 按字符集解码），供解析和以后的快照使用。
+  `FetchContext` 带数据源配置（`Source`）、解密后的凭据（`Credential`）、任务参数（`Parameters`），请求一律通过它的 `SendAsync` / `GetAsync` 发出：每次请求前申请频率配额，超时取数据源的 `timeout_seconds`（超时抛出 `FetchTimeoutException`），User-Agent 由采集用的 HttpClient 设置。任务参数不符合适配器的要求时抛出 `FetchParametersException`：不发请求，运行记为失败（ERR-COL-002 请求失败）、不重试，原因写"任务参数不正确：……"。`FetchResult` 是一个或多个响应（`FetchedResponse`：地址、状态码、内容类型、原始内容，`Text()` 按字符集解码），供解析和以后的快照使用。
 - 适配器只发请求、不解析、不写库。频率限制、超时、User-Agent、重试由框架统一处理，适配器不重复实现。
 
 ### 5.2 解析器与解析器目录
 
 - 解析器是纯函数（硬性规则 14）：输入响应内容和任务参数，输出标准化记录，不访问数据库和网络，配基于真实快照的测试（ENG-009）。接口 `IParser`（`Key`、`Parse(FetchResult, 参数)`）返回 `ParseResult(记录, 缺失项)`，缺失项不为空时运行记为部分成功（ERR-PARSE-002）；内容不符合预期时抛出 `ParseException`（ERR-PARSE-001）。适配器和解析器在 `AddSuanpanCollectors` 中注册。
-- **解析器目录** `ParserCatalog`（`Suanpan.Core/Collect/Parsers/`）：列出全部解析器的标识、中文名、所属适配器、目标数据类型（`ParserDescriptor`；所属适配器取标识去掉最后一段，如 `us.bls`）。Crm 用它填下拉框、校验任务配置；Collector 按标识找到实现。Services 经 `IParserCatalog`（`Services/Collect/Tasks/`，默认实现就是 `ParserCatalog`）使用目录，测试中换成假的解析器。Crm 不引用 Collector（后端约定 §2），所以目录放在两边都能引用的 Core 中。`Suanpan.Core.Tests` 检查标识的写法和不重复，`Suanpan.Collector.Tests` 检查目录与实现一一对应。
-- 解析器标识的写法：`{经济体}.{机构}.{内容}`，全部小写，如 `us.bls.schedule`、`us.bls.release`。
-- M1 目录为空（真实解析器从 ENG-009 开始加入），后台的任务页面在目录为空时提示"还没有可用的解析器"。
+- **解析器目录** `ParserCatalog`（`Suanpan.Core/Collect/Parsers/`）：列出全部解析器的标识、中文名、所属适配器、目标数据类型（`ParserDescriptor`；所属适配器取标识去掉最后一段，如 `us.blsapi`）。Crm 用它填下拉框、校验任务配置；Collector 按标识找到实现。Services 经 `IParserCatalog`（`Services/Collect/Tasks/`，默认实现就是 `ParserCatalog`）使用目录，测试中换成假的解析器。Crm 不引用 Collector（后端约定 §2），所以目录放在两边都能引用的 Core 中。`Suanpan.Core.Tests` 检查标识的写法和不重复，`Suanpan.Collector.Tests` 检查目录与实现一一对应。
+- 解析器标识的写法：`{经济体}.{数据源}.{内容}`，全部小写。中间一段是适配器：机构只有一个数据源时用机构名，有多个数据源时为机构名加数据源，如 BLS 的 `us.blsweb.schedule`（官网日程）、`us.blsapi.release`（API）。
+- M1 目录为空，ENG-009.1 加入 BLS 的两个解析器；目录为空时后台的任务页面提示"还没有可用的解析器"。
 
 ### 5.3 入库接口
 
@@ -454,7 +454,7 @@ Suanpan.Collector/
 ├─ Execution/     CollectExecutor（§4.3 的步骤）、ReparseExecutor（§5.6）、ICollectAdapter、FetchContext、FetchResult、IParser、
 │                 InvalidSnapshotException、StaleRunRecovery、CollectorServiceCollectionExtensions（AddSuanpanCollectors）
 ├─ Handlers/      CollectRunCommandHandler、ReparseCommandHandler
-└─ Sources/       各数据源的适配器和解析器（ENG-009 起）
+└─ Sources/       各数据源的适配器和解析器，如 US/Bls/：BlsWebAdapter、BlsScheduleParser（官网日程），BlsApiAdapter、BlsReleaseParser（API），BlsParameters（任务参数）、BlsSeriesSpec（外部标识）
 
 Suanpan.Crm/
 ├─ Areas/Collect/     Controllers/（Source、Task、Run、Snapshot）、Views/（Shared/_TriggerButton 为"立即执行"按钮，任务列表和运行详情共用）
@@ -693,3 +693,4 @@ FR-004.1 是日历排期入库（日历设计 §14 的 FR-007.3，JAN-89）的�
 | v0.12 | 2026-10-29 | vivo.li / Claude | 评审通过：§11 第 14 ~ 20 项均按建议执行；§13 回填快照两个子任务的工单号（JAN-86、JAN-90） |
 | v0.13 | 2026-10-29 | vivo.li / Claude | FR-004.1（JAN-86）实施：§2.1 `parse_output` 的格式；`col_snapshot_content` 的 `created_at` 改为 `last_used_at`，§4.6 清理内容时留 1 天的余量，避免与正在写入的快照冲突；`col_run` 的 `reparse`、`heartbeat_at` 改由 FR-004.2 加列；§5.5 补充实现（`SnapshotInput`、`FetchedResponse.RequestKey` / `ReceivedAt`、告警的时机）；§13 两个子任务的内容同步 |
 | v0.14 | 2026-10-29 | vivo.li / Claude | §11 第 7 项的联系邮箱已提供：§5.4、§10 配置 `Collect:UserAgent` 改为 `Collect:ContactEmail`（部署配置，代码里不写邮箱），程序拼出 User-Agent，没配置时启动告警；Collector 的 `appsettings.json` 不再配置 |
+| v0.15 | 2026-10-29 | vivo.li / Claude | ENG-009.1（JAN-93）实施：§5.1 同一机构的多个数据源各一个适配器，适配器抛出 `FetchParametersException` 表示任务参数不正确；§5.2 解析器标识的中间一段为数据源（BLS 为 `us.blsweb`、`us.blsapi`），目录加入 BLS 的两个解析器；§7.1 `Sources/US/Bls/` 的内容 |

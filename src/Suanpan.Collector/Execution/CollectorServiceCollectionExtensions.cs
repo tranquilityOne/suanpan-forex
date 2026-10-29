@@ -1,4 +1,5 @@
 using Suanpan.Collector.Handlers;
+using Suanpan.Collector.Sources.US.Bls;
 using Suanpan.Infrastructure;
 using Suanpan.Shared.Messages.Collect;
 
@@ -19,6 +20,12 @@ public static class CollectorServiceCollectionExtensions
         // 回收服务注册为单例再作为后台服务启动，测试中可以直接调用 RecoverAsync
         services.AddSingleton<StaleRunRecovery>();
         services.AddHostedService(provider => provider.GetRequiredService<StaleRunRecovery>());
+
+        // 美国劳工统计局（ENG-009.1）：发布日程（官网）和公布值（API）是两个数据源，各一个适配器
+        services.AddSingleton<ICollectAdapter, BlsWebAdapter>();
+        services.AddSingleton<IParser, BlsScheduleParser>();
+        services.AddSingleton<ICollectAdapter, BlsApiAdapter>();
+        services.AddSingleton<IParser, BlsReleaseParser>();
 
         return services;
     }
