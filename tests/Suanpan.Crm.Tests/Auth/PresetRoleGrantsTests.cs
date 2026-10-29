@@ -40,15 +40,16 @@ public class PresetRoleGrantsTests
     }
 
     /// <summary>
-    /// 采集设计 §8.3：采集工程师维护数据源和任务；编辑只能查看，另可立即执行日历排期、公布值类任务；只读只能查看
-    /// （快照页面加入后也不会被自动授权）
+    /// 采集设计 §8.3：采集工程师维护数据源和任务、查看快照和重新解析；编辑只能查看，另可立即执行日历排期、公布值类任务；
+    /// 只读只能查看。编辑和只读都看不到快照（PRD §13.1.2）
     /// </summary>
     [Theory]
     [InlineData(RoleCodes.Engineer,
         "collect:source:index collect:source:detail collect:source:create collect:source:edit "
         + "collect:source:set_status collect:source:delete collect:source:test "
         + "collect:task:index collect:task:create collect:task:edit collect:task:set_status collect:task:delete "
-        + "collect:task:trigger collect:task:trigger_any collect:run:index collect:run:detail")]
+        + "collect:task:trigger collect:task:trigger_any collect:run:index collect:run:detail "
+        + "collect:snapshot:index collect:snapshot:detail collect:snapshot:download collect:snapshot:reparse")]
     [InlineData(RoleCodes.Editor,
         "collect:source:index collect:source:detail collect:task:index collect:task:trigger collect:run:index collect:run:detail")]
     [InlineData(RoleCodes.Viewer, "collect:source:index collect:source:detail collect:task:index collect:run:index collect:run:detail")]

@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.15 |
+| 版本 | v0.16 |
 | 日期 | 2026-10-29 |
 | 状态 | FR-001、FR-002 部分已评审（2026-10-23，vivo.li；§11 第 7 项的联系邮箱 2026-10-29 提供）；v0.11 新增的快照与重新解析（FR-004）已评审（2026-10-29，vivo.li：§11 第 14 ~ 20 项均按建议执行） |
 | 覆盖 | FR-001 数据源管理、FR-002 采集任务配置与调度、FR-004 原始快照与重新解析；盯盘（FR-003）只定接入位置 |
@@ -103,7 +103,7 @@
 | `trace_id` | `varchar(64)` | 是 | 贯穿下发、执行、入库的日志追踪（NFR-050） |
 | `locked_count` | `integer` | 否 | 因字段锁定没有更新的条数（BR-062、FR-004 主流程第 4 步），新建时为 0；FR-004.1 加列 |
 | `parse_output` | `jsonb` | 是 | 解析器输出的记录：`{"total": 总条数, "records": [前 1000 条]}`（记录按 camelCase 序列化，序列化失败时不存），快照详情中"当时的解析结果"用（FR-004 主流程第 2 步）；没有解析到这一步时为空；FR-004.1 加列 |
-| `reparse` | `jsonb` | 是 | 重新解析的参数：`{"parserKey": 解析器, "snapshotIds": [快照 id]}`（§5.6）；其他触发方式为空；FR-004.2 加列 |
+| `reparse` | `jsonb` | 是 | 重新解析的参数：`{"ParserKey": 解析器, "SnapshotIds": [快照 id]}`（§5.6），键名与 `CollectRunReparse` 的属性名相同；其他触发方式为空；FR-004.2 加列 |
 | `heartbeat_at` | `timestamptz` | 是 | 重新解析处理中定期写入，执行中断的回收据此判断（§5.6）；FR-004.2 加列 |
 
 **`col_snapshot`（快照）** —— 不带审计四件套（系统写入），保留 180 天，被入库数据引用的保留 1 年（BR-022，§4.6）；v0.11 新增
@@ -258,7 +258,7 @@ sequenceDiagram
   - 分布式锁 `collect:dispatch`（5 分钟过期），拿不到锁时本轮跳过。一个任务出错（如 cron 被改坏）只记 Error 日志，不影响其他任务。
   - 到点时调用 `ICollectRunService.EnqueueAsync`（触发方式"定时"）：定时的运行记录用 `INSERT ... ON CONFLICT DO NOTHING` 写入（后端约定 §6.4），时间点已经有记录时不再下发。下发后才把 `last_dispatched_at` 记为本轮开始的时间，中途退出时下一轮算出同一个时间点，由唯一索引去重。记账用 `ExecuteUpdateAsync`，不改任务的审计字段。
   - `last_dispatched_at` 为空（不经后台启用的任务）时只记账、不补发。
-  - 重新发布按整分钟划分窗口：第 n 分钟的这一轮只处理在 [n-3, n-2) 分钟内排队的记录，每分钟一轮时每条记录正好重新发布一次；Job 停机错过的那一轮不再补发，10 分钟后记为失败。
+  - 重新发布按整分钟划分窗口：第 n 分钟的这一轮只处理在 [n-3, n-2) 分钟内排队的记录，每分钟一轮时每条记录正好重新发布一次；Job 停机错过的那一轮不再补发，10 分钟后记为失败。重新解析的记录重新发布 `ReparseCommand`，其他发布 `CollectRunCommand`（`ICollectRunService.TryPublishAsync(runId, 触发方式)`，FR-004.2）。
   - 记为失败用条件更新（状态仍为排队），写 `ended_at`、错误码 ERR-COL-008（`CollectErrorCodes.DispatchFailed`）和原因，并记 Error 日志。
 
 ### 4.3 执行（Collector）
@@ -289,7 +289,9 @@ Collector 的消息处理器 `CollectRunCommandHandler`（`Suanpan.Collector/Han
 - 前置检查放在认领之前：停用而跳过时没有发请求，请求次数不变。因停用跳过、缺少解析器 / 适配器 / 入库服务的实现而失败，没有对应的错误码，只写原因。
 - 认领时请求次数加一，并写入这次请求的记录（开始时间），结束时再补全耗时、状态码、错误和延后时长；执行中断的回收以最近一条请求记录的开始时间判断（`CollectRunStatusRule.IsInterrupted`）。第 1 次请求的认领在任务锁内进行（锁 30 秒过期，最多等 10 秒，拿不到时抛出异常，由消息框架稍后重试）。
 - 改运行记录一律在行锁内进行（`SELECT ... FOR UPDATE` 后检查状态和请求次数再保存），与重复投递的指令、执行中断的回收互斥；回收用条件更新（状态仍为运行中、请求次数没变）。
-- 并发检查（BR-010）不计触发方式为"重新解析"的运行记录：重新解析不发请求，与同一任务的采集互不阻塞（§5.6）。
+- 并发检查（BR-010）不计触发方式为"重新解析"的运行记录：重新解析不发请求，与同一任务的采集互不阻塞（§5.6）。`CollectExecutor` 收到重新解析记录的 `CollectRunCommand` 时直接忽略。
+- 改运行记录的公共写法（行锁内读改写、结束、`parse_output` 的序列化）在 `CollectRunWriter`，采集和重新解析共用（FR-004.2）。
+- 回收的条件更新另比对心跳时间：重新解析在这期间写了心跳就不改（FR-004.2）。
 - 任一响应不是 2xx 即算请求失败，错误信息中的地址只保留路径（有的数据源把凭据放在查询串里）。重试间隔取系统配置，格式不对时按默认值并记警告日志；重试指令发布失败时记录停在"运行中"，由回收记为失败。
 - 频率限制拿不到配额时，等到下一个固定窗口开始再申请，同一次执行中等待的时长累加到请求记录的 `DeferredMs`。
 - RabbitMQ 接收端按到达顺序逐条处理消息（每个程序一个通道，`ConsumerDispatchConcurrency` 为默认的 1），所以一个 Collector 实例同一时刻只执行一条运行记录，频率限制的等待也会让后面的消息排队。任务多起来后再调大并发或增加实例。
@@ -409,6 +411,13 @@ sequenceDiagram
 - **执行中断**：重新解析没有请求超时，回收（§4.3）对它改用心跳判断：运行中且 `heartbeat_at`（没有时取开始时间）超过 5 分钟没有更新的，记为失败（ERR-COL-009）。重新解析可以再次发起，入库是幂等的。
 - 解析器不能依赖查询串：快照只存去掉查询串的地址，重新解析时还原的地址没有查询串。
 
+**实现**（FR-004.2）：
+
+- 发起放在 `ICollectRunService`（创建运行记录并下发都在这里）：`CountForReparseAsync` 给表单页显示快照数，`ReparseAsync` 校验后创建记录并发布 `ReparseCommand`。规则在 Core 的 `ReparseRule`：解析器与任务的解析器同一适配器、目标数据类型相同（交给同一个入库服务）；快照数大于 0、不超过 5000。不要求任务、数据源启用（不发请求）。
+- 范围 `ReparseSelection`：快照列表的筛选条件（必须选定任务）加勾选的快照 id；没有勾选时为全部筛选结果，勾选了只取其中仍属于这个任务、符合条件的。列表和范围共用 `SnapshotQueries.Filter`，选中的与看到的一致。快照 id 按升序记进 `reparse` 列。
+- 执行（`ReparseExecutor`）的细节：一组里有非 2xx 的响应时不解析（正常采集也不解析），计为失败的组；内容已被清理的组同样计为失败；解析器判定为拦截页时把这组快照标记为无效，计入无效；入库失败时清空 DbContext 的跟踪再改运行记录。缺失项、入库失败的条数与正常采集一样记为部分成功。`parse_output` 汇总各组的输出（最多 1000 条）。选中的快照都已被清理时记为失败。
+- 后台：快照列表选定任务后，每行有勾选框，表头上方有"重新解析勾选的快照"和"重新解析全部筛选结果（共 N 个）"，都以 GET 打开表单页 `/Collect/Snapshot/Reparse`（范围放在查询串中，勾选的最多一页）；表单页显示任务、快照数，选择解析器（只列同一适配器、目标数据类型相同的），二次确认提示快照数，POST 到同一地址。GET 和 POST 是同一个 action，只有一个权限码 `collect:snapshot:reparse`。
+
 ---
 
 ## 6. 与其他模块的关系
@@ -431,7 +440,7 @@ Suanpan.Core/Collect/
 ├─ Entities/      DataSource、CollectTask、CollectRun、Snapshot、SnapshotContent
 ├─ Enums/         DataSourceType、RateLimitUnit、ComplianceClass、RobotsResult、CollectTargetType、CollectRunTrigger、CollectRunStatus
 ├─ Parsers/       ParserCatalog、ParserDescriptor
-└─ Rules/         DataSourceRule、CollectTaskRule、CollectRunStatusRule、RetryPolicy、CollectDisplayNames（枚举的中文显示名）、CollectErrorCodes
+└─ Rules/         DataSourceRule、CollectTaskRule、CollectRunStatusRule、RetryPolicy、ReparseRule、CollectDisplayNames（枚举的中文显示名）、CollectErrorCodes
 
 Suanpan.Shared/Messages/Collect/   CollectRunCommand、ReparseCommand
 
@@ -442,8 +451,8 @@ Suanpan.Infrastructure/Http/           采集用的命名 HttpClient
 Suanpan.Services/Collect/
 ├─ Sources/       IDataSourceService、DataSourceService、Models/
 ├─ Tasks/         ICollectTaskService、CollectTaskService、CronSchedule、IParserCatalog、Models/
-├─ Runs/          ICollectRunService、CollectRunService、CollectConfigKeys（§10 的系统配置）、Models/
-├─ Snapshots/     ISnapshotService、SnapshotService、ISnapshotContentStore、PostgresSnapshotContentStore、Models/
+├─ Runs/          ICollectRunService、CollectRunService（含发起重新解析）、CollectConfigKeys（§10 的系统配置）、Models/（含 ReparseSelection）
+├─ Snapshots/     ISnapshotService、SnapshotService、SnapshotQueries（筛选）、ISnapshotContentStore、PostgresSnapshotContentStore、Models/
 ├─ Jobs/          CollectDispatchJob、CollectRunCleanupJob、CollectSnapshotCleanupJob
 └─ Ingest/        ICollectIngestor（§5.3 的入库接口，各模块实现）
 
@@ -451,7 +460,7 @@ Suanpan.Job/
 └─ Registry/       RecurringJobRegistry：注册 collect-dispatch、collect-run-cleanup、collect-snapshot-cleanup
 
 Suanpan.Collector/
-├─ Execution/     CollectExecutor（§4.3 的步骤）、ReparseExecutor（§5.6）、ICollectAdapter、FetchContext、FetchResult、IParser、
+├─ Execution/     CollectExecutor（§4.3 的步骤）、ReparseExecutor（§5.6）、CollectRunWriter（改运行记录的公共写法）、ICollectAdapter、FetchContext、FetchResult、IParser、
 │                 InvalidSnapshotException、StaleRunRecovery、CollectorServiceCollectionExtensions（AddSuanpanCollectors）
 ├─ Handlers/      CollectRunCommandHandler、ReparseCommandHandler
 └─ Sources/       各数据源的适配器和解析器，如 US/Bls/：BlsWebAdapter、BlsScheduleParser（官网日程），BlsApiAdapter、BlsReleaseParser（API），BlsParameters（任务参数）、BlsSeriesSpec（外部标识）
@@ -469,8 +478,8 @@ Suanpan.Crm/
 |---|---|---|
 | `IDataSourceService` | `GetListAsync`、`GetAsync(id)`、`GetOptionsAsync`、`CreateAsync`、`UpdateAsync(id, input)`、`SetEnabledAsync`、`DeleteAsync`、`TestAsync(id)` | 数据源不多，列表不分页；`TestAsync` 返回状态码、耗时、前 500 个字符的响应片段 |
 | `ICollectTaskService` | `QueryAsync`、`GetAsync(id)`、`GetAllAsync`、`CreateAsync`、`UpdateAsync(id, input)`、`SetEnabledAsync`、`DeleteAsync`、`PreviewSchedule(cron)` | 列表带最近一次运行的状态和下次执行时间；`GetAllAsync` 供运行记录的筛选下拉框；`PreviewSchedule` 返回下 3 次执行时间（UTC，页面用 `<utc-time>` 按操作者时区显示） |
-| `ISnapshotService` | `SaveAsync(运行记录, 第几次请求, FetchResult, skipUnchanged)`、`MarkInvalidAsync(ids, 原因)`、`MarkReferencedAsync(ids)`、`QueryAsync(SnapshotQuery)`、`GetAsync(id)`、`GetContentAsync(id)`、`ReparseAsync(taskId, parserKey, 快照选择, triggeredBy)` | §5.5、§5.6；`ReparseAsync` 校验数量上限、创建运行记录并发布 `ReparseCommand`；`SnapshotQuery` 按数据源、任务、时间、运行状态、是否有效筛选，分页 |
-| `ICollectRunService` | `QueryAsync(CollectRunQuery)`、`GetAsync(id)`、`EnqueueAsync(taskId, trigger, scheduledFor, triggeredBy)`、`TriggerAsync(taskId, triggeredBy, anyTargetType)` | `EnqueueAsync` 创建运行记录并发布消息，Job 和 Crm 共用，返回 `EnqueueResult`（运行记录 id；`Published` 为 false 表示已创建但发布失败）；`TriggerAsync` 是后台的"立即执行"，`anyTargetType` 为 false 时只能触发日历排期、公布值类任务（§8.2）；`TryPublishAsync(runId)` 发布第 1 次请求的指令，调度分发重新下发时也用；`CollectRunQuery` 按任务、数据源、状态、触发方式、时间筛选，分页 |
+| `ISnapshotService` | `SaveAsync(SnapshotBatch, skipUnchanged)`、`MarkInvalidAsync(ids, 原因)`、`MarkReferencedAsync(ids)`、`QueryAsync(SnapshotQuery)`、`GetAsync(id)` | §5.5；`SnapshotQuery` 按数据源、任务、运行记录、时间、运行状态、是否有效筛选，分页；`GetAsync` 返回快照、原始内容（已清理时为空）和所属运行记录（已清理时为空）。发起重新解析在 `ICollectRunService`（FR-004.2 实施时调整） |
+| `ICollectRunService` | `QueryAsync(CollectRunQuery)`、`GetAsync(id)`、`EnqueueAsync(taskId, trigger, scheduledFor, triggeredBy)`、`TriggerAsync(taskId, triggeredBy, anyTargetType)` | `EnqueueAsync` 创建运行记录并发布消息，Job 和 Crm 共用，返回 `EnqueueResult`（运行记录 id；`Published` 为 false 表示已创建但发布失败）；`TriggerAsync` 是后台的"立即执行"，`anyTargetType` 为 false 时只能触发日历排期、公布值类任务（§8.2）；`TryPublishAsync(runId)` 发布第 1 次请求的指令，调度分发重新下发时也用；`CollectRunQuery` 按任务、数据源、状态、触发方式、时间筛选，分页。`GetAsync` 带这次运行的快照（运行详情列出）。`TryPublishAsync(runId, 触发方式)` 按触发方式发 `CollectRunCommand` 或 `ReparseCommand`；`CountForReparseAsync(ReparseSelection)`、`ReparseAsync(ReparseSelection, parserKey, triggeredBy)` 见 §5.6 |
 
 ### 7.3 消息
 
@@ -508,6 +517,12 @@ Suanpan.Crm/
 | 重新解析 | POST | `collect:snapshot:reparse` | 选择解析器，二次确认（提示快照数）；成功后跳到运行详情（§5.6） |
 
 菜单排序：数据源 10、采集任务 20、运行记录 30、快照 40。
+
+快照页面的实现（FR-004.2）：
+- 列表的"运行记录"列：运行记录已清理时显示"已清理"；有运行详情权限时链接到运行详情。
+- 详情：内容为文本类型（`text/*`、JSON、XML、CSV，或声明了字符集）时按字符集解码，在 `<pre>` 中转义输出，超过 1 MB 只显示前 1 MB；其他类型只显示类型和大小。右侧"当时的解析结果"显示所属运行记录的状态、条数、因锁定跳过、错误和缩进后的 `parse_output`（`SnapshotContentView`）。
+- 下载：`application/octet-stream`，文件名 `snapshot-{id}` 加按内容类型推断的扩展名（`.html`、`.json`、`.xml`、`.csv`、`.txt`，其他为 `.bin`），响应头带 `X-Content-Type-Options: nosniff`。
+- 运行详情：列出这次运行保存的快照（请求次数、序号、地址、状态码、大小、未变化、有效），有快照详情权限时快照 id 链接到详情；所有运行都显示"因锁定跳过"；重新解析的运行显示解析器和快照数，"请求记录"处说明不请求数据源。
 
 ### 8.2 编辑的手动触发
 
@@ -568,9 +583,9 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 | `collect:retry_delay_seconds` | 系统配置 | `30,120,300` | 重试间隔，逗号分隔，个数即最多重试次数（BR-009） |
 | `collect:run_retention_days` | 系统配置 | `90` | 运行记录保留天数（BR-011） |
 | `collect:snapshot_retention_days` | 系统配置 | `180` | 快照保留天数（BR-022）；被引用的快照保留 365 天和它之中较长者（§4.6）；v0.11 新增 |
+| `Collect:ContactEmail` | 部署配置（本地 user-secrets，其他环境 `SUANPAN__Collect__ContactEmail`） | 空 | 采集请求 User-Agent 中的联系邮箱（BR-005），程序拼成 `SuanpanForexBot/1.0 (+mailto:邮箱)`；不涉密，但不写在代码和 appsettings 中，更换时只改部署配置，重启 Crm、Job、Collector；没配置时启动告警；请求头只能用 ASCII 字符 |
 
 系统配置项登记在 `CollectConfigKeys.Definitions`，由 `ConfigDefinitions.All` 汇总，系统配置页面的"数据采集"分组中可以修改（后端约定 §7）。
-| `Collect:ContactEmail` | 部署配置（本地 user-secrets，其他环境 `SUANPAN__Collect__ContactEmail`） | 空 | 采集请求 User-Agent 中的联系邮箱（BR-005），程序拼成 `SuanpanForexBot/1.0 (+mailto:邮箱)`；不涉密，但不写在代码和 appsettings 中，更换时只改部署配置，重启 Crm、Job、Collector；没配置时启动告警；请求头只能用 ASCII 字符 |
 
 ---
 
@@ -693,4 +708,5 @@ FR-004.1 是日历排期入库（日历设计 §14 的 FR-007.3，JAN-89）的�
 | v0.12 | 2026-10-29 | vivo.li / Claude | 评审通过：§11 第 14 ~ 20 项均按建议执行；§13 回填快照两个子任务的工单号（JAN-86、JAN-90） |
 | v0.13 | 2026-10-29 | vivo.li / Claude | FR-004.1（JAN-86）实施：§2.1 `parse_output` 的格式；`col_snapshot_content` 的 `created_at` 改为 `last_used_at`，§4.6 清理内容时留 1 天的余量，避免与正在写入的快照冲突；`col_run` 的 `reparse`、`heartbeat_at` 改由 FR-004.2 加列；§5.5 补充实现（`SnapshotInput`、`FetchedResponse.RequestKey` / `ReceivedAt`、告警的时机）；§13 两个子任务的内容同步 |
 | v0.14 | 2026-10-29 | vivo.li / Claude | §11 第 7 项的联系邮箱已提供：§5.4、§10 配置 `Collect:UserAgent` 改为 `Collect:ContactEmail`（部署配置，代码里不写邮箱），程序拼出 User-Agent，没配置时启动告警；Collector 的 `appsettings.json` 不再配置 |
+| v0.16 | 2026-10-29 | vivo.li / Claude | FR-004.2（JAN-90）实施：§2.1 `reparse` 列的键名；§4.2 重新下发按触发方式发指令；§4.3 `CollectRunWriter`、回收比对心跳；§5.6 实现说明（发起放在 `ICollectRunService`、`ReparseRule`、范围与列表共用筛选、执行的细节、表单页）；§7.1、§7.2 目录和接口按实现调整（`ISnapshotService` 不再有 `GetContentAsync`、`ReparseAsync`）；§8.1 快照页面和运行详情的实现说明；§10 表格整理 |
 | v0.15 | 2026-10-29 | vivo.li / Claude | ENG-009.1（JAN-93）实施：§5.1 同一机构的多个数据源各一个适配器，适配器抛出 `FetchParametersException` 表示任务参数不正确；§5.2 解析器标识的中间一段为数据源（BLS 为 `us.blsweb`、`us.blsapi`），目录加入 BLS 的两个解析器；§7.1 `Sources/US/Bls/` 的内容 |

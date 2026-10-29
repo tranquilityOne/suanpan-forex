@@ -1,0 +1,122 @@
+@model Suanpan.Services.Collect.Snapshots.Models.SnapshotDetail
+@*
+    快照详情（采集设计 §5.5、§8.1，FR-004 主流程第 2 步）：左侧为内容，右侧为所属运行记录当时的解析结果。
+    内容一律在 <pre> 中转义输出（BR-025、硬性规则 10），不渲染 HTML、不执行脚本；非文本类型只显示类型和大小
+*@
+@{
+    var snapshot = Model.Snapshot;
+    var run = Model.Run;
+    var text = Model.Content is { } content ? SnapshotContentView.Text(snapshot.ContentType, content) : null;
+    ViewData["Title"] = $"快照 #{snapshot.Id}";
+}
+
+<div class="page-header mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col">
+            <h2 class="page-title">快照 #@snapshot.Id</h2>
+            <div class="text-secondary text-break">@snapshot.Url</div>
+        </div>
+        <div class="col-auto">
+            <div class="btn-list">
+                @if (Model.Content is not null)
+                {
+                    <a asp-action="Download" asp-route-id="@snapshot.Id" asp-permission="collect:snapshot:download" class="btn">下载原始内容</a>
+                }
+                <a asp-action="Index" asp-route-TaskId="@snapshot.TaskId" class="btn">这个任务的快照</a>
+                <a asp-action="Index" class="btn">返回列表</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-xl-7">
+        <div class="card mb-3">
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-3">请求时间</dt>
+                    <dd class="col-sm-9"><utc-time value="@snapshot.FetchedAt" format="yyyy-MM-dd HH:mm:ss" /></dd>
+                    <dt class="col-sm-3">数据源 / 任务</dt>
+                    <dd class="col-sm-9">@(Model.SourceName ?? "（已删除）") / @(Model.TaskName ?? "（已删除）")</dd>
+                    <dt class="col-sm-3">请求标识</dt>
+                    <dd class="col-sm-9 text-break"><code>@snapshot.RequestKey</code></dd>
+                    <dt class="col-sm-3">状态码 / 类型</dt>
+                    <dd class="col-sm-9"><span class="font-monospace">@snapshot.HttpStatus</span> / @(snapshot.ContentType ?? "未声明")</dd>
+                    <dt class="col-sm-3">大小</dt>
+                    <dd class="col-sm-9">@SnapshotContentView.Size(snapshot.Size)@(snapshot.Unchanged ? "，与上一个快照相同（未变化）" : "")</dd>
+                    <dt class="col-sm-3">有效</dt>
+                    <dd class="col-sm-9">@(snapshot.IsValid ? "有效" : $"无效：{snapshot.InvalidReason}")</dd>
+                    <dt class="col-sm-3">被入库数据引用</dt>
+                    <dd class="col-sm-9 mb-0">@(snapshot.Referenced ? "是（保留 1 年）" : "否")</dd>
+                </dl>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">内容</h3></div>
+            <div class="card-body">
+                @if (Model.Content is null)
+                {
+                    <div class="text-secondary">内容已被清理</div>
+                }
+                else if (text is { } decoded)
+                {
+                    @if (decoded.Truncated)
+                    {
+                        <div class="alert alert-info">只显示前 1 MB，完整内容请下载</div>
+                    }
+                    <pre class="mb-0" style="white-space: pre-wrap; max-height: 70vh; overflow: auto">@decoded.Text</pre>
+                }
+                else
+                {
+                    <div class="text-secondary">@(snapshot.ContentType ?? "未声明类型")，@SnapshotContentView.Size(snapshot.Size)：不是文本，请下载查看</div>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-5">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">当时的解析结果</h3></div>
+            <div class="card-body">
+                @if (run is null)
+                {
+                    <div class="text-secondary">运行记录已清理（保留 90 天）</div>
+                }
+                else
+                {
+                    <dl class="row">
+                        <dt class="col-sm-4">运行记录</dt>
+                        <dd class="col-sm-8">
+                            <a asp-controller="Run" asp-action="Detail" asp-route-id="@run.Id" asp-permission="collect:run:detail">#@run.Id</a>
+                            （第 @snapshot.Attempt 次请求的第 @(snapshot.Seq + 1) 个响应）
+                        </dd>
+                        <dt class="col-sm-4">状态</dt>
+                        <dd class="col-sm-8"><status-badge value="@run.Status" /></dd>
+                        <dt class="col-sm-4">新增 / 更新 / 跳过</dt>
+                        <dd class="col-sm-8 font-monospace">@run.InsertedCount / @run.UpdatedCount / @run.SkippedCount</dd>
+                        <dt class="col-sm-4">因锁定跳过</dt>
+                        <dd class="col-sm-8 font-monospace">@run.LockedCount</dd>
+                    </dl>
+                    @if (run.ErrorCode is not null || run.ErrorMessage is not null)
+                    {
+                        <div class="mb-3">
+                            @if (run.ErrorCode is not null)
+                            {
+                                <code>@run.ErrorCode</code>
+                            }
+                            <pre class="mb-0" style="white-space: pre-wrap">@run.ErrorMessage</pre>
+                        </div>
+                    }
+                    @if (run.ParseOutput is { } output)
+                    {
+                        <div class="form-text mb-1">解析器输出的记录（最多前 1000 条），同一次请求的全部响应一起解析</div>
+                        <pre class="mb-0" style="white-space: pre-wrap; max-height: 60vh; overflow: auto">@SnapshotContentView.ParseOutput(output)</pre>
+                    }
+                    else
+                    {
+                        <div class="text-secondary">没有解析结果（请求失败、快照无效或解析失败时不解析）</div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+</div>

@@ -27,13 +27,18 @@ public static class CollectRunStatusRule
     /// <summary>
     /// "运行中"的记录是否已经执行中断（ERR-COL-009，采集设计 §4.3）：等待重试的，计划的重试时间已过去 5 分钟以上（重试消息丢失）；
     /// 不在等待重试的，最近一次请求开始已超过"请求超时 + 5 分钟"（执行到一半进程退出）。每次请求开始时就写入请求记录，
-    /// 所以最近一条请求记录的开始时间就是当前这次的
+    /// 所以最近一条请求记录的开始时间就是当前这次的。重新解析不发请求，按心跳判断：心跳（没有时取开始时间）超过 5 分钟没有更新（§5.6）
     /// </summary>
     public static bool IsInterrupted(CollectRun run, TimeSpan requestTimeout, DateTime now)
     {
         if (run.Status != CollectRunStatus.Running)
         {
             return false;
+        }
+
+        if (run.Trigger == CollectRunTrigger.Reparse)
+        {
+            return now - (run.HeartbeatAt ?? run.StartedAt ?? run.QueuedAt) > InterruptGrace;
         }
 
         if (run.NextAttemptAt is { } nextAttemptAt)

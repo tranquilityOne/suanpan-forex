@@ -23,7 +23,7 @@ public class RunControllerTests
         app.Permissions.Grant(UserId, "collect:run:detail");
         app.CollectRuns.Runs[7] = new CollectRunDetail(
             new CollectRun { Id = 7, TaskId = 3, SourceId = 2, Trigger = CollectRunTrigger.Manual, Status = status },
-            "BLS 发布日程", CollectTargetType.Calendar, "BLS 官网");
+            "BLS 发布日程", CollectTargetType.Calendar, "BLS 官网", []);
 
         var response = await app.CreateBrowser().SendAsync(Requests.Get("/Collect/Run/Detail/7", app.CreateCookie(UserId)).AsHtmx(), Ct);
         var html = await response.Content.ReadAsStringAsync(Ct);

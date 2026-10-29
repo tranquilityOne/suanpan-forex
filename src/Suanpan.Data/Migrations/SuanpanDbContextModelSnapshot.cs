@@ -560,6 +560,10 @@ namespace Suanpan.Data.Migrations
                         .HasColumnType("character varying(2000)")
                         .HasColumnName("error_message");
 
+                    b.Property<DateTime?>("HeartbeatAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("heartbeat_at");
+
                     b.Property<int>("InsertedCount")
                         .HasColumnType("integer")
                         .HasColumnName("inserted_count");
@@ -640,6 +644,19 @@ namespace Suanpan.Data.Migrations
 
                             b1
                                 .ToJson("attempts")
+                                .HasColumnType("jsonb");
+                        });
+
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "Reparse", "Suanpan.Core.Collect.Entities.CollectRun.Reparse#CollectRunReparse", b1 =>
+                        {
+                            b1.Property<string>("ParserKey")
+                                .IsRequired();
+
+                            b1.PrimitiveCollection<string>("SnapshotIds")
+                                .IsRequired();
+
+                            b1
+                                .ToJson("reparse")
                                 .HasColumnType("jsonb");
                         });
 

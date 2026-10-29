@@ -34,6 +34,8 @@ public class CollectRunConfiguration : IEntityTypeConfiguration<CollectRun>
         builder.Property(x => x.ErrorCode).HasColumnName("error_code").HasMaxLength(32);
         builder.Property(x => x.ErrorMessage).HasColumnName("error_message").HasMaxLength(2000);
         builder.Property(x => x.TraceId).HasColumnName("trace_id").HasMaxLength(64);
+        builder.ComplexProperty(x => x.Reparse, reparse => reparse.ToJson("reparse"));
+        builder.Property(x => x.HeartbeatAt).HasColumnName("heartbeat_at");
 
         // 同一任务同一 cron 时间点只创建一次运行：调度分发重复执行时不会重复下发（采集设计 §4.2）
         builder.HasIndex(x => new { x.TaskId, x.ScheduledFor }).IsUnique().HasFilter("scheduled_for IS NOT NULL");

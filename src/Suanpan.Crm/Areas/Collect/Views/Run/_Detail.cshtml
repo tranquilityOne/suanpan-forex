@@ -63,6 +63,15 @@
                         }
                         <dt class="col-sm-4">新增 / 更新 / 跳过</dt>
                         <dd class="col-sm-8 font-monospace">@run.InsertedCount / @run.UpdatedCount / @run.SkippedCount</dd>
+                        <dt class="col-sm-4">因锁定跳过</dt>
+                        <dd class="col-sm-8 font-monospace">@run.LockedCount</dd>
+                        @if (run.Reparse is { } reparse)
+                        {
+                            <dt class="col-sm-4">解析器</dt>
+                            <dd class="col-sm-8"><code>@reparse.ParserKey</code></dd>
+                            <dt class="col-sm-4">快照数</dt>
+                            <dd class="col-sm-8 font-monospace">@reparse.SnapshotIds.Count</dd>
+                        }
                         @if (run.TraceId is not null)
                         {
                             <dt class="col-sm-4">追踪 ID</dt>
@@ -91,7 +100,11 @@
             }
             <div class="card">
                 <div class="card-header"><h3 class="card-title">请求记录</h3></div>
-                @if (run.Attempts.Count == 0)
+                @if (run.Trigger == CollectRunTrigger.Reparse)
+                {
+                    <div class="card-body text-secondary">重新解析不请求数据源，处理的是已保存的快照</div>
+                }
+                else if (run.Attempts.Count == 0)
                 {
                     <div class="card-body text-secondary">还没有发出请求</div>
                 }
@@ -119,6 +132,37 @@
                     </div>
                 }
             </div>
+            @if (Model.Snapshots.Count > 0)
+            {
+                <div class="card mt-3">
+                    <div class="card-header"><h3 class="card-title">快照</h3></div>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle card-table">
+                            <thead>
+                                <tr><th class="text-end">请求</th><th class="text-end">序号</th><th>地址</th><th class="text-end">状态码</th><th class="text-end">大小</th><th>未变化</th><th>有效</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var snapshot in Model.Snapshots)
+                                {
+                                    <tr>
+                                        <td class="text-end font-monospace">@snapshot.Attempt</td>
+                                        <td class="text-end font-monospace">@(snapshot.Seq + 1)</td>
+                                        <td class="text-break">
+                                            @* 编辑、只读没有快照的查看权限（采集设计 §8.3），只显示地址 *@
+                                            <a asp-controller="Snapshot" asp-action="Detail" asp-route-id="@snapshot.Id" asp-permission="collect:snapshot:detail">#@snapshot.Id</a>
+                                            @snapshot.Url
+                                        </td>
+                                        <td class="text-end font-monospace">@snapshot.HttpStatus</td>
+                                        <td class="text-end font-monospace">@SnapshotContentView.Size(snapshot.Size)</td>
+                                        <td>@(snapshot.Unchanged ? "是" : "")</td>
+                                        <td>@(snapshot.IsValid ? "有效" : "无效")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
         </div>
     </div>
 </div>

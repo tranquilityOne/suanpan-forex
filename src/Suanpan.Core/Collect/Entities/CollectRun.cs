@@ -62,4 +62,10 @@ public class CollectRun
 
     /// <summary>贯穿下发、执行、入库的日志追踪（NFR-050）</summary>
     public string? TraceId { get; set; }
+
+    /// <summary>重新解析的解析器和快照（采集设计 §5.6）；其他触发方式为空</summary>
+    public CollectRunReparse? Reparse { get; set; }
+
+    /// <summary>重新解析处理中定期写入的心跳时间，执行中断的回收据此判断（采集设计 §5.6）；其他触发方式为空</summary>
+    public DateTime? HeartbeatAt { get; set; }
 }

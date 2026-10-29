@@ -1,0 +1,123 @@
+@model SnapshotListViewModel
+@{
+    ViewData["Title"] = "快照";
+    var filter = Model.Filter;
+    var canReparse = filter.TaskId is not null && Model.Result.Items.Count > 0;
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">快照</h2>
+    <div class="text-secondary">每次采集请求的原始响应，保留 180 天（被入库数据引用的保留 1 年）；时间按你的时区显示，日期按请求时间筛选。选定任务后可以重新解析。</div>
+</div>
+
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label">数据源</label>
+        <select name="SourceId" asp-items="@(new SelectList(Model.SourceOptions, "Value", "Text", filter.SourceId?.ToString()))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">任务</label>
+        <select name="TaskId" asp-items="@(new SelectList(Model.TaskOptions, "Value", "Text", filter.TaskId?.ToString()))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">日期</label>
+        <div class="d-flex align-items-center gap-1">
+            <input type="date" name="From" value="@filter.From?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
+            <span>至</span>
+            <input type="date" name="To" value="@filter.To?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
+        </div>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">运行状态</label>
+        <select name="RunStatus" asp-items="@(new SelectList(Model.RunStatusOptions, "Value", "Text", filter.RunStatus?.ToString()))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">是否有效</label>
+        <select name="IsValid" class="form-select form-select-sm">
+            <option value="">全部</option>
+            <option value="true" selected="@(filter.IsValid == true)">有效</option>
+            <option value="false" selected="@(filter.IsValid == false)">无效</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-primary">查询</button>
+        <a asp-action="Index" class="btn btn-sm">重置</a>
+    </div>
+</form>
+
+<div class="card">
+    @if (Model.Result.Items.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("没有符合条件的快照")' />
+    }
+    else
+    {
+        @* 选定任务后，勾选的快照随筛选条件一起带到重新解析的表单页（GET，不改数据） *@
+        <form id="reparse-form" asp-action="Reparse" method="get">
+            @foreach (var (name, value) in filter.ToRouteValues())
+            {
+                <input type="hidden" name="@name" value="@value" />
+            }
+        </form>
+        @if (canReparse)
+        {
+            <div class="card-header" asp-permission="collect:snapshot:reparse">
+                <div class="btn-list">
+                    <button type="submit" form="reparse-form" class="btn btn-sm btn-primary">重新解析勾选的快照</button>
+                    <a asp-action="Reparse" asp-all-route-data="@filter.ToRouteValues()" class="btn btn-sm">重新解析全部筛选结果（共 @Model.Result.Total 个）</a>
+                </div>
+            </div>
+        }
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle card-table text-nowrap">
+                <thead>
+                    <tr>
+                        @if (canReparse)
+                        {
+                            <th class="w-1" asp-permission="collect:snapshot:reparse"></th>
+                        }
+                        <th>请求时间</th><th>数据源</th><th>任务</th><th>地址</th><th class="text-end">状态码</th><th class="text-end">大小</th><th>未变化</th><th>有效</th><th>运行记录</th><th class="w-1"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var snapshot in Model.Result.Items)
+                    {
+                        <tr>
+                            @if (canReparse)
+                            {
+                                <td asp-permission="collect:snapshot:reparse"><input type="checkbox" name="ids" value="@snapshot.Id" form="reparse-form" class="form-check-input m-0" aria-label="勾选快照 @snapshot.Id" /></td>
+                            }
+                            <td><utc-time value="@snapshot.FetchedAt" format="yyyy-MM-dd HH:mm:ss" /></td>
+                            <td>@(snapshot.SourceName ?? "（已删除）")</td>
+                            <td>@(snapshot.TaskName ?? "（已删除）")</td>
+                            <td class="text-truncate" style="max-width: 24rem" title="@snapshot.Url">@snapshot.Url</td>
+                            <td class="text-end font-monospace">@snapshot.HttpStatus</td>
+                            <td class="text-end font-monospace">@SnapshotContentView.Size(snapshot.Size)</td>
+                            <td>@(snapshot.Unchanged ? "是" : "")</td>
+                            <td>@(snapshot.IsValid ? "有效" : "无效")</td>
+                            <td>
+                                @if (snapshot.RunStatus is { } runStatus)
+                                {
+                                    <a asp-controller="Run" asp-action="Detail" asp-route-id="@snapshot.RunId" asp-permission="collect:run:detail">#@snapshot.RunId</a>
+                                    <status-badge value="@runStatus" />
+                                }
+                                else
+                                {
+                                    <span class="text-secondary">已清理</span>
+                                }
+                            </td>
+                            <td><a asp-action="Detail" asp-route-id="@snapshot.Id" asp-permission="collect:snapshot:detail" class="btn btn-sm">详情</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <partial name="_Pager" model="Model.Result" />
+    }
+</div>

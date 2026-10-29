@@ -1,5 +1,7 @@
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Suanpan.Core.Collect.Entities;
+using Suanpan.Core.Collect.Enums;
 using Suanpan.Data;
 using Suanpan.Services.Collect.Snapshots;
 using Suanpan.Services.Collect.Snapshots.Models;
@@ -58,6 +60,50 @@ public class SnapshotServiceTests(PostgresFixture postgres)
         Assert.NotNull(Assert.Single(changed));
         Assert.Equal(2, await db.Snapshots.CountAsync(s => s.SourceId == SourceId && s.RequestKey == key, Ct));
     }
+
+    /// <summary>
+    /// FR-004 主流程第 1、2 步：按任务、所属运行记录的状态、是否有效筛选，按请求时间倒序，带数据源和任务的名称；
+    /// 详情带原始内容和所属运行记录
+    /// </summary>
+    [Fact]
+    public async Task Query_FiltersByTaskRunStatusAndValidity()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var service = Service(db);
+        var source = await TestData.AddDataSourceAsync(db, Ct);
+        var task = await TestData.AddCollectTaskAsync(db, Ct, source.Id);
+        var succeeded = await AddRunAsync(db, task, CollectRunStatus.Succeeded);
+        var failed = await AddRunAsync(db, task, CollectRunStatus.Failed);
+        var body = Encoding.UTF8.GetBytes($"内容 {Guid.NewGuid()}");
+        var first = await service.SaveAsync(TaskBatch(succeeded, task, body, body), skipUnchanged: false, Ct);
+        var second = await service.SaveAsync(TaskBatch(failed, task, body), skipUnchanged: false, Ct);
+        await service.MarkInvalidAsync([first[1]!.Value], "拦截页", Ct);
+
+        var all = (await service.QueryAsync(new SnapshotQuery(TaskId: task.Id), Ct)).Items;
+        var ofFailedRuns = (await service.QueryAsync(new SnapshotQuery(TaskId: task.Id, RunStatus: CollectRunStatus.Failed), Ct)).Items;
+        var invalid = (await service.QueryAsync(new SnapshotQuery(TaskId: task.Id, IsValid: false), Ct)).Items;
+        var detail = await service.GetAsync(first[0]!.Value, Ct);
+
+        Assert.Equal([second[0], first[1], first[0]], all.Select(r => (long?)r.Id));
+        Assert.Equal((source.Name, task.Name, (CollectRunStatus?)CollectRunStatus.Failed), (all[0].SourceName, all[0].TaskName, all[0].RunStatus));
+        Assert.Equal([second[0]!.Value], ofFailedRuns.Select(r => r.Id));
+        Assert.Equal([first[1]!.Value], invalid.Select(r => r.Id));
+        Assert.Equal(body, detail!.Content);
+        Assert.Equal(succeeded.Id, detail.Run!.Id);
+    }
+
+    private static async Task<CollectRun> AddRunAsync(SuanpanDbContext db, CollectTask task, CollectRunStatus status)
+    {
+        var run = new CollectRun { TaskId = task.Id, SourceId = task.SourceId, Trigger = CollectRunTrigger.Manual, Status = status, QueuedAt = FetchedAt };
+        db.CollectRuns.Add(run);
+        await db.SaveChangesAsync(Ct);
+        return run;
+    }
+
+    /// <summary>运行记录第 1 次请求的响应，每个响应一个随机的请求标识</summary>
+    private static SnapshotBatch TaskBatch(CollectRun run, CollectTask task, params byte[][] bodies) => new(
+        run.Id, 1, task.Id, task.SourceId,
+        bodies.Select((body, i) => new SnapshotInput($"https://example.test/{run.Id}/{i}", TestData.Unique("key"), 200, "text/plain", body, FetchedAt)).ToList());
 
     private static SnapshotService Service(SuanpanDbContext db) => new(db, new PostgresSnapshotContentStore(db, new FixedTimeProvider(FetchedAt)));
 

@@ -44,6 +44,7 @@ public sealed class CollectExecutor(
     IEnumerable<ICollectIngestor> ingestors,
     ISnapshotService snapshots,
     IAlertService alerts,
+    CollectRunWriter writer,
     TimeProvider timeProvider,
     ILogger<CollectExecutor> logger)
 {
@@ -52,19 +53,19 @@ public sealed class CollectExecutor(
 
     private static readonly TimeSpan TaskLockWait = TimeSpan.FromSeconds(10);
 
-    private const int MaxErrorMessageLength = 2000;
-
-    /// <summary>运行记录的 parse_output 最多存这么多条记录（采集设计 §2.1）</summary>
-    private const int MaxParseOutputRecords = 1000;
-
-    private static readonly JsonSerializerOptions ParseOutputJsonOptions = new(JsonSerializerDefaults.Web);
-
     public async Task ExecuteAsync(CollectRunCommand command, CancellationToken ct)
     {
         var run = await db.CollectRuns.AsNoTracking().FirstOrDefaultAsync(r => r.Id == command.RunId, ct);
         if (run is null || !IsExpected(run, command.Attempt))
         {
             logger.LogInformation("运行记录 {RunId} 的第 {Attempt} 次请求已经处理过或记录不存在，忽略这条指令", command.RunId, command.Attempt);
+            return;
+        }
+
+        if (run.Trigger == CollectRunTrigger.Reparse)
+        {
+            // 重新解析只由 ReparseCommand 执行（采集设计 §5.6），不发请求
+            logger.LogWarning("运行记录 {RunId} 是重新解析，忽略 CollectRunCommand", run.Id);
             return;
         }
 
@@ -133,8 +134,10 @@ public sealed class CollectExecutor(
         await using var handle = await distributedLock.AcquireAsync($"collect:task:{run.TaskId}", TaskLockExpiry, TaskLockWait, ct)
             ?? throw new InvalidOperationException($"采集任务 {run.TaskId} 的锁一直被占用，稍后重试这条指令");
 
+        // 重新解析不发请求，不计入同一任务的并发（采集设计 §4.3 实现、§5.6）
         var busy = await db.CollectRuns.AsNoTracking()
-            .AnyAsync(r => r.TaskId == run.TaskId && r.Id != run.Id && r.Status == CollectRunStatus.Running, ct);
+            .AnyAsync(r => r.TaskId == run.TaskId && r.Id != run.Id && r.Status == CollectRunStatus.Running
+                && r.Trigger != CollectRunTrigger.Reparse, ct);
         if (busy)
         {
             await UpdateRunAsync(run.Id, r => r.Status == CollectRunStatus.Queued,
@@ -274,7 +277,7 @@ public sealed class CollectExecutor(
             return;
         }
 
-        var parseOutput = ParseOutputJson(runId, parsed.Records);
+        var parseOutput = writer.ParseOutputJson(runId, parsed.Records);
 
         // 6. 入库：带上快照 id，入库服务据此记下来源快照（BR-045）
         IngestResult ingested;
@@ -334,22 +337,6 @@ public sealed class CollectExecutor(
         return ids.Select(id => id ?? throw new InvalidOperationException("快照服务没有返回快照 id")).ToList();
     }
 
-    /// <summary>
-    /// 解析器输出的记录（最多前 1000 条）存进运行记录，快照详情中"当时的解析结果"用（FR-004 主流程第 2 步）；序列化失败时不存
-    /// </summary>
-    private string? ParseOutputJson(long runId, IReadOnlyList<object> records)
-    {
-        try
-        {
-            return JsonSerializer.Serialize(new { total = records.Count, records = records.Take(MaxParseOutputRecords) }, ParseOutputJsonOptions);
-        }
-        catch (Exception ex) when (ex is NotSupportedException or JsonException or InvalidOperationException)
-        {
-            logger.LogWarning(ex, "运行记录 {RunId} 的解析结果无法序列化，不保存", runId);
-            return null;
-        }
-    }
-
     /// <summary>地址只保留路径：有的数据源把凭据放在查询串里</summary>
     private static string PathOnly(Uri url) => url.GetLeftPart(UriPartial.Path);
 
@@ -395,46 +382,10 @@ public sealed class CollectExecutor(
     }
 
     private void End(CollectRun run, CollectRunStatus status, string? errorCode, string? errorMessage)
-    {
-        run.Status = status;
-        run.EndedAt = Now;
-        run.NextAttemptAt = null;
-        run.ErrorCode = errorCode;
-        run.ErrorMessage = errorMessage is { Length: > MaxErrorMessageLength } ? errorMessage[..MaxErrorMessageLength] : errorMessage;
-    }
+        => writer.End(run, status, errorCode, errorMessage);
 
-    /// <summary>
-    /// 在行锁内读出运行记录，满足条件时修改并保存（后端约定 §6.4）：与重复投递的指令、执行中断的回收互斥。
-    /// 状态只能按 CollectRunStatusRule 流转
-    /// </summary>
-    private async Task<bool> UpdateRunAsync(long runId, Func<CollectRun, bool> guard, Action<CollectRun> change, CancellationToken ct)
-    {
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        try
-        {
-            await db.Database.ExecuteSqlAsync($"SELECT 1 FROM col_run WHERE id = {runId} FOR UPDATE", ct);
-            var run = await db.CollectRuns.FirstOrDefaultAsync(r => r.Id == runId, ct);
-            if (run is null || !guard(run))
-            {
-                return false;
-            }
-
-            var from = run.Status;
-            change(run);
-            if (run.Status != from && !CollectRunStatusRule.CanTransition(from, run.Status))
-            {
-                throw new InvalidOperationException($"运行记录 {runId} 的状态不能从 {from} 改为 {run.Status}");
-            }
-
-            await db.SaveChangesAsync(ct);
-            await transaction.CommitAsync(ct);
-            return true;
-        }
-        finally
-        {
-            db.ChangeTracker.Clear();
-        }
-    }
+    private Task<bool> UpdateRunAsync(long runId, Func<CollectRun, bool> guard, Action<CollectRun> change, CancellationToken ct)
+        => writer.UpdateAsync(runId, guard, change, ct);
 
     /// <summary>延时下发下一次请求；发布失败时记录停在"运行中"，由执行中断的回收记为失败（ERR-COL-009）</summary>
     private async Task PublishRetryAsync(long runId, int attempt, TimeSpan delay, CancellationToken ct)

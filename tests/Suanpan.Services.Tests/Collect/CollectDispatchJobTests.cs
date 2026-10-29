@@ -106,12 +106,16 @@ public class CollectDispatchJobTests(PostgresFixture postgres)
         var waiting = Run(task, CollectRunStatus.Queued, new DateTime(2026, 10, 27, 11, 57, 20, DateTimeKind.Utc));
         var stale = Run(task, CollectRunStatus.Queued, new DateTime(2026, 10, 27, 11, 50, 0, DateTimeKind.Utc));
         var running = Run(task, CollectRunStatus.Running, new DateTime(2026, 10, 27, 11, 40, 0, DateTimeKind.Utc));
-        db.CollectRuns.AddRange(recent, waiting, stale, running);
+        var waitingReparse = Run(task, CollectRunStatus.Queued, new DateTime(2026, 10, 27, 11, 57, 30, DateTimeKind.Utc));
+        waitingReparse.Trigger = CollectRunTrigger.Reparse;
+        db.CollectRuns.AddRange(recent, waiting, stale, running, waitingReparse);
         await db.SaveChangesAsync(Ct);
 
         await Create(db).RunAsync(Ct);
 
         Assert.Equal([waiting.Id], _bus.Published.OfType<CollectRunCommand>().Select(c => c.RunId));
+        // 重新解析的记录重新下发 ReparseCommand（采集设计 §5.6）
+        Assert.Equal([waitingReparse.Id], _bus.Published.OfType<ReparseCommand>().Select(c => c.RunId));
         var statuses = await db.CollectRuns.AsNoTracking().Where(r => r.TaskId == task.Id)
             .ToDictionaryAsync(r => r.Id, r => (r.Status, r.ErrorCode), Ct);
         Assert.Equal((CollectRunStatus.Failed, CollectErrorCodes.DispatchFailed), statuses[stale.Id]);
@@ -122,7 +126,7 @@ public class CollectDispatchJobTests(PostgresFixture postgres)
 
     private CollectDispatchJob Create(SuanpanDbContext db) => new(
         db,
-        new CollectRunService(db, _bus, _clock, NullLogger<CollectRunService>.Instance),
+        new CollectRunService(db, new StubParserCatalog(), _bus, _clock, NullLogger<CollectRunService>.Instance),
         new StubDistributedLock(),
         _clock,
         NullLogger<CollectDispatchJob>.Instance);

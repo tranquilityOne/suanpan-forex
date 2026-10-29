@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.35 |
+| 版本 | v1.36 |
 | 日期 | 2026-10-29 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -393,7 +393,7 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | 消息 | 类型 | 发送方 | 接收方 | 用途 |
 |---|---|---|---|---|
 | `CollectRunCommand` | 指令 | Job、Crm、Collector | Collector | 执行一条采集运行记录：定时到点、手动触发都先由发送方创建运行记录再下发；Collector 重试时延时发给自己（PRD FR-002，采集设计 §4、§7.3） |
-| `ReparseCommand` | 指令 | Crm | Collector | 重新解析快照（PRD FR-004） |
+| `ReparseCommand` | 指令 | Crm、Job（重新下发） | Collector | 执行一条重新解析的运行记录：Crm 先创建运行记录（解析器和快照 id 记在运行记录中）再下发；排队过久时 Job 的调度分发重新下发（PRD FR-004，采集设计 §5.6、§7.3） |
 | `EventRescheduledEvent` | 事件 | Collector | Job、Portal | 日历事件改期（EV-003）：预告快讯（PRD FR-015）、前台缓存刷新（PRD FR-023），接收方随这两项实现（日历设计 §6.3） |
 | `EventReleasedEvent` | 事件 | Collector、Crm | Job | 公布值入库（EV-004），触发快讯生成 |
 | `EventHeldForReviewEvent` | 事件 | Collector | Job | 事件进入待复核（EV-005），触发告警 |
@@ -642,3 +642,4 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | v1.33 | 2026-10-29 | vivo.li / Claude | §8.2 消息清单增加 `EventRescheduledEvent`（EV-003，日历设计 §6.3，FR-007.2 实施） |
 | v1.34 | 2026-10-29 | vivo.li / Claude | §12 配置键 `Collect:UserAgent` 改为 `Collect:ContactEmail`，联系邮箱作为部署配置，Job 也读取（采集设计 §11 第 7 项） |
 | v1.35 | 2026-10-29 | vivo.li / Claude | §9 同一机构的多个数据源各一个适配器，适配器标识的写法（ENG-009.1 实施） |
+| v1.36 | 2026-10-29 | vivo.li / Claude | §8.2 `ReparseCommand` 的发送方加上 Job（重新下发），写明内容（FR-004.2 实施） |

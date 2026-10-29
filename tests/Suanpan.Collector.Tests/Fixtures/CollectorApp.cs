@@ -119,6 +119,31 @@ public sealed class CollectorApp(string connectionString, string redis, string r
     public Task PublishAsync(long runId, int attempt = 1)
         => Services.GetRequiredService<IEventBus>().PublishAsync(new CollectRunCommand(runId, attempt));
 
+    /// <summary>
+    /// 后台发起重新解析的效果：创建排队的重新解析记录并下发 ReparseCommand。直接写库，不经过 ICollectRunService（它按解析器目录校验，
+    /// 目录中没有测试用的解析器）；发起时的校验在 Suanpan.Services.Tests 中测试
+    /// </summary>
+    public async Task<long> ReparseAsync(CollectTask task, params long[] snapshotIds)
+    {
+        var run = new CollectRun
+        {
+            TaskId = task.Id,
+            SourceId = task.SourceId,
+            Trigger = CollectRunTrigger.Reparse,
+            TriggeredBy = "tester",
+            Status = CollectRunStatus.Queued,
+            QueuedAt = DateTime.UnixEpoch,
+            Reparse = new CollectRunReparse { ParserKey = task.ParserKey, SnapshotIds = [.. snapshotIds.Order()] },
+        };
+        await ExecuteAsync(async db =>
+        {
+            db.CollectRuns.Add(run);
+            await db.SaveChangesAsync();
+        });
+        await Services.GetRequiredService<IEventBus>().PublishAsync(new ReparseCommand(run.Id));
+        return run.Id;
+    }
+
     public async Task<CollectRun> GetRunAsync(long runId)
     {
         await using var scope = Services.CreateAsyncScope();

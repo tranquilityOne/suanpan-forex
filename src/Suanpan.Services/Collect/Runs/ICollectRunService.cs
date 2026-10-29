@@ -26,8 +26,18 @@ public interface ICollectRunService
     Task<EnqueueResult> TriggerAsync(long taskId, string triggeredBy, bool anyTargetType, CancellationToken ct = default);
 
     /// <summary>
-    /// 发布第 1 次请求的指令。EnqueueAsync 创建后调用；调度分发重新下发排队过久的记录时也调用（采集设计 §4.2）。
-    /// 失败时记警告日志并返回 false，不抛出
+    /// 发布开始执行的指令：重新解析发 ReparseCommand，其他发第 1 次请求的 CollectRunCommand。创建运行记录后调用；
+    /// 调度分发重新下发排队过久的记录时也调用（采集设计 §4.2）。失败时记警告日志并返回 false，不抛出
     /// </summary>
-    Task<bool> TryPublishAsync(long runId, CancellationToken ct = default);
+    Task<bool> TryPublishAsync(long runId, CollectRunTrigger trigger, CancellationToken ct = default);
+
+    /// <summary>重新解析会处理的快照数（FR-004 主流程第 3 步），发起前给操作者确认</summary>
+    Task<int> CountForReparseAsync(ReparseSelection selection, CancellationToken ct = default);
+
+    /// <summary>
+    /// 发起重新解析（采集设计 §5.6）：按 <see cref="Core.Collect.Rules.ReparseRule"/> 校验解析器和快照数（BR-024，ERR-PARSE-004），
+    /// 创建"排队"的运行记录（触发方式"重新解析"，记下解析器和快照 id），提交后发布 ReparseCommand。
+    /// 不发请求，所以不要求任务和数据源启用
+    /// </summary>
+    Task<EnqueueResult> ReparseAsync(ReparseSelection selection, string parserKey, string triggeredBy, CancellationToken ct = default);
 }

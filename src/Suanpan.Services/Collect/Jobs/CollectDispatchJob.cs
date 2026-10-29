@@ -106,15 +106,15 @@ public sealed class CollectDispatchJob(
         var minute = new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMinute, DateTimeKind.Utc);
         var to = minute - RepublishAfter;
         var from = to - TimeSpan.FromMinutes(1);
-        var ids = await db.CollectRuns.AsNoTracking()
+        var queued = await db.CollectRuns.AsNoTracking()
             .Where(r => r.Status == CollectRunStatus.Queued && r.QueuedAt >= from && r.QueuedAt < to)
             .OrderBy(r => r.Id)
-            .Select(r => r.Id)
+            .Select(r => new { r.Id, r.Trigger })
             .ToListAsync(ct);
 
-        foreach (var id in ids)
+        foreach (var (id, trigger) in queued.Select(r => (r.Id, r.Trigger)))
         {
-            if (await runs.TryPublishAsync(id, ct))
+            if (await runs.TryPublishAsync(id, trigger, ct))
             {
                 logger.LogWarning("运行记录 {RunId} 排队超过 {Minutes} 分钟仍未开始，已重新下发", id, RepublishAfter.TotalMinutes);
             }

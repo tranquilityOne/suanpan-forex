@@ -1,0 +1,56 @@
+@model SnapshotReparseViewModel
+@*
+    重新解析的表单页（采集设计 §5.6、§8.1）：范围（筛选条件 + 勾选的快照）放在隐藏字段中，
+    选择解析器后二次确认（提示快照数）。超过 5000 个或没有快照时不能提交（BR-024，ERR-PARSE-004）
+*@
+@{
+    ViewData["Title"] = "重新解析快照";
+    var scope = Model.Ids.Count > 0 ? $"勾选的快照中符合筛选条件的 {Model.Count} 个" : $"全部筛选结果，共 {Model.Count} 个";
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">重新解析快照</h2>
+    <div class="text-secondary">用当前部署的解析器重新解析已保存的快照，不重新请求数据源；结果走正常的入库流程，不覆盖锁定的字段（BR-023）。</div>
+</div>
+
+<div class="card" style="max-width: 44rem">
+    <div class="card-body border-bottom">
+        <dl class="row mb-0">
+            <dt class="col-sm-3">任务</dt>
+            <dd class="col-sm-9">@Model.TaskName</dd>
+            <dt class="col-sm-3">范围</dt>
+            <dd class="col-sm-9 mb-0">@scope（无效的快照会跳过）</dd>
+        </dl>
+    </div>
+    <form asp-action="Reparse" method="post" class="card-body"
+          data-confirm="@($"对 {Model.Count} 个快照重新解析？会生成一条新的运行记录，入库时不覆盖锁定的字段。")"
+          data-confirm-button="重新解析">
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        @if (Model.Blocked is not null)
+        {
+            <div class="alert alert-warning">@Model.Blocked</div>
+        }
+        @foreach (var (name, value) in Model.Filter.ToRouteValues(prefix: "Filter."))
+        {
+            <input type="hidden" name="@name" value="@value" />
+        }
+        @foreach (var id in Model.Ids)
+        {
+            <input type="hidden" name="Ids" value="@id" />
+        }
+        <div class="mb-3">
+            <label asp-for="ParserKey" class="form-label required"></label>
+            <select asp-for="ParserKey" asp-items="Model.ParserOptions" class="form-select"></select>
+            <div class="form-text">默认是任务的解析器；只能选同一适配器、目标数据类型相同的解析器</div>
+            <span asp-validation-for="ParserKey"></span>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary" disabled="@(Model.Blocked is not null)">重新解析</button>
+            <a asp-action="Index" asp-all-route-data="@Model.Filter.ToRouteValues()" class="btn">返回</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

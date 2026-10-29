@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Suanpan.Core.Collect.Entities;
 using Suanpan.Data;
 using Suanpan.Services.Collect.Snapshots.Models;
+using Suanpan.Services.Common.Querying;
+using Suanpan.Shared.Paging;
 
 namespace Suanpan.Services.Collect.Snapshots;
 
@@ -15,6 +17,41 @@ public sealed class SnapshotService(SuanpanDbContext db, ISnapshotContentStore c
     private const int MaxContentTypeLength = 128;
 
     private const int MaxInvalidReasonLength = 500;
+
+    public Task<PagedResult<SnapshotRow>> QueryAsync(SnapshotQuery query, CancellationToken ct = default)
+        => (from s in db.Snapshots.AsNoTracking().Filter(db, query)
+            join source in db.DataSources on s.SourceId equals source.Id into sources
+            from source in sources.DefaultIfEmpty()
+            join task in db.CollectTasks on s.TaskId equals task.Id into tasks
+            from task in tasks.DefaultIfEmpty()
+            join run in db.CollectRuns on s.RunId equals run.Id into runs
+            from run in runs.DefaultIfEmpty()
+            orderby s.Id descending
+            select new SnapshotRow(
+                s.Id, s.FetchedAt, s.SourceId, source == null ? null : source.Name, s.TaskId, task == null ? null : task.Name,
+                s.Url, s.HttpStatus, s.Size, s.Unchanged, s.IsValid, s.RunId, s.Attempt, s.Seq, run == null ? null : run.Status))
+            .ToPagedResultAsync(query.Page, query.PageSize, ct);
+
+    public async Task<SnapshotDetail?> GetAsync(long id, CancellationToken ct = default)
+    {
+        var item = await (
+            from s in db.Snapshots.AsNoTracking()
+            where s.Id == id
+            join source in db.DataSources on s.SourceId equals source.Id into sources
+            from source in sources.DefaultIfEmpty()
+            join task in db.CollectTasks on s.TaskId equals task.Id into tasks
+            from task in tasks.DefaultIfEmpty()
+            select new { Snapshot = s, SourceName = source == null ? null : source.Name, TaskName = task == null ? null : task.Name })
+            .FirstOrDefaultAsync(ct);
+        if (item is null)
+        {
+            return null;
+        }
+
+        var run = await db.CollectRuns.AsNoTracking().FirstOrDefaultAsync(r => r.Id == item.Snapshot.RunId, ct);
+        var content = await contentStore.GetAsync(item.Snapshot.ContentHash, ct);
+        return new SnapshotDetail(item.Snapshot, item.SourceName, item.TaskName, run, content);
+    }
 
     public async Task<IReadOnlyList<long?>> SaveAsync(SnapshotBatch batch, bool skipUnchanged, CancellationToken ct = default)
     {

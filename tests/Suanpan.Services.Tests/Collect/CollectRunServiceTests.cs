@@ -4,7 +4,9 @@ using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Collect.Enums;
 using Suanpan.Data;
 using Suanpan.Services.Collect.Runs;
+using Suanpan.Core.Collect.Rules;
 using Suanpan.Services.Collect.Runs.Models;
+using Suanpan.Services.Collect.Snapshots.Models;
 using Suanpan.Services.Tests.Fixtures;
 using Suanpan.Shared.Messages.Collect;
 using Xunit;
@@ -140,7 +142,63 @@ public class CollectRunServiceTests(PostgresFixture postgres)
         Assert.Equal([(1, 503, 1500), (2, (int?)null, 0)], detail.Run.Attempts.Select(a => ((int)a.No, a.HttpStatus, a.DeferredMs)));
     }
 
-    private CollectRunService Create(SuanpanDbContext db) => new(db, _bus, _clock, NullLogger<CollectRunService>.Instance);
+    /// <summary>
+    /// 采集设计 §5.6：重新解析只取选定任务的快照（勾选了别的任务的也不算），创建"排队"的运行记录，记下解析器和快照 id，
+    /// 提交后发布 ReparseCommand；不要求任务启用
+    /// </summary>
+    [Fact]
+    public async Task Reparse_QueuesRunWithTaskSnapshotsAndPublishesCommand()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var service = Create(db);
+        var source = await TestData.AddDataSourceAsync(db, Ct);
+        var task = await TestData.AddCollectTaskAsync(db, Ct, source.Id, enabled: false);
+        var other = await TestData.AddCollectTaskAsync(db, Ct, source.Id);
+        var (mine1, mine2, others) = (Snapshot(task), Snapshot(task), Snapshot(other));
+        db.Snapshots.AddRange(mine1, mine2, others);
+        await db.SaveChangesAsync(Ct);
+        var selection = new ReparseSelection(new SnapshotQuery(TaskId: task.Id), [mine2.Id, mine1.Id, others.Id]);
+
+        var count = await service.CountForReparseAsync(selection, Ct);
+        var result = await service.ReparseAsync(selection, StubParserCatalog.Schedule.Key, "engineer1", Ct);
+
+        Assert.Equal((2, true, true), (count, result.Success, result.Published));
+        var run = await db.CollectRuns.AsNoTracking().SingleAsync(r => r.TaskId == task.Id, Ct);
+        Assert.Equal(
+            (CollectRunTrigger.Reparse, CollectRunStatus.Queued, "engineer1", StubParserCatalog.Schedule.Key),
+            (run.Trigger, run.Status, run.TriggeredBy, run.Reparse!.ParserKey));
+        Assert.Equal([mine1.Id, mine2.Id], run.Reparse.SnapshotIds);
+        Assert.Equal(run.Id, Assert.IsType<ReparseCommand>(Assert.Single(_bus.Published)).RunId);
+    }
+
+    /// <summary>FR-004 主流程第 3 步、BR-024：目标数据类型不同的解析器、超过 5000 个快照都拒绝，不创建运行记录</summary>
+    [Fact]
+    public async Task Reparse_RejectsOtherTargetTypeParserAndTooManySnapshots()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var service = Create(db);
+        var source = await TestData.AddDataSourceAsync(db, Ct);
+        var task = await TestData.AddCollectTaskAsync(db, Ct, source.Id);
+        db.Snapshots.AddRange(Enumerable.Range(0, ReparseRule.MaxSnapshots + 1).Select(_ => Snapshot(task)));
+        await db.SaveChangesAsync(Ct);
+        var all = new ReparseSelection(new SnapshotQuery(TaskId: task.Id), []);
+
+        var otherTargetType = await service.ReparseAsync(all, StubParserCatalog.Release.Key, "engineer1", Ct);
+        var tooMany = await service.ReparseAsync(all, StubParserCatalog.Schedule.Key, "engineer1", Ct);
+
+        Assert.Equal((false, false), (otherTargetType.Success, tooMany.Success));
+        Assert.False(await db.CollectRuns.AnyAsync(r => r.TaskId == task.Id, Ct));
+        Assert.Empty(_bus.Published);
+    }
+
+    /// <summary>快照记录不建外键，内容哈希随意</summary>
+    private static Snapshot Snapshot(CollectTask task) => new()
+    {
+        RunId = 900001, Attempt = 1, SourceId = task.SourceId, TaskId = task.Id, Url = "https://example.test/x", RequestKey = TestData.Unique("key"),
+        FetchedAt = new DateTime(2026, 10, 26, 8, 0, 0, DateTimeKind.Utc), HttpStatus = 200, ContentHash = new string('0', 64),
+    };
+
+    private CollectRunService Create(SuanpanDbContext db) => new(db, new StubParserCatalog(), _bus, _clock, NullLogger<CollectRunService>.Instance);
 
     private static CollectRun Run(CollectTask task, CollectRunStatus status, DateTime queuedAt) => new()
     {

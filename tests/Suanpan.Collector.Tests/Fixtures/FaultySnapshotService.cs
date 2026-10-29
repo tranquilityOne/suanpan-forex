@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Suanpan.Services.Collect.Snapshots;
 using Suanpan.Services.Collect.Snapshots.Models;
+using Suanpan.Shared.Paging;
 
 namespace Suanpan.Collector.Tests.Fixtures;
 
@@ -27,4 +28,8 @@ public sealed class FaultySnapshotService(SnapshotService inner, SnapshotFaults 
 
     public Task MarkReferencedAsync(IReadOnlyCollection<long> snapshotIds, CancellationToken ct = default)
         => inner.MarkReferencedAsync(snapshotIds, ct);
+
+    public Task<PagedResult<SnapshotRow>> QueryAsync(SnapshotQuery query, CancellationToken ct = default) => inner.QueryAsync(query, ct);
+
+    public Task<SnapshotDetail?> GetAsync(long id, CancellationToken ct = default) => inner.GetAsync(id, ct);
 }

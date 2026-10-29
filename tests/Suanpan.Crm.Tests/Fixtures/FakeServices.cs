@@ -10,6 +10,8 @@ using Suanpan.Services.Calendar.Unmatched;
 using Suanpan.Services.Calendar.Unmatched.Models;
 using Suanpan.Services.Collect.Runs;
 using Suanpan.Services.Collect.Runs.Models;
+using Suanpan.Services.Collect.Snapshots;
+using Suanpan.Services.Collect.Snapshots.Models;
 using Suanpan.Services.Collect.Sources;
 using Suanpan.Services.Collect.Sources.Models;
 using Suanpan.Services.Reference.Indicators;
@@ -228,7 +230,37 @@ public sealed class FakeCollectRunService : ICollectRunService
         long taskId, CollectRunTrigger trigger, DateTime? scheduledFor, string? triggeredBy, CancellationToken ct = default)
         => throw new NotSupportedException();
 
-    public Task<bool> TryPublishAsync(long runId, CancellationToken ct = default) => throw new NotSupportedException();
+    public Task<bool> TryPublishAsync(long runId, CollectRunTrigger trigger, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public List<(ReparseSelection Selection, string ParserKey, string TriggeredBy)> Reparsed { get; } = [];
+
+    public EnqueueResult ReparseResult { get; set; } = new(true, null, RunId: 43, Published: true);
+
+    public int ReparseCount { get; set; }
+
+    public Task<int> CountForReparseAsync(ReparseSelection selection, CancellationToken ct = default) => Task.FromResult(ReparseCount);
+
+    public Task<EnqueueResult> ReparseAsync(ReparseSelection selection, string parserKey, string triggeredBy, CancellationToken ct = default)
+    {
+        Reparsed.Add((selection, parserKey, triggeredBy));
+        return Task.FromResult(ReparseResult);
+    }
+}
+
+/// <summary>快照详情按 id 返回预设的记录；保存、标记等采集用的方法不在后台调用</summary>
+public sealed class FakeSnapshotService : ISnapshotService
+{
+    public Dictionary<long, SnapshotDetail> Details { get; } = [];
+
+    public Task<SnapshotDetail?> GetAsync(long id, CancellationToken ct = default) => Task.FromResult(Details.GetValueOrDefault(id));
+
+    public Task<PagedResult<SnapshotRow>> QueryAsync(SnapshotQuery query, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<IReadOnlyList<long?>> SaveAsync(SnapshotBatch batch, bool skipUnchanged, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task MarkInvalidAsync(IReadOnlyCollection<long> snapshotIds, string reason, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task MarkReferencedAsync(IReadOnlyCollection<long> snapshotIds, CancellationToken ct = default) => throw new NotSupportedException();
 }
 
 /// <summary>待确认事件按 id 返回预设的行；取消、保留时记下参数，返回预设的结果</summary>

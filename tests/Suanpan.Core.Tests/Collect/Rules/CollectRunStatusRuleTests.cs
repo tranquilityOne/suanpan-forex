@@ -63,6 +63,21 @@ public class CollectRunStatusRuleTests
         Assert.Equal(expected, CollectRunStatusRule.IsInterrupted(run, Timeout, Now));
     }
 
+    /// <summary>ERR-COL-009、采集设计 §5.6：重新解析按心跳判断，超过 5 分钟没有更新算中断；还没有心跳时用开始时间。不看请求超时</summary>
+    [Theory]
+    [InlineData(-299, -3600, false)]
+    [InlineData(-301, -3600, true)]
+    [InlineData(null, -299, false)]
+    [InlineData(null, -301, true)]
+    public void IsInterrupted_ReparseByHeartbeat(int? heartbeatOffsetSeconds, int startedOffsetSeconds, bool expected)
+    {
+        var run = Running(startedAt: Now.AddSeconds(startedOffsetSeconds));
+        run.Trigger = CollectRunTrigger.Reparse;
+        run.HeartbeatAt = heartbeatOffsetSeconds is { } offset ? Now.AddSeconds(offset) : null;
+
+        Assert.Equal(expected, CollectRunStatusRule.IsInterrupted(run, Timeout, Now));
+    }
+
     [Fact]
     public void IsInterrupted_OnlyRunningRuns()
     {

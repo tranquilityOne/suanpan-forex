@@ -51,13 +51,16 @@ public sealed class StaleRunRecovery(IServiceScopeFactory scopeFactory, TimeProv
         foreach (var item in running.Where(i => CollectRunStatusRule.IsInterrupted(i.Run, TimeSpan.FromSeconds(i.TimeoutSeconds), now)))
         {
             var run = item.Run;
-            var message = run.NextAttemptAt is not null
-                ? "执行中断：等待重试时没有收到下一次请求的指令"
-                : "执行中断：请求开始后没有结束，可能是采集服务中途退出";
+            var message = run.Trigger == CollectRunTrigger.Reparse
+                ? $"执行中断：重新解析超过 {CollectRunStatusRule.InterruptGrace.TotalMinutes:0} 分钟没有心跳，可能是采集服务中途退出"
+                : run.NextAttemptAt is not null
+                    ? "执行中断：等待重试时没有收到下一次请求的指令"
+                    : "执行中断：请求开始后没有结束，可能是采集服务中途退出";
 
-            // 条件更新：执行器在这期间写完了结果（状态或请求次数变了）就不再改
+            // 条件更新：执行器在这期间写完了结果、发起了下一次请求或写了心跳，就不再改
             recovered += await db.CollectRuns
-                .Where(r => r.Id == run.Id && r.Status == CollectRunStatus.Running && r.AttemptCount == run.AttemptCount)
+                .Where(r => r.Id == run.Id && r.Status == CollectRunStatus.Running && r.AttemptCount == run.AttemptCount
+                    && r.HeartbeatAt == run.HeartbeatAt)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(r => r.Status, CollectRunStatus.Failed)
                     .SetProperty(r => r.EndedAt, now)

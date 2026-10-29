@@ -56,13 +56,18 @@ public sealed class FakeIngestor : ICollectIngestor
 {
     public const string LockedRecord = "locked";
 
+    /// <summary>每条运行记录最近一次收到的请求</summary>
     public ConcurrentDictionary<long, IngestRequest> Requests { get; } = new();
+
+    /// <summary>每条运行记录收到的全部请求，按收到的顺序（重新解析一组快照入库一次）</summary>
+    public ConcurrentDictionary<long, ConcurrentQueue<IngestRequest>> AllRequests { get; } = new();
 
     public CollectTargetType TargetType => CollectTargetType.Calendar;
 
     public Task<IngestResult> IngestAsync(IngestRequest request, CancellationToken ct)
     {
         Requests[request.RunId] = request;
+        AllRequests.GetOrAdd(request.RunId, _ => new ConcurrentQueue<IngestRequest>()).Enqueue(request);
         var locked = request.Records.Count(r => Equals(r, LockedRecord));
         return Task.FromResult(new IngestResult(request.Records.Count - locked, 0, 0, 0, locked));
     }
