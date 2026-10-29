@@ -10,6 +10,7 @@ x-app-environment: &app-environment
   SUANPAN__ConnectionStrings__Main: "Host=postgres;Port=5432;Database=${SUANPAN_DB:-suanpan};Username=suanpan_app;Password=${SUANPAN_APP_PASSWORD}"
   SUANPAN__Redis__Configuration: "redis:6379,password=${REDIS_PASSWORD}"
   SUANPAN__RabbitMq__Uri: "amqp://${RABBITMQ_USER:-suanpan}:${RABBITMQ_PASSWORD}@rabbitmq:5672/suanpan"
+  SUANPAN__Collect__ContactEmail: ${SUANPAN_CONTACT_EMAIL:-}
 
 x-app-depends-on: &app-depends-on
   postgres:

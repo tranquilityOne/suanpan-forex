@@ -27,6 +27,9 @@ namespace Suanpan.Collector.Tests.Fixtures;
 /// </summary>
 public sealed class CollectorApp(string connectionString, string redis, string rabbitMq, StubHttp http) : WebApplicationFactory<Program>
 {
+    /// <summary>配置 Collect:ContactEmail 的值，采集请求的 User-Agent 中应带上它</summary>
+    public const string ContactEmail = "collector-test@example.com";
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -35,6 +38,7 @@ public sealed class CollectorApp(string connectionString, string redis, string r
         builder.UseSetting("RabbitMq:Uri", rabbitMq);
         builder.UseSetting("RabbitMq:RetryDelaySeconds", "1");
         builder.UseSetting("Security:EncryptionKey", Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+        builder.UseSetting("Collect:ContactEmail", ContactEmail);
         builder.UseSetting("Logging:LogLevel:Microsoft.EntityFrameworkCore", "Warning");
 
         builder.ConfigureTestServices(services =>

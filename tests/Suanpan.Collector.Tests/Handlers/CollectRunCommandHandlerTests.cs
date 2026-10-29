@@ -19,7 +19,7 @@ public class CollectRunCommandHandlerTests(CollectorFixture fixture)
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
 
-    /// <summary>FR-002 验收第 2 条：手动触发后运行记录从"排队"变为"运行中"，结束后为成功；请求带项目的 User-Agent（BR-005）</summary>
+    /// <summary>FR-002 验收第 2 条：手动触发后运行记录从"排队"变为"运行中"，结束后为成功；请求的 User-Agent 带项目名和配置的联系邮箱（BR-005）</summary>
     [Fact]
     public async Task ManualRun_GoesRunningThenSucceeds()
     {
@@ -43,7 +43,7 @@ public class CollectRunCommandHandlerTests(CollectorFixture fixture)
         Assert.Equal((CollectRunStatus.Running, (short)1), (running.Status, running.AttemptCount));
         Assert.Equal((CollectRunStatus.Succeeded, 1), (finished.Status, finished.InsertedCount));
         Assert.Equal(200, Assert.Single(finished.Attempts).HttpStatus);
-        Assert.StartsWith("SuanpanForexBot/", Assert.Single(fixture.Http.Requests(host)).UserAgent);
+        Assert.Equal($"SuanpanForexBot/1.0 (+mailto:{CollectorApp.ContactEmail})", Assert.Single(fixture.Http.Requests(host)).UserAgent);
     }
 
     /// <summary>FR-002 验收第 3 条、BR-009：一直返回 500 时请求 4 次（第 1 次 + 重试 3 次）后记为失败，每次请求都有记录</summary>

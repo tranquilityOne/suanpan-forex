@@ -2,9 +2,9 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.13 |
+| 版本 | v0.14 |
 | 日期 | 2026-10-29 |
-| 状态 | FR-001、FR-002 部分已评审（2026-10-23，vivo.li；§11 第 7 项的联系邮箱待提供）；v0.11 新增的快照与重新解析（FR-004）已评审（2026-10-29，vivo.li：§11 第 14 ~ 20 项均按建议执行） |
+| 状态 | FR-001、FR-002 部分已评审（2026-10-23，vivo.li；§11 第 7 项的联系邮箱 2026-10-29 提供）；v0.11 新增的快照与重新解析（FR-004）已评审（2026-10-29，vivo.li：§11 第 14 ~ 20 项均按建议执行） |
 | 覆盖 | FR-001 数据源管理、FR-002 采集任务配置与调度、FR-004 原始快照与重新解析；盯盘（FR-003）只定接入位置 |
 | 依据 | data-hub PRD v1.0.0.22（FR-001、FR-002、FR-004、BR-001 ~ BR-012、BR-020 ~ BR-025、DEC-023、§8.1.2、§10.8、§13.1.2、DEC-012、DEC-016、DEC-017、DEC-020）；后端约定 v1.27（§1.2、§7、§8、§9、§12）；前端约定 v1.9；数据库变更约定；sys 设计（§6 权限、§7 操作日志）；基础数据设计（§2.1 指标与数据源的映射） |
 
@@ -358,7 +358,7 @@ Job 每天执行一次 `collect-snapshot-cleanup`（UTC 20:30，分布式锁 `co
 
 ### 5.4 HTTP 客户端
 
-- `Suanpan.Infrastructure/Http/` 注册采集用的命名 HttpClient（`AddSuanpanCollectHttp`，客户端名 `CollectHttp.ClientName`）：User-Agent 取配置 `Collect:UserAgent`（如 `SuanpanForexBot/1.0 (+mailto:联系邮箱)`，§11 第 7 项；邮箱确定之前用占位值 `SuanpanForexBot/1.0`，写在 Collector 的 `appsettings.json`），自动解压；跳转由 `SameHostRedirectHandler` 处理，只跟随同一主机内的跳转（最多 5 次），跳到别的域名时把跳转响应原样返回。依赖 `Microsoft.Extensions.Http`（PRD §13.2.4）。
+- `Suanpan.Infrastructure/Http/` 注册采集用的命名 HttpClient（`AddSuanpanCollectHttp`，客户端名 `CollectHttp.ClientName`）：User-Agent 为 `SuanpanForexBot/1.0 (+mailto:联系邮箱)`，联系邮箱取部署配置 `Collect:ContactEmail`，代码里不写（§11 第 7 项）；没配置时只有产品标识，由 `CollectHttpStartupCheck` 在启动时告警，不阻止启动；Crm（连通性测试）、Job、Collector 共用；自动解压；跳转由 `SameHostRedirectHandler` 处理，只跟随同一主机内的跳转（最多 5 次），跳到别的域名时把跳转响应原样返回。依赖 `Microsoft.Extensions.Http`（PRD §13.2.4）。
 - 超时不在 HttpClient 上设固定值，每次请求按数据源的 `timeout_seconds` 用 `CancellationTokenSource` 控制。
 - Crm 的连通性测试（§8.1）复用同一个客户端，超时固定 10 秒（PRD FR-001 异常流程），同样经过频率限制。
 
@@ -570,13 +570,13 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 | `collect:snapshot_retention_days` | 系统配置 | `180` | 快照保留天数（BR-022）；被引用的快照保留 365 天和它之中较长者（§4.6）；v0.11 新增 |
 
 系统配置项登记在 `CollectConfigKeys.Definitions`，由 `ConfigDefinitions.All` 汇总，系统配置页面的"数据采集"分组中可以修改（后端约定 §7）。
-| `Collect:UserAgent` | appsettings | `SuanpanForexBot/1.0`（占位值，联系邮箱确定后改为 `SuanpanForexBot/1.0 (+mailto:邮箱)`） | 采集请求的 User-Agent（BR-005），不涉密，写在 Collector 的 `appsettings.json`；请求头只能用 ASCII 字符 |
+| `Collect:ContactEmail` | 部署配置（本地 user-secrets，其他环境 `SUANPAN__Collect__ContactEmail`） | 空 | 采集请求 User-Agent 中的联系邮箱（BR-005），程序拼成 `SuanpanForexBot/1.0 (+mailto:邮箱)`；不涉密，但不写在代码和 appsettings 中，更换时只改部署配置，重启 Crm、Job、Collector；没配置时启动告警；请求头只能用 ASCII 字符 |
 
 ---
 
 ## 11. 评审结论
 
-2026-10-23 vivo.li 确认，均按初稿的建议执行；第 7 项的联系邮箱待提供：
+2026-10-23 vivo.li 确认，均按初稿的建议执行；第 7 项的联系邮箱 2026-10-29 提供：
 
 | # | 问题 | 结论 | 落实 |
 |---|---|---|---|
@@ -586,7 +586,7 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 | 4 | 采集任务能否删除 | 有运行记录的只能停用，没有的可以删除 | §3.2；PRD 新增 BR-154 |
 | 5 | 编辑只能触发部分任务，怎么实现 | 两个 action：`Trigger`（限日历排期、公布值）和 `TriggerAny`（全部） | §8.2 |
 | 6 | M1 没有真实解析器，怎么验证调度、重试、并发 | 集成测试中注册假适配器和假解析器，对接进程内的假 HTTP 服务；真实的端到端在 M2 接入 BLS 时验证 | §12 |
-| 7 | User-Agent 中的联系邮箱 | 待 vivo.li 提供项目公共邮箱；FR-002.4 先用不带邮箱的占位值 | §10 `Collect:UserAgent`；真正采集前（M2 接入 BLS）补上 |
+| 7 | User-Agent 中的联系邮箱 | 2026-10-29 vivo.li 提供；作为部署配置，不写进代码，以后更换只改配置（vivo.li 确认）。FR-002.4 曾先用不带邮箱的占位值 | §5.4、§10 `Collect:ContactEmail` |
 | 8 | 首批数据源要不要预置 | 不预置，由工程师接入适配器时录入 | §2.4 |
 | 9 | 重试间隔按全局还是按任务配置 | 全局（系统配置 `collect:retry_delay_seconds`） | §3.4、§10 |
 | 10 | 调度方式 | 一个每分钟执行的分发任务，按 cron 算到点 | §4.2 |
@@ -692,3 +692,4 @@ FR-004.1 是日历排期入库（日历设计 §14 的 FR-007.3，JAN-89）的�
 | v0.11 | 2026-10-28 | vivo.li / Claude | 补充快照与重新解析（FR-004）：§2.1 新增 `col_snapshot`、`col_snapshot_content`，`col_run` 加 `locked_count`、`parse_output`、`reparse`、`heartbeat_at`；§4.3 先存快照再解析、无效快照、重新解析不参与并发检查；新增 §4.6 快照的清理、§5.5 快照、§5.6 重新解析；§5.3 `IngestRequest` 带快照 id、`IngestResult` 增加因锁定跳过；§7 ~ §10 目录、接口、消息、页面、错误码、配置；§11 第 14 ~ 20 项待评审；§12、§13 测试和拆分。同步 PRD v1.0.0.22（BR-020 ~ BR-025、DEC-023） |
 | v0.12 | 2026-10-29 | vivo.li / Claude | 评审通过：§11 第 14 ~ 20 项均按建议执行；§13 回填快照两个子任务的工单号（JAN-86、JAN-90） |
 | v0.13 | 2026-10-29 | vivo.li / Claude | FR-004.1（JAN-86）实施：§2.1 `parse_output` 的格式；`col_snapshot_content` 的 `created_at` 改为 `last_used_at`，§4.6 清理内容时留 1 天的余量，避免与正在写入的快照冲突；`col_run` 的 `reparse`、`heartbeat_at` 改由 FR-004.2 加列；§5.5 补充实现（`SnapshotInput`、`FetchedResponse.RequestKey` / `ReceivedAt`、告警的时机）；§13 两个子任务的内容同步 |
+| v0.14 | 2026-10-29 | vivo.li / Claude | §11 第 7 项的联系邮箱已提供：§5.4、§10 配置 `Collect:UserAgent` 改为 `Collect:ContactEmail`（部署配置，代码里不写邮箱），程序拼出 User-Agent，没配置时启动告警；Collector 的 `appsettings.json` 不再配置 |

@@ -43,12 +43,13 @@ public static class InfrastructureServiceCollectionExtensions
     }
 
     /// <summary>
-    /// 注册采集用的命名 HttpClient <see cref="CollectHttp.ClientName"/>（采集设计 §5.4）：User-Agent 取配置 Collect:UserAgent（BR-005），
-    /// 自动解压，只跟随同一主机内的跳转。超时不在这里设置：调用方按数据源的超时用 CancellationToken 控制。
+    /// 注册采集用的命名 HttpClient <see cref="CollectHttp.ClientName"/>（采集设计 §5.4）：User-Agent 带配置 Collect:ContactEmail 中的联系邮箱
+    /// （BR-005，没配置时启动告警），自动解压，只跟随同一主机内的跳转。超时不在这里设置：调用方按数据源的超时用 CancellationToken 控制。
     /// </summary>
     public static IServiceCollection AddSuanpanCollectHttp(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<CollectHttpOptions>(configuration.GetSection(CollectHttpOptions.SectionName));
+        services.AddHostedService<CollectHttpStartupCheck>();
         services.AddTransient<SameHostRedirectHandler>();
         services.AddHttpClient(CollectHttp.ClientName, (provider, client) =>
             {

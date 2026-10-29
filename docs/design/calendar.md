@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.7 |
+| 版本 | v0.8 |
 | 日期 | 2026-10-29 |
 | 状态 | 已评审（2026-10-29，vivo.li：§12 均按建议执行） |
 | 覆盖 | FR-007 日历排期采集、FR-008 公布值与前值采集；事件管理（FR-009）、预期值（FR-010）、字段锁定（FR-011）只定数据结构和自动流程中的处理，页面和人工操作随各自的设计补充 |
@@ -665,7 +665,7 @@ PRD 中的业务规则已在 v1.0.0.22 ~ v1.0.0.24 由 vivo.li 确认（BR-034�
 | FR-008.1 公布值入库 | JAN-92 | JAN-22 | `ReleaseValueRule` 及单元测试；`CalendarReleaseIngestor`、`IReleaseValidator`；集成测试 | FR-007.3 |
 | ENG-009.1 BLS 适配器与解析器 | JAN-93 | JAN-14 | 适配器、排期和公布值两个解析器、解析器目录登记；基于真实快照的测试；本地跑通一次真实采集 | FR-008.1 |
 
-FR-007.4 与 FR-008.1 可以并行。ENG-009.1 开始前需要 BLS 的 API Key（D-001）和 User-Agent 的联系邮箱（采集设计 §11 第 7 项）。
+FR-007.4 与 FR-008.1 可以并行。ENG-009.1 开始前需要 BLS 的 API Key（D-001，填在后台 BLS 数据源的凭据中）；User-Agent 的联系邮箱已提供（采集设计 §11 第 7 项）。
 
 ---
 
@@ -677,6 +677,7 @@ FR-007.4 与 FR-008.1 可以并行。ENG-009.1 开始前需要 BLS 的 API Key�
 | v0.2 | 2026-10-29 | vivo.li / Claude | 同步 PRD v1.0.0.23（DEC-024：排期只来自数据源）：去掉人工新增和批量导入（原 §4.6、两个页面、`CsvReader`、ERR-EVT-005）；排期不可锁定，去掉排期锁定冲突（ERR-EVT-004）；`EventOrigin` 只剩排期采集、补建，`EventField` 去掉排期时间、时间精度；§12 删去原第 8、10 项；FR-007.1 加入停用 7 个非官方指标 |
 | v0.3 | 2026-10-29 | vivo.li / Claude | 评审通过：§12 改为评审结论（9 项均按建议执行），第 6、7 项同步 PRD v1.0.0.24（状态机补"待公布 → 待复核"、BR-129 告警级别）；§14 回填 Linear 工单号（JAN-87 ~ JAN-89、JAN-91 ~ JAN-93） |
 | v0.4 | 2026-10-29 | vivo.li / Claude | FR-007.2（JAN-88）实施：§2.1 `locked_fields` 改为 jsonb 数组（`EventFieldLock`），`forecast_type`、`resolution` 的枚举；§2.2 增加 `ix_cal_event_actual_source_id`、`ix_cal_lock_conflict_source_id`（删除数据源前检查）；§3.2 ~ §3.4 规则的接口；§3.6 枚举增加 `LockConflictResolution`、`ForecastType`；§6.3 消息已登记到后端约定；§7 删除数据源时也检查锁定冲突；§8.1 目录按实现调整；日历事件的状态登记到 Crm 的 `StatusBadges` |
-| v0.7 | 2026-10-29 | vivo.li / Claude | FR-007.4（JAN-91）实施：§4.4、§4.5 保留、取消、重新匹配的实现说明；§8.1 目录；§8.2 增加 `GetUnconfirmedAsync`、列表筛选；§9.1 实现说明（取消用表单页、已忽略用页签、"新增映射"链接的权限） |
-| v0.6 | 2026-10-29 | vivo.li / Claude | FR-008.1（JAN-92）实施：§3.5 `ReleaseValueRule` 的接口；§5.2 实现说明（行锁范围、补建的写法、各数据源数值的更新、来源快照、计数）；§8.1 不建 `CalendarErrorCodes`，`Releases/` 不分 Models |
 | v0.5 | 2026-10-29 | vivo.li / Claude | FR-007.3（JAN-89）实施：§3.1 `ReferencePeriodRule.Previous`；§4.2 ~ §4.4 实现说明（`ScheduleRule.ValidateEntry / Resolve / IsFuture`、时区的取法、指标停用的映射、行锁、`EventChanges`、前值预填、消失判断按条目中出现过的指标和参考期）；§6.1 新建事件改为直接插入、由唯一索引兜底；§8.1 目录 |
+| v0.6 | 2026-10-29 | vivo.li / Claude | FR-008.1（JAN-92）实施：§3.5 `ReleaseValueRule` 的接口；§5.2 实现说明（行锁范围、补建的写法、各数据源数值的更新、来源快照、计数）；§8.1 不建 `CalendarErrorCodes`，`Releases/` 不分 Models |
+| v0.7 | 2026-10-29 | vivo.li / Claude | FR-007.4（JAN-91）实施：§4.4、§4.5 保留、取消、重新匹配的实现说明；§8.1 目录；§8.2 增加 `GetUnconfirmedAsync`、列表筛选；§9.1 实现说明（取消用表单页、已忽略用页签、"新增映射"链接的权限） |
+| v0.8 | 2026-10-29 | vivo.li / Claude | §14 ENG-009.1 的前置条件：User-Agent 的联系邮箱已提供，API Key 填在后台 BLS 数据源的凭据中；变更记录按版本排序 |

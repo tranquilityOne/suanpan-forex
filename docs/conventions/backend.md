@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.33 |
+| 版本 | v1.34 |
 | 日期 | 2026-10-29 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -473,7 +473,7 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | `Auth:IdleTimeoutMinutes` | 后台会话空闲超时，默认 30 | ✓ | | | |
 | `Auth:SkipTotpInDevelopment` | 本地开发用：为 `true` 时已绑定 TOTP 的账号登录不输入验证码；只在 Development 环境生效，其他环境忽略（sys 设计 §5.1） | ✓ | | | |
 | `ForwardedHeaders:TrustedProxies` | 可信的反向代理，逗号分隔的 IP 或 CIDR；为空时只信任本机回环地址。只采信这些地址传来的 `X-Forwarded-For`（sys 设计 §5.5） | ✓ | | | |
-| `Collect:UserAgent` | 采集请求的 User-Agent，带项目名和联系邮箱（PRD BR-005，采集设计 §5.4）；不涉密，默认 `SuanpanForexBot/1.0` | ✓ | | ✓ | |
+| `Collect:ContactEmail` | 采集请求 User-Agent 中的联系邮箱，程序拼成 `SuanpanForexBot/1.0 (+mailto:邮箱)`（PRD BR-005，采集设计 §5.4、§10）；不涉密，但不写在代码和 appsettings 中；没配置时启动告警 | ✓ | ✓ | ✓ | |
 
 ---
 
@@ -640,3 +640,4 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | v1.31 | 2026-10-27 | vivo.li / Claude | §10 当地时间换算 UTC 统一用 `LocalTimeRule`，写明夏令时切换当天的处理（ENG-008.3 实施，PRD BR-037） |
 | v1.32 | 2026-10-27 | vivo.li / Claude | §1、§14 四个程序的 Dockerfile（位置、多阶段构建、非 root、UTC、带时区库的基础镜像）和 compose 的 apps 配置组（ENG-006.3 实施） |
 | v1.33 | 2026-10-29 | vivo.li / Claude | §8.2 消息清单增加 `EventRescheduledEvent`（EV-003，日历设计 §6.3，FR-007.2 实施） |
+| v1.34 | 2026-10-29 | vivo.li / Claude | §12 配置键 `Collect:UserAgent` 改为 `Collect:ContactEmail`，联系邮箱作为部署配置，Job 也读取（采集设计 §11 第 7 项） |
