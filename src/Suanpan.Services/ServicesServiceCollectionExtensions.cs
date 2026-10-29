@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Suanpan.Services.Calendar.Events;
 using Suanpan.Services.Calendar.Releases;
 using Suanpan.Services.Calendar.Schedules;
+using Suanpan.Services.Calendar.Unmatched;
 using Suanpan.Services.Collect.Ingest;
 using Suanpan.Services.Collect.Jobs;
 using Suanpan.Services.Collect.Runs;
@@ -91,6 +93,8 @@ public static class ServicesServiceCollectionExtensions
         services.AddScoped<ScheduleApplier>();
         services.AddScoped<ICollectIngestor, CalendarScheduleIngestor>();
         services.AddScoped<ICollectIngestor, CalendarReleaseIngestor>();
+        services.AddScoped<ICalendarEventService, CalendarEventService>();
+        services.AddScoped<IUnmatchedEntryService, UnmatchedEntryService>();
 
         // 公布值的质量校验：FR-026（Ops）完成前全部通过，FR-026 用 Replace 换成真正的实现（日历设计 §5.6）
         services.TryAddScoped<IReleaseValidator, PassThroughReleaseValidator>();

@@ -20,4 +20,9 @@ public sealed record ScheduleTarget(
     long SourceId,
     string ReleaseKey,
     string? ReleaseBatchId,
-    long? RunId);
+    long? RunId)
+{
+    /// <summary>发布批次：{数据源 id}:{发布标识}:{当地日期}，同一份报告的事件相同；没有日期时为空</summary>
+    public static string? BatchId(long sourceId, string releaseKey, DateOnly? localDate)
+        => localDate is { } date ? $"{sourceId}:{releaseKey}:{date:yyyy-MM-dd}" : null;
+}

@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.6 |
+| 版本 | v0.7 |
 | 日期 | 2026-10-29 |
 | 状态 | 已评审（2026-10-29，vivo.li：§12 均按建议执行） |
 | 覆盖 | FR-007 日历排期采集、FR-008 公布值与前值采集；事件管理（FR-009）、预期值（FR-010）、字段锁定（FR-011）只定数据结构和自动流程中的处理，页面和人工操作随各自的设计补充 |
@@ -348,6 +348,7 @@ stateDiagram-v2
 - 状态被锁定的事件不改。
 - 实现：候选事件按 `id` 顺序 `SELECT ... FOR UPDATE`；"在条目中"按条目里出现过的"指标 + 参考期"判断，参考期写法不对而入库失败的条目也算出现过，不会被误标成待确认。
 - 编辑"保留"待确认的事件时，事件与数据源脱钩（`schedule_source_id`、`schedule_release_key` 置空），以后不再被这个数据源判为消失；它重新出现在日程中时由数据源接管（§4.3）。编辑"取消"后事件不再参与自动处理。
+- 实现（FR-007.4）：保留、取消都先比对读取时的 `row_version`，再靠并发令牌兜底，不同时拒绝（ERR-EVT-009）；变更历史记为人工，保留的原因写"编辑保留，与数据源脱钩"，取消的原因为编辑填写的原因。保留只针对待确认的事件；取消按 `CalendarEventStatusRule` 判断（ERR-EVT-010），FR-009 的事件管理直接复用。
 
 ### 4.5 未匹配条目（ERR-EVT-003、BR-156）
 
@@ -355,6 +356,7 @@ stateDiagram-v2
 - 每次排期入库结束前清理本数据源的未匹配条目：删除日期已过的，以及发布标识现在已有映射的（下一次同步时这些条目已经建成事件）。
 - **忽略**：按"数据源 + 发布标识"写入 `cal_ignored_release`，同时删除这个标识的未匹配条目；以后同一标识的条目不再写入。**恢复**：删除忽略记录，下一次同步时重新出现。
 - **重新匹配**：编辑新增指标和映射后，不必等下一次同步，可以对已保存的未匹配条目立即重新匹配：按当前映射逐条调用 `ScheduleApplier`（来源"排期采集"，数据源为条目的数据源），匹配上的条目删除。
+- 重新匹配的实现（FR-007.4）：处理全部数据源的条目，在一个事务中完成，改期消息在提交后发出；与排期入库相同，每个指标按自己的时区换算、已经过去的不建事件、参考期不符合频率的记 Warning 日志跳过，发布批次的写法共用 `ScheduleTarget.BatchId`。发布标识已有映射的条目都删除（映射的指标都停用的也删，与入库的清理一致），返回值只数匹配上启用指标的条目。变更历史的来源仍是"采集"，记录人为操作的编辑。忽略时发布名称取最近出现的条目；已忽略的再次忽略视为成功。
 
 ### 4.6 同步频率（BR-041）
 
@@ -519,11 +521,12 @@ Suanpan.Data/
 Suanpan.Services/Calendar/
 ├─ Schedules/     CalendarScheduleIngestor、ScheduleApplier、Models/（ScheduleTarget、ScheduleIndicator、ScheduleApplyResult）
 ├─ Releases/      CalendarReleaseIngestor、IReleaseValidator（含 ReleaseCandidate、ReleaseValidation、PassThroughReleaseValidator）
-├─ Events/        EventChanges（变更历史的写法，FR-007.3）；ICalendarEventService、CalendarEventService（待确认事件的保留、取消；FR-009 起扩充）、Models/
-└─ Unmatched/     IUnmatchedEntryService、UnmatchedEntryService、Models/
+├─ Events/        EventChanges（变更历史的写法，FR-007.3）；ICalendarEventService、CalendarEventService（待确认事件的保留、取消；FR-009 起扩充）、
+│                 Models/（UnconfirmedEventQuery、UnconfirmedEventRow）
+└─ Unmatched/     IUnmatchedEntryService、UnmatchedEntryService、Models/（UnmatchedEntryQuery、UnmatchedReleaseGroup 等）
 
 Suanpan.Crm/
-├─ Areas/Calendar/    Controllers/（Unconfirmed、Unmatched）、Views/
+├─ Areas/Calendar/    Controllers/（Unconfirmed、Unmatched）、Views/（Unconfirmed：Index、Cancel、_Schedule；Unmatched：Index、Ignored、_Tabs、_SourceFilter）
 └─ Models/Calendar/
 ```
 
@@ -533,8 +536,8 @@ Suanpan.Crm/
 
 | 接口 | 方法 | 说明 |
 |---|---|---|
-| `ICalendarEventService` | `QueryUnconfirmedAsync(query)`、`KeepAsync(id, rowVersion)`、`CancelAsync(id, reason, rowVersion)` | 待确认事件的保留（与数据源脱钩，§4.4）、取消（原因必填） |
-| `IUnmatchedEntryService` | `QueryAsync(query)`、`QueryIgnoredAsync(query)`、`IgnoreAsync(sourceId, releaseKey)`、`RestoreAsync(id)`、`RematchAsync()` | §4.5；`RematchAsync` 返回匹配上的条数 |
+| `ICalendarEventService` | `QueryUnconfirmedAsync(query)`、`GetUnconfirmedAsync(id)`、`KeepAsync(id, rowVersion)`、`CancelAsync(id, reason, rowVersion)` | 待确认事件的保留（与数据源脱钩，§4.4）、取消（原因必填）；列表可按指标编码筛选，`GetUnconfirmedAsync` 给取消页显示事件 |
+| `IUnmatchedEntryService` | `QueryAsync(query)`、`QueryIgnoredAsync(query)`、`IgnoreAsync(sourceId, releaseKey)`、`RestoreAsync(id)`、`RematchAsync()` | §4.5；`QueryAsync` 按发布分组分页，最近要发布的组在前；`RematchAsync` 返回匹配上启用指标的条数 |
 | `IReleaseValidator` | `ValidateAsync(candidate)` | §5.6 |
 
 两个入库服务在 `AddSuanpanServices` 中注册为 `ICollectIngestor`，Collector 按目标数据类型取用（采集设计 §5.3）。
@@ -559,6 +562,13 @@ Suanpan.Crm/
 | 忽略 / 恢复 / 重新匹配 | POST | `calendar:unmatched:ignore` / `restore` / `rematch` | 忽略和恢复二次确认；重新匹配后提示匹配上的条数 |
 
 菜单排序：日历事件 10（FR-009）、待确认事件 20、未匹配条目 30。
+
+实现说明（FR-007.4）：
+
+- 菜单图标：待确认事件 `calendar-question`，未匹配条目 `link-off`。待确认事件列表可按指标编码筛选；原排期按操作者时区显示，下面注明当地时间和时区，仅日期、待定的只显示当地日期和精度。
+- 取消要填原因，做成单独的表单页 `/Calendar/Unconfirmed/Cancel/{id}`（同一个权限码），提交前在 `<form>` 上二次确认（前端约定 §5.3）；原因由操作日志过滤器按属性名记入原因列。事件已不是待确认时回到列表并提示。
+- 已忽略的发布与未匹配条目用页签切换（`?view=ignored`），保留数据源筛选。
+- "新增映射"链接按 `reference:indicator_source:create` 显示：映射由管理员和采集工程师维护（基础数据设计 §6.1），编辑看不到这个链接，需要采集工程师新增映射后再由编辑重新匹配。
 
 ### 9.2 权限码与预置角色
 
@@ -667,5 +677,6 @@ FR-007.4 与 FR-008.1 可以并行。ENG-009.1 开始前需要 BLS 的 API Key�
 | v0.2 | 2026-10-29 | vivo.li / Claude | 同步 PRD v1.0.0.23（DEC-024：排期只来自数据源）：去掉人工新增和批量导入（原 §4.6、两个页面、`CsvReader`、ERR-EVT-005）；排期不可锁定，去掉排期锁定冲突（ERR-EVT-004）；`EventOrigin` 只剩排期采集、补建，`EventField` 去掉排期时间、时间精度；§12 删去原第 8、10 项；FR-007.1 加入停用 7 个非官方指标 |
 | v0.3 | 2026-10-29 | vivo.li / Claude | 评审通过：§12 改为评审结论（9 项均按建议执行），第 6、7 项同步 PRD v1.0.0.24（状态机补"待公布 → 待复核"、BR-129 告警级别）；§14 回填 Linear 工单号（JAN-87 ~ JAN-89、JAN-91 ~ JAN-93） |
 | v0.4 | 2026-10-29 | vivo.li / Claude | FR-007.2（JAN-88）实施：§2.1 `locked_fields` 改为 jsonb 数组（`EventFieldLock`），`forecast_type`、`resolution` 的枚举；§2.2 增加 `ix_cal_event_actual_source_id`、`ix_cal_lock_conflict_source_id`（删除数据源前检查）；§3.2 ~ §3.4 规则的接口；§3.6 枚举增加 `LockConflictResolution`、`ForecastType`；§6.3 消息已登记到后端约定；§7 删除数据源时也检查锁定冲突；§8.1 目录按实现调整；日历事件的状态登记到 Crm 的 `StatusBadges` |
+| v0.7 | 2026-10-29 | vivo.li / Claude | FR-007.4（JAN-91）实施：§4.4、§4.5 保留、取消、重新匹配的实现说明；§8.1 目录；§8.2 增加 `GetUnconfirmedAsync`、列表筛选；§9.1 实现说明（取消用表单页、已忽略用页签、"新增映射"链接的权限） |
 | v0.6 | 2026-10-29 | vivo.li / Claude | FR-008.1（JAN-92）实施：§3.5 `ReleaseValueRule` 的接口；§5.2 实现说明（行锁范围、补建的写法、各数据源数值的更新、来源快照、计数）；§8.1 不建 `CalendarErrorCodes`，`Releases/` 不分 Models |
 | v0.5 | 2026-10-29 | vivo.li / Claude | FR-007.3（JAN-89）实施：§3.1 `ReferencePeriodRule.Previous`；§4.2 ~ §4.4 实现说明（`ScheduleRule.ValidateEntry / Resolve / IsFuture`、时区的取法、指标停用的映射、行锁、`EventChanges`、前值预填、消失判断按条目中出现过的指标和参考期）；§6.1 新建事件改为直接插入、由唯一索引兜底；§8.1 目录 |

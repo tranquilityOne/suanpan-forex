@@ -63,4 +63,25 @@ public class PresetRoleGrantsTests
 
         Assert.Equal(expected.Split(' ').Order(StringComparer.Ordinal), granted.Order(StringComparer.Ordinal));
     }
+
+    /// <summary>
+    /// 日历设计 §9.2、FR-007 的权限行：编辑处理待确认事件和未匹配条目；采集工程师、只读只能查看（JAN-91 验收第 3 条）
+    /// </summary>
+    [Theory]
+    [InlineData(RoleCodes.Editor,
+        "calendar:unconfirmed:index calendar:unconfirmed:keep calendar:unconfirmed:cancel "
+        + "calendar:unmatched:index calendar:unmatched:ignore calendar:unmatched:restore calendar:unmatched:rematch")]
+    [InlineData(RoleCodes.Engineer, "calendar:unconfirmed:index calendar:unmatched:index")]
+    [InlineData(RoleCodes.Viewer, "calendar:unconfirmed:index calendar:unmatched:index")]
+    public async Task CalendarGrantsMatchDesign(string roleCode, string expected)
+    {
+        await using var app = new CrmApp();
+        var patterns = PresetRoleGrants.Patterns[roleCode];
+
+        var granted = AreaCatalogTests.GeneratedPermCodes(app)
+            .Where(code => code.StartsWith("calendar:", StringComparison.Ordinal))
+            .Where(code => patterns.Any(pattern => PermCodePattern.IsMatch(pattern, code)));
+
+        Assert.Equal(expected.Split(' ').Order(StringComparer.Ordinal), granted.Order(StringComparer.Ordinal));
+    }
 }

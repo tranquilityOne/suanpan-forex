@@ -1,0 +1,50 @@
+@model IgnoredReleaseListViewModel
+@{
+    ViewData["Title"] = "已忽略的发布";
+    var filter = Model.Filter;
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">未匹配条目</h2>
+    <div class="text-secondary">已忽略的发布不再写入未匹配条目（BR-156）。恢复后，下一次同步日程时这个发布的条目重新出现。</div>
+</div>
+
+<partial name="_Tabs" model="filter" />
+<partial name="_SourceFilter" model="(filter, Model.SourceOptions)" />
+
+<div class="card">
+    @if (Model.Result.Items.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("没有已忽略的发布", Icon: "eye-off")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle card-table text-nowrap">
+                <thead>
+                    <tr><th>数据源</th><th>发布</th><th>忽略人</th><th>忽略时间</th><th class="w-1"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.Result.Items)
+                    {
+                        <tr>
+                            <td>@row.SourceName</td>
+                            <td>
+                                <div>@row.ReleaseName</div>
+                                <code class="small">@row.ReleaseKey</code>
+                            </td>
+                            <td>@row.CreatedBy</td>
+                            <td><utc-time value="@row.CreatedAt" /></td>
+                            <td>
+                                <confirm-form asp-action="Restore" asp-route-id="@row.Id" asp-route-returnSourceId="@filter.SourceId"
+                                              asp-permission="calendar:unmatched:restore" button-text="恢复" button-class="btn btn-sm"
+                                              message="@($"恢复 {row.SourceName} 的发布 {row.ReleaseKey}？下一次同步日程时，这个发布的条目重新列入未匹配条目。")" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <partial name="_Pager" model="Model.Result" />
+    }
+</div>

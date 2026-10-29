@@ -1,0 +1,10 @@
+@model UnmatchedFilter
+@* 未匹配条目和已忽略的发布两个视图之间切换，保留数据源筛选 *@
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <a asp-action="Index" asp-route-sourceId="@Model.SourceId" class="nav-link @(Model.ShowIgnored ? null : "active")">未匹配条目</a>
+    </li>
+    <li class="nav-item">
+        <a asp-action="Index" asp-route-sourceId="@Model.SourceId" asp-route-view="@UnmatchedFilter.IgnoredView" class="nav-link @(Model.ShowIgnored ? "active" : null)">已忽略的发布</a>
+    </li>
+</ul>

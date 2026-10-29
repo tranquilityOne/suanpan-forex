@@ -1,0 +1,18 @@
+@using Microsoft.AspNetCore.Mvc.Rendering
+@model (UnmatchedFilter Filter, IReadOnlyList<SelectListItem> SourceOptions)
+<form method="get" asp-action="Index" class="row g-2 align-items-end mb-3">
+    @if (Model.Filter.ShowIgnored)
+    {
+        <input type="hidden" name="View" value="@UnmatchedFilter.IgnoredView" />
+    }
+    <div class="col-auto">
+        <label class="form-label">数据源</label>
+        <select name="SourceId" asp-items="@(new SelectList(Model.SourceOptions, "Value", "Text", Model.Filter.SourceId?.ToString()))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-primary">查询</button>
+        <a asp-action="Index" asp-route-view="@(Model.Filter.ShowIgnored ? UnmatchedFilter.IgnoredView : null)" class="btn btn-sm">重置</a>
+    </div>
+</form>

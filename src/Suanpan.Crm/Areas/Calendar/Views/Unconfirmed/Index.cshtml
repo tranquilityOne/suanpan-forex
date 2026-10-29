@@ -1,0 +1,73 @@
+@model UnconfirmedListViewModel
+@{
+    ViewData["Title"] = "待确认事件";
+    var filter = Model.Filter;
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">待确认事件</h2>
+    <div class="text-secondary">已经排期、但从官方日程中消失的事件，不会自动删除（BR-040）。确认官方不再发布时取消；仍会发布时保留，保留后事件与数据源脱钩，不再被标为待确认，重新出现在日程中时由数据源接管。</div>
+</div>
+
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label">指标编码</label>
+        <input name="IndicatorCode" value="@filter.IndicatorCode" class="form-control form-control-sm" placeholder="如：US.NFP" />
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-primary">查询</button>
+        <a asp-action="Index" class="btn btn-sm">重置</a>
+    </div>
+</form>
+
+<div class="card">
+    @if (Model.Result.Items.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("没有待确认的事件", Icon: "calendar-check")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle card-table text-nowrap">
+                <thead>
+                    <tr><th>指标</th><th>参考期</th><th>原排期</th><th>维护排期的数据源</th><th>变为待确认</th><th class="w-1"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.Result.Items)
+                    {
+                        <tr>
+                            <td>
+                                <a asp-area="Reference" asp-controller="Indicator" asp-action="Detail" asp-route-id="@row.IndicatorCode" asp-permission="reference:indicator:detail"><code class="small">@row.IndicatorCode</code></a>
+                                @row.IndicatorShortName.Get(ContentLanguage.Zh)
+                            </td>
+                            <td><code class="small">@row.ReferencePeriod</code></td>
+                            <td><partial name="_Schedule" model="row" /></td>
+                            <td>
+                                @if (row.ScheduleSourceName is not null)
+                                {
+                                    @row.ScheduleSourceName
+                                }
+                                else
+                                {
+                                    <span class="text-secondary">—</span>
+                                }
+                            </td>
+                            <td><utc-time value="@row.UnconfirmedAt" /></td>
+                            <td>
+                                <div class="btn-list flex-nowrap">
+                                    <confirm-form asp-action="Keep" asp-route-id="@row.Id" asp-permission="calendar:unconfirmed:keep"
+                                                  button-text="保留" button-class="btn btn-sm"
+                                                  message="@($"保留 {row.IndicatorCode} {row.ReferencePeriod}？事件改回待公布，并与数据源脱钩：以后不再随官方日程标为待确认，改期需要等它重新出现在日程中。")">
+                                        <input type="hidden" name="rowVersion" value="@row.RowVersion" />
+                                    </confirm-form>
+                                    <a asp-action="Cancel" asp-route-id="@row.Id" asp-permission="calendar:unconfirmed:cancel" class="btn btn-sm btn-outline-danger">取消事件</a>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <partial name="_Pager" model="Model.Result" />
+    }
+</div>

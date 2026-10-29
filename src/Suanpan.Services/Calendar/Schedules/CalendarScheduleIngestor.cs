@@ -133,7 +133,7 @@ public sealed class CalendarScheduleIngestor(
             return;
         }
 
-        var batchId = entry.LocalDate is { } date ? $"{request.SourceId}:{entry.ReleaseKey}:{date:yyyy-MM-dd}" : null;
+        var batchId = ScheduleTarget.BatchId(request.SourceId, entry.ReleaseKey, entry.LocalDate);
         foreach (var indicator in indicators)
         {
             if (ReferencePeriodRule.Validate(entry.ReferencePeriod, indicator.Frequency) is { } periodError)

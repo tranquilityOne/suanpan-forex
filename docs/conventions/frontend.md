@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.10 |
+| 版本 | v1.11 |
 | 日期 | 2026-10-29 |
 | 适用范围 | 后台 Suanpan.Crm 和前台 Suanpan.Portal 的页面、视图、静态资源 |
 | 依据 | data-hub PRD v1.0.0.2（DEC-014、NFR-131、§10.10）；web-portal PRD v1.0.0.2（DEC-005 ~ DEC-007、NFR-120 ~ NFR-124）；VVPay `doc/frontend.md` |
@@ -173,6 +173,7 @@ Suanpan.Crm/
 
 1. `[HttpPost]` + `[ValidateAntiForgeryToken]`。
 2. 危险操作（删除、撤回、停用、切换开关）用公共部件 `<confirm-form>`（§6），提示文案写清后果。
+   要先填内容的危险操作（如取消日历事件必须填原因）做成表单页，在 `<form>` 上直接写 `data-confirm`（提示文案）和 `data-confirm-button`（确认按钮文字），提交前弹出同一个确认弹窗；客户端校验不通过时不弹出。
 3. `[OpLog("模块", "动作")]`，必要时加 `[PermName("中文名")]`。
 
 成功：写 `TempData["Message"]` 后重定向（PRG 模式）。失败：`ModelState.AddModelError` 回填表单，或写 `TempData["Error"]` 后重定向。
@@ -404,3 +405,4 @@ Suanpan.Portal/
 | v1.8 | 2026-10-21 | vivo.li / Claude | ENG-005.3 实施：§6 `asp-permission` 的写法要点（可用于 `confirm-form`、表单页按钮不用标、多个权限码时注入 `CurrentPermissions` 判断、权限码由约定测试检查） |
 | v1.9 | 2026-10-23 | vivo.li / Claude | FR-006.2 实施：§5.2 小数、时间输入框的格式；下拉框选项放进可空对象，不记进操作日志 |
 | v1.10 | 2026-10-29 | vivo.li / Claude | §7.2 时间一条去掉"CSV 导入"的例子：日历排期只来自数据源，不再支持导入（data-hub PRD DEC-024） |
+| v1.11 | 2026-10-29 | vivo.li / Claude | FR-007.4 实施：§5.3 要先填内容的危险操作做成表单页，在 `<form>` 上写 `data-confirm` 二次确认 |

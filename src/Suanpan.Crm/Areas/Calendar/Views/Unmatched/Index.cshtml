@@ -1,0 +1,84 @@
+@model UnmatchedListViewModel
+@using System.Globalization
+@using Suanpan.Core.Reference.Enums
+@{
+    ViewData["Title"] = "未匹配条目";
+    var filter = Model.Filter;
+}
+
+<div class="page-header mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col">
+            <h2 class="page-title">未匹配条目</h2>
+            <div class="text-secondary">官方日程中没有排期映射的条目，只列出未来的（ERR-EVT-003）。需要的发布先新增排期映射再重新匹配，建成日历事件；不需要的按发布忽略，以后不再列出（BR-156）。</div>
+        </div>
+        <div class="col-auto">
+            <confirm-form asp-action="Rematch" asp-route-returnSourceId="@filter.SourceId" asp-permission="calendar:unmatched:rematch"
+                          button-text="重新匹配" button-class="btn btn-primary"
+                          message="按当前的排期映射重新匹配全部未匹配条目？匹配上的条目建成或更新日历事件后从这里删除。" />
+        </div>
+    </div>
+</div>
+
+<partial name="_Tabs" model="filter" />
+<partial name="_SourceFilter" model="(filter, Model.SourceOptions)" />
+
+<div class="card">
+    @if (Model.Result.Items.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("没有未匹配的条目", Icon: "calendar-check")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle card-table">
+                <thead>
+                    <tr><th>数据源</th><th>发布</th><th>各期（参考期 · 当地日期时间）</th><th>最近出现</th><th class="w-1"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var group in Model.Result.Items)
+                    {
+                        <tr>
+                            <td class="text-nowrap">@group.SourceName</td>
+                            <td>
+                                <div>@group.ReleaseName</div>
+                                <code class="small">@group.ReleaseKey</code>
+                            </td>
+                            <td>
+                                @foreach (var entry in group.Entries)
+                                {
+                                    <div class="text-nowrap">
+                                        <code class="small">@entry.ReferencePeriod</code>
+                                        · @entry.LocalDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                                        @if (entry.LocalTime is { } time)
+                                        {
+                                            @time.ToString("HH:mm", CultureInfo.InvariantCulture)
+                                        }
+                                        else
+                                        {
+                                            <span class="text-secondary small">（@CalendarDisplayNames.Get(entry.TimePrecision)）</span>
+                                        }
+                                    </div>
+                                }
+                                <div class="text-secondary small">当地时间（@(group.TimeZone ?? "数据源未设所属经济体")）</div>
+                            </td>
+                            <td class="text-nowrap"><utc-time value="@group.LastSeenAt" /></td>
+                            <td>
+                                <div class="btn-list flex-nowrap">
+                                    <a asp-area="Reference" asp-controller="IndicatorSource" asp-action="Create"
+                                       asp-route-sourceId="@group.SourceId" asp-route-purpose="@IndicatorSourcePurpose.Schedule" asp-route-externalId="@group.ReleaseKey"
+                                       asp-permission="reference:indicator_source:create" class="btn btn-sm">新增映射</a>
+                                    <confirm-form asp-action="Ignore" asp-route-sourceId="@group.SourceId" asp-route-releaseKey="@group.ReleaseKey"
+                                                  asp-route-returnSourceId="@filter.SourceId" asp-permission="calendar:unmatched:ignore"
+                                                  button-text="忽略此发布"
+                                                  message="@($"忽略 {group.SourceName} 的发布 {group.ReleaseKey}（{group.ReleaseName}）？以后这个发布的条目不再列出，也不会建成日历事件；可以在“已忽略的发布”中恢复。")" />
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <partial name="_Pager" model="Model.Result" />
+    }
+</div>

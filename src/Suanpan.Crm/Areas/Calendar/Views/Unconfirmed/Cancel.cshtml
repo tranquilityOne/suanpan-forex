@@ -1,0 +1,44 @@
+@model UnconfirmedCancelViewModel
+@{
+    ViewData["Title"] = "取消事件";
+    var row = Model.Event!;
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">取消事件</h2>
+</div>
+
+<div class="card" style="max-width: 40rem">
+    <div class="card-body border-bottom">
+        <dl class="row mb-0">
+            <dt class="col-sm-4">指标</dt>
+            <dd class="col-sm-8"><code>@row.IndicatorCode</code> @row.IndicatorShortName.Get(ContentLanguage.Zh)</dd>
+            <dt class="col-sm-4">参考期</dt>
+            <dd class="col-sm-8"><code>@row.ReferencePeriod</code></dd>
+            <dt class="col-sm-4">原排期</dt>
+            <dd class="col-sm-8"><partial name="_Schedule" model="row" /></dd>
+            <dt class="col-sm-4">维护排期的数据源</dt>
+            <dd class="col-sm-8 mb-0">@(row.ScheduleSourceName ?? "—")</dd>
+        </dl>
+    </div>
+    <form asp-action="Cancel" asp-route-id="@row.Id" method="post" class="card-body"
+          data-confirm="@($"取消 {row.IndicatorCode} {row.ReferencePeriod}？取消后事件不再参与采集、盯盘等自动处理，也不能再改回其他状态。")"
+          data-confirm-button="取消事件">
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        <input type="hidden" asp-for="RowVersion" />
+        <div class="mb-3">
+            <label asp-for="Reason" class="form-label required"></label>
+            <textarea asp-for="Reason" class="form-control" rows="3" placeholder="如：官方宣布本期停发"></textarea>
+            <div class="form-text">写进事件的变更历史和操作日志</div>
+            <span asp-validation-for="Reason"></span>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-danger">取消事件</button>
+            <a asp-action="Index" class="btn">返回</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

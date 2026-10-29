@@ -4,6 +4,10 @@ using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Reference.Entities;
 using Suanpan.Core.Sys.Entities;
 using Suanpan.Core.Collect.Enums;
+using Suanpan.Services.Calendar.Events;
+using Suanpan.Services.Calendar.Events.Models;
+using Suanpan.Services.Calendar.Unmatched;
+using Suanpan.Services.Calendar.Unmatched.Models;
 using Suanpan.Services.Collect.Runs;
 using Suanpan.Services.Collect.Runs.Models;
 using Suanpan.Services.Collect.Sources;
@@ -183,7 +187,10 @@ public sealed class FakeDataSourceService : IDataSourceService
         return Task.FromResult(ManageResult.Ok);
     }
 
-    public Task<IReadOnlyList<DataSourceRow>> GetListAsync(CancellationToken ct = default) => throw new NotSupportedException();
+    /// <summary>筛选下拉框用；默认没有数据源</summary>
+    public List<DataSourceRow> Rows { get; } = [];
+
+    public Task<IReadOnlyList<DataSourceRow>> GetListAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<DataSourceRow>>(Rows);
 
     public Task<DataSource?> GetAsync(long id, CancellationToken ct = default) => throw new NotSupportedException();
 
@@ -222,4 +229,51 @@ public sealed class FakeCollectRunService : ICollectRunService
         => throw new NotSupportedException();
 
     public Task<bool> TryPublishAsync(long runId, CancellationToken ct = default) => throw new NotSupportedException();
+}
+
+/// <summary>待确认事件按 id 返回预设的行；取消、保留时记下参数，返回预设的结果</summary>
+public sealed class FakeCalendarEventService : ICalendarEventService
+{
+    public Dictionary<long, UnconfirmedEventRow> Unconfirmed { get; } = [];
+
+    public List<(long Id, string? Reason, int RowVersion)> Cancelled { get; } = [];
+
+    public ManageResult Result { get; set; } = ManageResult.Ok;
+
+    public Task<PagedResult<UnconfirmedEventRow>> QueryUnconfirmedAsync(UnconfirmedEventQuery query, CancellationToken ct = default)
+        => Task.FromResult(new PagedResult<UnconfirmedEventRow>(Unconfirmed.Values.ToList(), Unconfirmed.Count, query.Page, query.PageSize));
+
+    public Task<UnconfirmedEventRow?> GetUnconfirmedAsync(long id, CancellationToken ct = default) => Task.FromResult(Unconfirmed.GetValueOrDefault(id));
+
+    public Task<ManageResult> KeepAsync(long id, int rowVersion, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<ManageResult> CancelAsync(long id, string? reason, int rowVersion, CancellationToken ct = default)
+    {
+        Cancelled.Add((id, reason, rowVersion));
+        return Task.FromResult(Result);
+    }
+}
+
+/// <summary>未匹配条目返回预设的分组；忽略时记下参数</summary>
+public sealed class FakeUnmatchedEntryService : IUnmatchedEntryService
+{
+    public List<UnmatchedReleaseGroup> Groups { get; } = [];
+
+    public List<(long SourceId, string ReleaseKey)> Ignored { get; } = [];
+
+    public Task<PagedResult<UnmatchedReleaseGroup>> QueryAsync(UnmatchedEntryQuery query, CancellationToken ct = default)
+        => Task.FromResult(new PagedResult<UnmatchedReleaseGroup>(Groups, Groups.Count, query.Page, query.PageSize));
+
+    public Task<PagedResult<IgnoredReleaseRow>> QueryIgnoredAsync(IgnoredReleaseQuery query, CancellationToken ct = default)
+        => throw new NotSupportedException();
+
+    public Task<ManageResult> IgnoreAsync(long sourceId, string releaseKey, CancellationToken ct = default)
+    {
+        Ignored.Add((sourceId, releaseKey));
+        return Task.FromResult(ManageResult.Ok);
+    }
+
+    public Task<ManageResult> RestoreAsync(long id, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<int> RematchAsync(CancellationToken ct = default) => throw new NotSupportedException();
 }
