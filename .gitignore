@@ -24,6 +24,8 @@ mono_crash.*
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
+# 财经日历的公布值入库代码（Calendar/Releases），不是构建输出
+!**/Calendar/Releases/
 x64/
 x86/
 [Ww][Ii][Nn]32/

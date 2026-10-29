@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Suanpan.Services.Calendar.Releases;
 using Suanpan.Services.Calendar.Schedules;
 using Suanpan.Services.Collect.Ingest;
 using Suanpan.Services.Collect.Jobs;
@@ -89,6 +90,10 @@ public static class ServicesServiceCollectionExtensions
         // Calendar：财经日历。入库服务注册为 ICollectIngestor，Collector 按目标数据类型取用（采集设计 §5.3）
         services.AddScoped<ScheduleApplier>();
         services.AddScoped<ICollectIngestor, CalendarScheduleIngestor>();
+        services.AddScoped<ICollectIngestor, CalendarReleaseIngestor>();
+
+        // 公布值的质量校验：FR-026（Ops）完成前全部通过，FR-026 用 Replace 换成真正的实现（日历设计 §5.6）
+        services.TryAddScoped<IReleaseValidator, PassThroughReleaseValidator>();
 
         return services;
     }

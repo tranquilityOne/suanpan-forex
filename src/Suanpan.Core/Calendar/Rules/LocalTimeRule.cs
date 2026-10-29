@@ -45,7 +45,11 @@ public static class LocalTimeRule
 
     /// <summary>某个 UTC 时刻在机构当地是哪一天（如判断"仅日期"的排期是否已经过去，日历设计 §4.2）</summary>
     /// <exception cref="ArgumentException">不是合法的 IANA 时区</exception>
-    public static DateOnly LocalDate(DateTime utc, string ianaTimeZone)
+    public static DateOnly LocalDate(DateTime utc, string ianaTimeZone) => DateOnly.FromDateTime(ToLocal(utc, ianaTimeZone));
+
+    /// <summary>某个 UTC 时刻的机构当地时间（Kind 为 Unspecified），如补建事件时记下检测时刻的当地时间（日历设计 §5.2）</summary>
+    /// <exception cref="ArgumentException">不是合法的 IANA 时区</exception>
+    public static DateTime ToLocal(DateTime utc, string ianaTimeZone)
     {
         if (!TimeZoneRule.IsValid(ianaTimeZone))
         {
@@ -53,7 +57,8 @@ public static class LocalTimeRule
         }
 
         var zone = TimeZoneInfo.FindSystemTimeZoneById(ianaTimeZone);
-        return DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone));
+        var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone);
+        return DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
     }
 
     private static DateTime Utc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);

@@ -66,6 +66,14 @@ public class LocalTimeRuleTests
         => Assert.Equal(DateOnly.Parse(expected, CultureInfo.InvariantCulture), LocalTimeRule.LocalDate(Time(utc), zone));
 
     [Fact]
+    public void ToLocal_ConvertsBackToAgencyTime()
+    {
+        var local = LocalTimeRule.ToLocal(Time("2026-11-06 13:30"), "America/New_York");
+
+        Assert.Equal((Time("2026-11-06 08:30"), DateTimeKind.Unspecified), (local, local.Kind));
+    }
+
+    [Fact]
     public void ToUtc_ReturnsUtcKind()
         => Assert.Equal(DateTimeKind.Utc, Convert("Asia/Tokyo", "2026-03-09 08:50").Utc.Kind);
 

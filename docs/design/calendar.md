@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.5 |
+| 版本 | v0.6 |
 | 日期 | 2026-10-29 |
 | 状态 | 已评审（2026-10-29，vivo.li：§12 均按建议执行） |
 | 覆盖 | FR-007 日历排期采集、FR-008 公布值与前值采集；事件管理（FR-009）、预期值（FR-010）、字段锁定（FR-011）只定数据结构和自动流程中的处理，页面和人工操作随各自的设计补充 |
@@ -269,6 +269,7 @@ stateDiagram-v2
 - **最新一期**：同一指标的记录中参考期最大的一期（§3.1 `Compare`），其余为"更早各期"。
 - **处理计划**：`ReleaseValueRule.Plan(指标的记录, 相关事件, 该指标是否有公布过的事件)` 是纯函数，返回要做的事（§5.2 ~ §5.4 的每个分支），入库服务按计划写库。规则分支全部在 Core 中测试（后端约定 §13）。
 - "公布过的事件"指状态为"已公布"或公布值不为空的事件（BR-157）。
+- 接口：`Round(值, 小数位)`；`Plan(各期, 参考期 → 事件, 是否有公布过的事件)` 返回 `ReleasePlan`：最新一期、最新一期的处理 `LatestAction`（Supplement 补建、InitialPrevious 刚开始采集、Release 写入公布值、Correction 官方更正、ValueOnly 只记数值）、公布值是否锁定冲突、L 的前值和前值修正 `PreviousValues`（数据中没有上一期或刚开始采集时为空）、更早各期的修正后数值 `Revision` 列表。
 
 ### 3.6 枚举（`Suanpan.Core/Calendar/Enums/`）
 
@@ -405,6 +406,15 @@ stateDiagram-v2
 
 **更早各期**：见 §5.3。
 
+实现说明（FR-008.1）：
+
+- 行锁一条 SQL 取齐：数据中各期的事件，加上 L 之后参考期最小的未公布（待公布、盯盘中、延迟、待确认）事件，按 `id` 排序 `FOR UPDATE`。
+- 补建先插入事件（状态"待公布"，时区取指标所属经济体，`scheduled_local` 由检测时间按 `LocalTimeRule.ToLocal` 换算，没有排期数据源和发布批次），再按"未公布"处理。
+- `cal_event_value` 每个事件每个数据源一行，值变了才更新，检测时间为第一次得到当前值的时间；原始字符串超过 1000 字截断。
+- 来源快照取记录的 `ResponseIndex` 对应的快照 id；写入引用快照的事件或数值时，在同一事务中把快照标记为被引用（`ISnapshotService.MarkReferencedAsync`）。
+- 进入待复核的原因（含错误码）写进状态变更历史的原因和 `EventHeldForReviewEvent.Reason`。
+- 计数：L 按上表；更早各期更新了修正后数值的计为更新，其余计为跳过；不是 `ReleaseValueRecord` 的记录计为失败并记 Error 日志（解析器与目标数据类型不符）。
+
 ### 5.3 前值与修正（BR-044、BR-046）
 
 设 P 为数据中 L 的上一期（数据里排在 L 前面的那一期，不按日历推算，周度、不定期的指标也适用）：
@@ -497,7 +507,8 @@ Suanpan.Core/Calendar/
 │                 LockConflictResolution、ForecastType、LocalTimeResolution（已有）
 ├─ Records/       ScheduleEntryRecord、ReleaseValueRecord（解析器的输出，§4.1、§5.1）
 └─ Rules/         LocalTimeRule（已有）、ReferencePeriodRule、CalendarEventStatusRule、EventLockRule、ScheduleRule（含 ScheduleDecision）、
-                  CalendarDisplayNames；ReleaseValueRule、CalendarErrorCodes 随入库加入（FR-008.1、FR-007.3）
+                  CalendarDisplayNames、ReleaseValueRule（含 ReleasePlan）；入库的错误码只出现在日志、告警和待复核原因中，
+                  不建 CalendarErrorCodes，后台页面需要时再加
 
 Suanpan.Shared/Messages/Calendar/   EventRescheduledEvent、EventReleasedEvent、EventHeldForReviewEvent
 
@@ -507,7 +518,7 @@ Suanpan.Data/
 
 Suanpan.Services/Calendar/
 ├─ Schedules/     CalendarScheduleIngestor、ScheduleApplier、Models/（ScheduleTarget、ScheduleIndicator、ScheduleApplyResult）
-├─ Releases/      CalendarReleaseIngestor、IReleaseValidator、PassThroughReleaseValidator、Models/
+├─ Releases/      CalendarReleaseIngestor、IReleaseValidator（含 ReleaseCandidate、ReleaseValidation、PassThroughReleaseValidator）
 ├─ Events/        EventChanges（变更历史的写法，FR-007.3）；ICalendarEventService、CalendarEventService（待确认事件的保留、取消；FR-009 起扩充）、Models/
 └─ Unmatched/     IUnmatchedEntryService、UnmatchedEntryService、Models/
 
@@ -656,4 +667,5 @@ FR-007.4 与 FR-008.1 可以并行。ENG-009.1 开始前需要 BLS 的 API Key�
 | v0.2 | 2026-10-29 | vivo.li / Claude | 同步 PRD v1.0.0.23（DEC-024：排期只来自数据源）：去掉人工新增和批量导入（原 §4.6、两个页面、`CsvReader`、ERR-EVT-005）；排期不可锁定，去掉排期锁定冲突（ERR-EVT-004）；`EventOrigin` 只剩排期采集、补建，`EventField` 去掉排期时间、时间精度；§12 删去原第 8、10 项；FR-007.1 加入停用 7 个非官方指标 |
 | v0.3 | 2026-10-29 | vivo.li / Claude | 评审通过：§12 改为评审结论（9 项均按建议执行），第 6、7 项同步 PRD v1.0.0.24（状态机补"待公布 → 待复核"、BR-129 告警级别）；§14 回填 Linear 工单号（JAN-87 ~ JAN-89、JAN-91 ~ JAN-93） |
 | v0.4 | 2026-10-29 | vivo.li / Claude | FR-007.2（JAN-88）实施：§2.1 `locked_fields` 改为 jsonb 数组（`EventFieldLock`），`forecast_type`、`resolution` 的枚举；§2.2 增加 `ix_cal_event_actual_source_id`、`ix_cal_lock_conflict_source_id`（删除数据源前检查）；§3.2 ~ §3.4 规则的接口；§3.6 枚举增加 `LockConflictResolution`、`ForecastType`；§6.3 消息已登记到后端约定；§7 删除数据源时也检查锁定冲突；§8.1 目录按实现调整；日历事件的状态登记到 Crm 的 `StatusBadges` |
+| v0.6 | 2026-10-29 | vivo.li / Claude | FR-008.1（JAN-92）实施：§3.5 `ReleaseValueRule` 的接口；§5.2 实现说明（行锁范围、补建的写法、各数据源数值的更新、来源快照、计数）；§8.1 不建 `CalendarErrorCodes`，`Releases/` 不分 Models |
 | v0.5 | 2026-10-29 | vivo.li / Claude | FR-007.3（JAN-89）实施：§3.1 `ReferencePeriodRule.Previous`；§4.2 ~ §4.4 实现说明（`ScheduleRule.ValidateEntry / Resolve / IsFuture`、时区的取法、指标停用的映射、行锁、`EventChanges`、前值预填、消失判断按条目中出现过的指标和参考期）；§6.1 新建事件改为直接插入、由唯一索引兜底；§8.1 目录 |
