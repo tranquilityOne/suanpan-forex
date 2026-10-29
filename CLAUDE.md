@@ -37,7 +37,7 @@ src/Suanpan.Job             程序：Hangfire 定时任务、快讯生成、告�
 src/Suanpan.Crm             程序：后台
 src/Suanpan.Portal          程序：前台（只读数据库）
 tests/                      Suanpan.Core.Tests、Suanpan.Shared.Tests、Suanpan.Data.Tests、Suanpan.Services.Tests、Suanpan.Infrastructure.Tests、Suanpan.Crm.Tests、Suanpan.Collector.Tests
-deploy/                     Dockerfile、docker-compose
+deploy/                     docker-compose、数据库初始化脚本（Dockerfile 在各程序目录）
 ```
 
 ## 常用命令
@@ -48,6 +48,7 @@ deploy/                     Dockerfile、docker-compose
 cp deploy/.env.example deploy/.env                    # 首次使用：复制后填写密码（.env 不提交）
 docker compose -f deploy/docker-compose.yml up -d     # 启动 PostgreSQL、Redis（Valkey）、RabbitMQ
 docker compose -f deploy/docker-compose.yml up -d postgres   # 本机已有 Redis、RabbitMQ 时只启动 PostgreSQL
+docker compose -f deploy/docker-compose.yml --profile apps up -d --build   # 连同四个程序一起用容器启动（先执行迁移，见 README）
 dotnet user-secrets list --project src/Suanpan.Crm   # 查看本地配置了哪些键（四个程序共用一份 user-secrets）
 dotnet build                                          # 编译整个解决方案
 dotnet test                                           # 运行全部测试（连数据库、Valkey、RabbitMQ 的测试需要 Docker）

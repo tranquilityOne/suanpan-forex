@@ -1,0 +1,14 @@
+# 构建程序镜像时，上下文是仓库根目录（见各程序的 Dockerfile）；这些文件不进入构建上下文
+**/bin/
+**/obj/
+artifacts/
+.vs/
+.git/
+.config/
+tests/
+docs/
+deploy/
+**/*.user
+# 开发环境专用的配置不进镜像
+**/appsettings.Development.json
+**/Properties/launchSettings.json

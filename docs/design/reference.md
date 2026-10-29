@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.14 |
+| 版本 | v0.15 |
 | 日期 | 2026-10-27 |
 | 状态 | 已评审（2026-10-22，vivo.li） |
 | 覆盖 | FR-005 经济体与货币管理、FR-006 指标字典管理（含指标与数据源的映射） |
@@ -152,7 +152,7 @@
 
 - 合法的时区：能用 `TimeZoneInfo.TryFindSystemTimeZoneById` 找到的 IANA 名称（ERR-REF-003）。.NET 在 Windows 上也能识别 IANA 名称，开发环境和 Linux 部署环境行为一致。
 - 页面下拉框的选项：取系统时区，转成 IANA 名称后去重排序，按 `/` 前的大区分组。Linux 上是完整的 IANA 列表；Windows 开发环境只有一百多个主要时区，够开发使用。
-- 部署环境需要时区数据：Linux 上 .NET 从系统的 IANA 时区库（tzdata）读取，编写 Dockerfile（JAN-52）时要用带 tzdata 的基础镜像。
+- 部署环境需要时区数据：Linux 上 .NET 从系统的 IANA 时区库（tzdata）读取。四个程序的镜像用 Debian 系的 `mcr.microsoft.com/dotnet/aspnet:10.0`，自带 tzdata（JAN-52，后端约定 §14）。
 - 时区换算（当地时间 → UTC，含夏令时）不在本模块，由 `Suanpan.Core/Calendar/Rules/LocalTimeRule` 实现（ENG-008.3，PRD BR-037），排期采集按经济体的 `timezone` 调用。
 
 ### 3.3 经济体与货币的保存
@@ -404,3 +404,4 @@ Suanpan.Crm/
 | v0.12 | 2026-10-23 | vivo.li / Claude | FR-002.1（JAN-82）：§5.2 `ReferenceUsage` 移到 `Services/Common/References/`，供采集模块共用 |
 | v0.13 | 2026-10-27 | vivo.li / Claude | FR-006.4（JAN-79）实施：§1 映射纳入范围；§2.1 建表；新增 §3.8 映射的规则、§6.2 指标数据源页面；§3.5 指标的引用方增加数据源映射；§5 接口；§6 权限码和菜单；§7 ERR-IND-003 的实现；§9 FR-006 #3 的测试 |
 | v0.14 | 2026-10-27 | vivo.li / Claude | §3.2 时区换算的实现位置（`LocalTimeRule`，JAN-61） |
+| v0.15 | 2026-10-27 | vivo.li / Claude | §3.2 程序镜像已用带时区库的基础镜像（JAN-52） |

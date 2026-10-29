@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.31 |
+| 版本 | v1.32 |
 | 日期 | 2026-10-27 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -44,7 +44,7 @@ suanpan-forex/
 │  ├─ Suanpan.Crm.Tests            后台请求管道测试（在内存中启动 Crm，服务换成假实现）
 │  ├─ Suanpan.Data.Tests           数据层测试（审计拦截器、实体配置约定）
 │  └─ Suanpan.Collector.Tests      解析器测试（用保存的官方页面快照当样例）、执行框架的集成测试
-└─ deploy/                         Dockerfile、docker-compose
+└─ deploy/                         docker-compose、数据库初始化脚本（四个程序的 Dockerfile 在各自的项目目录中）
 ```
 
 | 程序 | 类型 | 职责 | 部署（第一阶段 → 中期） |
@@ -587,7 +587,9 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 
 ## 14. 部署与开发环境
 
-- `deploy/docker-compose.yml` 用于本地联调和第一阶段部署，包含依赖服务 PostgreSQL 17、Valkey 8.1（Redis 协议）、RabbitMQ 4.1（含管理界面，虚拟主机 `suanpan`）；四个程序各有一个 Dockerfile，由 ENG-006.3 加入。
+- `deploy/docker-compose.yml` 用于本地联调和第一阶段部署，包含依赖服务 PostgreSQL 17、Valkey 8.1（Redis 协议）、RabbitMQ 4.1（含管理界面，虚拟主机 `suanpan`）；四个程序在 `apps` 配置组中，默认不启动（`--profile apps` 时一起启动）。
+- 四个程序各有一个 Dockerfile（`src/Suanpan.{程序}/Dockerfile`，在仓库根目录构建，仓库根目录的 `.dockerignore` 排除测试、文档、编译输出和开发环境配置）：多阶段构建（SDK 镜像还原和发布，运行阶段用 `mcr.microsoft.com/dotnet/aspnet:10.0`）；运行阶段以镜像内置的非 root 用户 `app` 运行、`TZ=UTC`（PRD NFR-122），Debian 系的运行时镜像自带 IANA 时区库和 ICU（时区换算依赖它们，不用 Alpine 镜像）；容器内监听 8080。镜像中不含任何密钥，配置全部通过环境变量 `SUANPAN__节__键` 注入；被引用的类库变化时，同步修改 Dockerfile 中复制项目文件的几行。
+- 容器不自动执行迁移（硬性规则 5）：本地用 compose 启动程序前，先按 README 用 `dotnet ef database update` 执行迁移。后台的 Cookie 加密密钥（Data Protection）在容器中没有持久化，重建容器后需要重新登录；线上部署时的持久化由 ENG-010 处理。
 - 首次使用时把 `deploy/.env.example` 复制为 `deploy/.env` 并填写密码，`.env` 不提交。端口只绑定 `127.0.0.1`，与本机已有的服务冲突时在 `.env` 中修改。
 - PostgreSQL 首次启动时，由 `deploy/postgres/init/` 中的脚本创建业务库和三个数据库账号（数据库变更约定 §2.2）。脚本只在数据卷为空时执行，修改账号或密码要先删除数据卷（`docker compose -f deploy/docker-compose.yml down -v`）。
 - 开发机上已有 Redis、RabbitMQ 时，只启动 PostgreSQL（`docker compose -f deploy/docker-compose.yml up -d postgres`），复用已有的服务；与其他项目共用时，RabbitMQ 使用独立的虚拟主机 `suanpan`，Redis 的键加前缀 `suanpan:`。
@@ -635,3 +637,4 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | v1.29 | 2026-10-27 | vivo.li / Claude | §13.1、§13.4 Collector 的执行框架集成测试：在内存中启动整个程序，不能用回滚隔离，改用各自的随机数据（FR-002.4 实施） |
 | v1.30 | 2026-10-27 | vivo.li / Claude | ENG-008.1 实施：§2 依赖方向由 Core.Tests 的架构测试检查，新增项目要登记层级；§13.4 容器夹具的标签检查覆盖到 Collector；§1、§1.2 测试目录补充 Architecture/ 和 Collector 的执行框架测试、快照样例复制到输出目录 |
 | v1.31 | 2026-10-27 | vivo.li / Claude | §10 当地时间换算 UTC 统一用 `LocalTimeRule`，写明夏令时切换当天的处理（ENG-008.3 实施，PRD BR-037） |
+| v1.32 | 2026-10-27 | vivo.li / Claude | §1、§14 四个程序的 Dockerfile（位置、多阶段构建、非 root、UTC、带时区库的基础镜像）和 compose 的 apps 配置组（ENG-006.3 实施） |

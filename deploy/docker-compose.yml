@@ -1,7 +1,23 @@
 # 依赖服务：PostgreSQL、Redis（Valkey）、RabbitMQ，见 docs/conventions/backend.md §14
 # 首次使用：把 .env.example 复制为 .env 并填写密码
 # 本机已有 Redis、RabbitMQ 时，只启动 PostgreSQL：docker compose -f deploy/docker-compose.yml up -d postgres
+# 四个程序（Crm、Portal、Job、Collector）在 apps 配置组中，默认不启动；要一起启动时（先执行迁移，见 README）：
+#   docker compose -f deploy/docker-compose.yml --profile apps up -d --build
 name: suanpan
+
+# 四个程序共用的环境变量：连接串用容器网络内的服务名，密码取自 .env（后端约定 §12 的 SUANPAN__节__键）
+x-app-environment: &app-environment
+  SUANPAN__ConnectionStrings__Main: "Host=postgres;Port=5432;Database=${SUANPAN_DB:-suanpan};Username=suanpan_app;Password=${SUANPAN_APP_PASSWORD}"
+  SUANPAN__Redis__Configuration: "redis:6379,password=${REDIS_PASSWORD}"
+  SUANPAN__RabbitMq__Uri: "amqp://${RABBITMQ_USER:-suanpan}:${RABBITMQ_PASSWORD}@rabbitmq:5672/suanpan"
+
+x-app-depends-on: &app-depends-on
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  rabbitmq:
+    condition: service_healthy
 
 services:
   postgres:
@@ -59,6 +75,56 @@ services:
       timeout: 10s
       retries: 10
       start_period: 20s
+
+  crm:
+    profiles: ["apps"]
+    build:
+      context: ..
+      dockerfile: src/Suanpan.Crm/Dockerfile
+    restart: unless-stopped
+    depends_on: *app-depends-on
+    environment:
+      <<: *app-environment
+      SUANPAN__Security__EncryptionKey: ${SUANPAN_ENCRYPTION_KEY:-}
+      SUANPAN__Seed__AdminUsername: ${SUANPAN_SEED_ADMIN_USERNAME:-}
+      SUANPAN__Seed__AdminPassword: ${SUANPAN_SEED_ADMIN_PASSWORD:-}
+    ports:
+      - "127.0.0.1:${CRM_PORT:-8100}:8080"
+
+  portal:
+    profiles: ["apps"]
+    build:
+      context: ..
+      dockerfile: src/Suanpan.Portal/Dockerfile
+    restart: unless-stopped
+    depends_on: *app-depends-on
+    environment:
+      SUANPAN__ConnectionStrings__Portal: "Host=postgres;Port=5432;Database=${SUANPAN_DB:-suanpan};Username=suanpan_portal;Password=${SUANPAN_PORTAL_PASSWORD}"
+      SUANPAN__Redis__Configuration: "redis:6379,password=${REDIS_PASSWORD}"
+      SUANPAN__RabbitMq__Uri: "amqp://${RABBITMQ_USER:-suanpan}:${RABBITMQ_PASSWORD}@rabbitmq:5672/suanpan"
+    ports:
+      - "127.0.0.1:${PORTAL_PORT:-8200}:8080"
+
+  job:
+    profiles: ["apps"]
+    build:
+      context: ..
+      dockerfile: src/Suanpan.Job/Dockerfile
+    restart: unless-stopped
+    depends_on: *app-depends-on
+    environment:
+      <<: *app-environment
+
+  collector:
+    profiles: ["apps"]
+    build:
+      context: ..
+      dockerfile: src/Suanpan.Collector/Dockerfile
+    restart: unless-stopped
+    depends_on: *app-depends-on
+    environment:
+      <<: *app-environment
+      SUANPAN__Security__EncryptionKey: ${SUANPAN_ENCRYPTION_KEY:-}
 
 volumes:
   postgres-data:

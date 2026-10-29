@@ -124,6 +124,26 @@ dotnet user-secrets set "Auth:SkipTotpInDevelopment" "true" --project src/Suanpa
 
 设置后已绑定的账号输完密码直接进入后台，登录日志记为"跳过 TOTP"；首次登录的改密码、绑定二次验证照常进行。登录时的验证码防重放依赖 Redis，Redis 连不上时无法登录。
 
+### 4. 用容器运行四个程序（可选）
+
+四个程序各有一个 Dockerfile（`src/Suanpan.{程序}/Dockerfile`），compose 的 `apps` 配置组可以把它们和依赖服务一起启动，用来检查镜像或在没有 .NET SDK 的机器上运行。
+
+1. 在 `deploy/.env` 中填写 `SUANPAN_ENCRYPTION_KEY`（`openssl rand -base64 32` 生成）和初始管理员 `SUANPAN_SEED_ADMIN_USERNAME`、`SUANPAN_SEED_ADMIN_PASSWORD`。这组配置会同时启动 compose 里的 Redis 和 RabbitMQ；本机已有同端口的服务时，先在 `.env` 中改 `REDIS_PORT`、`RABBITMQ_PORT`、`RABBITMQ_MANAGEMENT_PORT`。
+2. 容器不会自动执行迁移，先启动依赖服务并执行迁移（命令同上文）。
+3. 构建并启动：
+
+```bash
+docker compose -f deploy/docker-compose.yml --profile apps up -d --build
+```
+
+| 程序 | 地址 |
+|---|---|
+| Crm | http://127.0.0.1:8100（`.env` 中的 `CRM_PORT`） |
+| Portal | http://127.0.0.1:8200（`.env` 中的 `PORTAL_PORT`） |
+| Job、Collector | 不对外暴露端口，用 `docker compose -f deploy/docker-compose.yml logs job collector` 查看日志 |
+
+容器中以生产环境运行：后台的 Cookie 只在 https 下发送，浏览器访问 `http://127.0.0.1` 时可能不保存登录状态，本地检查后台页面请用 `dotnet run`。容器重建后需要重新登录（Cookie 加密密钥没有持久化）。
+
 运行全部测试（集成测试会用 Docker 启动临时的 PostgreSQL、Valkey、RabbitMQ，需要 Docker 在运行）：
 
 ```bash
