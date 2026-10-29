@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.12 |
+| 版本 | v0.13 |
 | 日期 | 2026-10-29 |
 | 状态 | FR-001、FR-002 部分已评审（2026-10-23，vivo.li；§11 第 7 项的联系邮箱待提供）；v0.11 新增的快照与重新解析（FR-004）已评审（2026-10-29，vivo.li：§11 第 14 ~ 20 项均按建议执行） |
 | 覆盖 | FR-001 数据源管理、FR-002 采集任务配置与调度、FR-004 原始快照与重新解析；盯盘（FR-003）只定接入位置 |
@@ -101,10 +101,10 @@
 | `error_code` | `varchar(32)` | 是 | 失败或跳过的错误码（§9） |
 | `error_message` | `varchar(2000)` | 是 | 面向工程师的原因 |
 | `trace_id` | `varchar(64)` | 是 | 贯穿下发、执行、入库的日志追踪（NFR-050） |
-| `locked_count` | `integer` | 否 | 因字段锁定没有更新的条数（BR-062、FR-004 主流程第 4 步），新建时为 0；v0.11 加列 |
-| `parse_output` | `jsonb` | 是 | 解析器输出的记录（JSON 数组，最多 1000 条，超出时只存前 1000 条并标明），快照详情中"当时的解析结果"用（FR-004 主流程第 2 步）；v0.11 加列 |
-| `reparse` | `jsonb` | 是 | 重新解析的参数：`{"parserKey": 解析器, "snapshotIds": [快照 id]}`（§5.6）；其他触发方式为空；v0.11 加列 |
-| `heartbeat_at` | `timestamptz` | 是 | 重新解析处理中定期写入，执行中断的回收据此判断（§5.6）；v0.11 加列 |
+| `locked_count` | `integer` | 否 | 因字段锁定没有更新的条数（BR-062、FR-004 主流程第 4 步），新建时为 0；FR-004.1 加列 |
+| `parse_output` | `jsonb` | 是 | 解析器输出的记录：`{"total": 总条数, "records": [前 1000 条]}`（记录按 camelCase 序列化，序列化失败时不存），快照详情中"当时的解析结果"用（FR-004 主流程第 2 步）；没有解析到这一步时为空；FR-004.1 加列 |
+| `reparse` | `jsonb` | 是 | 重新解析的参数：`{"parserKey": 解析器, "snapshotIds": [快照 id]}`（§5.6）；其他触发方式为空；FR-004.2 加列 |
+| `heartbeat_at` | `timestamptz` | 是 | 重新解析处理中定期写入，执行中断的回收据此判断（§5.6）；FR-004.2 加列 |
 
 **`col_snapshot`（快照）** —— 不带审计四件套（系统写入），保留 180 天，被入库数据引用的保留 1 年（BR-022，§4.6）；v0.11 新增
 
@@ -133,7 +133,7 @@
 |---|---|---|---|
 | `content_hash` | `char(64)` | 否 | 主键 |
 | `body` | `bytea` | 否 | gzip 压缩后的原始内容；列的存储方式设为 `EXTERNAL`，不让 PostgreSQL 再压缩一次 |
-| `created_at` | `timestamptz` | 否 | |
+| `last_used_at` | `timestamptz` | 否 | 最近一次被快照使用的时间：已有的内容被再次用到时更新。清理只删除没有快照引用、且 1 天内没有被使用的内容，避免删掉另一个事务正要引用的内容（§4.6） |
 
 ### 2.2 索引
 
@@ -310,7 +310,7 @@ Job 每天执行一次 `collect-snapshot-cleanup`（UTC 20:30，分布式锁 `co
 
 1. 删除 `fetched_at` 早于保留天数、且没有被入库数据引用的快照；保留天数取系统配置 `collect:snapshot_retention_days`（默认 180，BR-022），不是正整数时按默认值并记警告日志。
 2. 被引用的快照保留 1 年（BR-022 的"≥ 1 年"）：删除 `fetched_at` 早于 365 天和保留天数中较长者的快照。被删除快照的数据仍在，追溯时显示"快照已过保留期"。
-3. 删除不再被任何快照引用的内容（`col_snapshot_content`）。
+3. 删除不再被任何快照引用、且 1 天内没有被使用的内容（`col_snapshot_content`，`PostgresSnapshotContentStore.DeleteOrphansAsync`）。删除时再判断一次使用时间：保存快照时会先更新已有内容的使用时间并锁住这一行，删除等它提交后按新的使用时间重新判断，不会删掉刚被用到的内容。
 
 ---
 
@@ -366,7 +366,7 @@ Job 每天执行一次 `collect-snapshot-cleanup`（UTC 20:30，分布式锁 `co
 
 **保存**（`ISnapshotService.SaveAsync`，`Services/Collect/Snapshots/`）：执行器拿到适配器的响应后、判断成败和解析之前调用（§4.3 第 4 步），一次请求的全部响应在一个事务中写入：
 
-1. 对每个响应算原始内容的 SHA-256；内容表中没有这个哈希时，gzip 压缩后写入（`INSERT ... ON CONFLICT DO NOTHING`，并发写入同样的内容不会出错）。
+1. 对每个响应算原始内容的 SHA-256；内容表中已有这个哈希时只更新使用时间（`last_used_at`），没有时 gzip 压缩后写入（`INSERT ... ON CONFLICT DO UPDATE SET last_used_at`，并发写入同样的内容不会出错）。
 2. 查同一数据源、同一请求标识的上一个快照，哈希相同时 `unchanged` 为是（BR-021）。内容没有重复存储，快照记录照常写一条，运行详情和快照列表能看到"未变化"。
 3. 写快照记录，返回快照 id（顺序与响应相同），交给入库服务。
 
@@ -374,6 +374,7 @@ Job 每天执行一次 `collect-snapshot-cleanup`（UTC 20:30，分布式锁 `co
 - **盯盘**（FR-003）只保存内容有变化的快照（BR-016）：`SaveAsync` 的 `skipUnchanged` 为是时，未变化的响应不写快照记录、返回空，盯盘也不解析它（BR-015）。
 - **无效快照**（ERR-PARSE-003）：2xx 但内容为空的，执行器直接标记为无效；解析器发现内容是拦截页（如"Access Denied"页面）时抛出 `InvalidSnapshotException`（`ParseException` 的子类，带原因），执行器把这次请求的快照标记为无效。无效快照不参与重新解析。
 - **存储**：快照记录在 `col_snapshot`，内容在 `col_snapshot_content`（DEC-023）。内容的读写经 `ISnapshotContentStore`（`PutAsync`、`GetAsync`、`DeleteOrphansAsync`），PostgreSQL 的实现是 `PostgresSnapshotContentStore`；以后量大时换成对象存储，只换这个实现，快照记录仍在数据库中。压缩和解压用 .NET 自带的 `GZipStream`，不引入第三方包。
+- **实现**（FR-004.1）：`ISnapshotService.SaveAsync(SnapshotBatch, skipUnchanged)` 接收 Services 自己的 `SnapshotInput`（地址、请求标识、状态码、内容类型、内容、收到响应的时间），Collector 的执行器把 `FetchedResponse` 转成它（Services 不引用 Collector）。`FetchedResponse` 增加可选的 `RequestKey` 和 `ReceivedAt`（`FetchContext` 发请求时写入，快照的 `fetched_at` 取它）。保存后把快照从 DbContext 中分离，执行器在同一个 DbContext 中继续改运行记录。快照写入失败时先把运行记为失败，再发"重要"告警（对象为数据源名称），告警失败只记日志。
 - **查看**（BR-025）：后台只以纯文本显示（`<pre>` 内转义输出，硬性规则 10），不渲染 HTML、不执行脚本（FR-004 验收第 4 条）。文本类型（`text/*`、JSON、XML、CSV，或声明了字符集的）按字符集解码，显示前 1 MB，超出时注明并提供下载；其他类型只显示类型和大小，提供下载。下载一律用 `application/octet-stream` + `Content-Disposition: attachment` + `X-Content-Type-Options: nosniff`，浏览器不会打开或执行内容。
 - **当时的解析结果**（FR-004 主流程第 2 步）：快照详情与内容并排显示所属运行记录的状态、错误、条数和 `parse_output`；运行记录过了 90 天的保留期后只显示"运行记录已清理"。
 - **保留**：见 §4.6。
@@ -667,8 +668,8 @@ v0.11 的快照与重新解析评审通过，拆成两个子任务（父工单 J
 
 | 子任务 | 工单 | 内容 | 依赖 |
 |---|---|---|---|
-| FR-004.1 快照：数据与保存 | JAN-86 | 实体、实体配置、迁移（`col_snapshot`、`col_snapshot_content`、`col_run` 加列）；`ISnapshotService` 的保存和标记、`PostgresSnapshotContentStore`；执行器先存快照、无效快照、`parse_output`；`IngestRequest.SnapshotIds`、`IngestResult.Locked`；`collect-snapshot-cleanup`；集成测试 | — |
-| FR-004.2 快照页面与重新解析 | JAN-90 | 快照列表、详情、下载；`ReparseCommand`、`ReparseExecutor`、心跳回收；运行详情显示快照；集成测试、管道测试 | FR-004.1 |
+| FR-004.1 快照：数据与保存 | JAN-86 | 实体、实体配置、迁移（`col_snapshot`、`col_snapshot_content`、`col_run` 加 `locked_count`、`parse_output`）；`ISnapshotService` 的保存和标记、`PostgresSnapshotContentStore`；执行器先存快照、无效快照、`parse_output`；`IngestRequest.SnapshotIds`、`IngestResult.Locked`；`collect-snapshot-cleanup`；集成测试 | — |
+| FR-004.2 快照页面与重新解析 | JAN-90 | `col_run` 加 `reparse`、`heartbeat_at`；快照列表、详情、下载；`ReparseCommand`、`ReparseExecutor`、心跳回收；运行详情显示快照；集成测试、管道测试 | FR-004.1 |
 
 FR-004.1 是日历排期入库（日历设计 §14 的 FR-007.3，JAN-89）的前置任务；FR-004.2 可以与日历的子任务并行。
 
@@ -690,3 +691,4 @@ FR-004.1 是日历排期入库（日历设计 §14 的 FR-007.3，JAN-89）的�
 | v0.10 | 2026-10-27 | vivo.li / Claude | FR-002.4 实施：§4.3 执行和回收的实现（认领、行锁、请求记录先写开始时间、按顺序处理消息）；§5.1 ~ §5.3 适配器、解析器、入库的接口；§5.4、§10、§11 第 7 项 User-Agent 先用占位值；§7.1 目录；§12 Collector 测试的实现 |
 | v0.11 | 2026-10-28 | vivo.li / Claude | 补充快照与重新解析（FR-004）：§2.1 新增 `col_snapshot`、`col_snapshot_content`，`col_run` 加 `locked_count`、`parse_output`、`reparse`、`heartbeat_at`；§4.3 先存快照再解析、无效快照、重新解析不参与并发检查；新增 §4.6 快照的清理、§5.5 快照、§5.6 重新解析；§5.3 `IngestRequest` 带快照 id、`IngestResult` 增加因锁定跳过；§7 ~ §10 目录、接口、消息、页面、错误码、配置；§11 第 14 ~ 20 项待评审；§12、§13 测试和拆分。同步 PRD v1.0.0.22（BR-020 ~ BR-025、DEC-023） |
 | v0.12 | 2026-10-29 | vivo.li / Claude | 评审通过：§11 第 14 ~ 20 项均按建议执行；§13 回填快照两个子任务的工单号（JAN-86、JAN-90） |
+| v0.13 | 2026-10-29 | vivo.li / Claude | FR-004.1（JAN-86）实施：§2.1 `parse_output` 的格式；`col_snapshot_content` 的 `created_at` 改为 `last_used_at`，§4.6 清理内容时留 1 天的余量，避免与正在写入的快照冲突；`col_run` 的 `reparse`、`heartbeat_at` 改由 FR-004.2 加列；§5.5 补充实现（`SnapshotInput`、`FetchedResponse.RequestKey` / `ReceivedAt`、告警的时机）；§13 两个子任务的内容同步 |

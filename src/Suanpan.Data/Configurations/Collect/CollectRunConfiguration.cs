@@ -29,6 +29,8 @@ public class CollectRunConfiguration : IEntityTypeConfiguration<CollectRun>
         builder.Property(x => x.InsertedCount).HasColumnName("inserted_count");
         builder.Property(x => x.UpdatedCount).HasColumnName("updated_count");
         builder.Property(x => x.SkippedCount).HasColumnName("skipped_count");
+        builder.Property(x => x.LockedCount).HasColumnName("locked_count");
+        builder.Property(x => x.ParseOutput).HasColumnName("parse_output").HasColumnType("jsonb");
         builder.Property(x => x.ErrorCode).HasColumnName("error_code").HasMaxLength(32);
         builder.Property(x => x.ErrorMessage).HasColumnName("error_message").HasMaxLength(2000);
         builder.Property(x => x.TraceId).HasColumnName("trace_id").HasMaxLength(64);

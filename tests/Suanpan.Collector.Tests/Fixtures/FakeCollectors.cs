@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Suanpan.Collector.Execution;
 using Suanpan.Core.Collect.Enums;
@@ -27,22 +28,37 @@ public sealed class FakeAdapter : ICollectAdapter
     }
 }
 
-/// <summary>每个响应解析成一条记录（响应的文字）</summary>
+/// <summary>每个响应解析成一条记录（响应的文字）；内容是 <see cref="BlockedPage"/> 时按拦截页处理（ERR-PARSE-003）</summary>
 public sealed class FakeParser : IParser
 {
     public const string ParserKey = FakeAdapter.AdapterKey + ".items";
 
+    public const string BlockedPage = "Access Denied";
+
     public string Key => ParserKey;
 
     public ParseResult Parse(FetchResult fetched, string? parameters)
-        => new(fetched.Responses.Select(r => (object)r.Text()).ToList(), []);
+    {
+        var texts = fetched.Responses.Select(r => r.Text()).ToList();
+        return texts.Contains(BlockedPage)
+            ? throw new InvalidSnapshotException("内容是拦截页")
+            : new ParseResult(texts.Cast<object>().ToList(), []);
+    }
 }
 
-/// <summary>日历排期的假入库：每条记录算新增</summary>
+/// <summary>日历排期的假入库：记录为 <see cref="LockedRecord"/> 的算因锁定跳过，其余算新增；按运行记录保存收到的请求</summary>
 public sealed class FakeIngestor : ICollectIngestor
 {
+    public const string LockedRecord = "locked";
+
+    public ConcurrentDictionary<long, IngestRequest> Requests { get; } = new();
+
     public CollectTargetType TargetType => CollectTargetType.Calendar;
 
     public Task<IngestResult> IngestAsync(IngestRequest request, CancellationToken ct)
-        => Task.FromResult(new IngestResult(request.Records.Count, 0, 0, 0));
+    {
+        Requests[request.RunId] = request;
+        var locked = request.Records.Count(r => Equals(r, LockedRecord));
+        return Task.FromResult(new IngestResult(request.Records.Count - locked, 0, 0, 0, locked));
+    }
 }

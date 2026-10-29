@@ -22,11 +22,17 @@ public static class CollectConfigKeys
     public const string RunRetentionDays = "collect:run_retention_days";
     public const int RunRetentionDaysDefault = 90;
 
+    /// <summary>快照保留天数（BR-022）；被入库数据引用的快照保留 365 天和它之中较长者</summary>
+    public const string SnapshotRetentionDays = "collect:snapshot_retention_days";
+    public const int SnapshotRetentionDaysDefault = 180;
+
     public static readonly IReadOnlyList<ConfigDefinition> Definitions =
     [
         new(RetryDelaySeconds, ConfigValueType.String, RetryDelaySecondsDefault, CollectGroup,
             "采集请求失败后的重试间隔（秒），逗号分隔，个数即最多重试次数；留空表示不重试"),
         new(RunRetentionDays, ConfigValueType.Int, RunRetentionDaysDefault.ToString(CultureInfo.InvariantCulture), CollectGroup,
             "运行记录保留天数，每天清理一次更早的记录"),
+        new(SnapshotRetentionDays, ConfigValueType.Int, SnapshotRetentionDaysDefault.ToString(CultureInfo.InvariantCulture), CollectGroup,
+            "快照保留天数，每天清理一次；被入库数据引用的快照至少保留 365 天"),
     ];
 }

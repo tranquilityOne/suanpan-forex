@@ -54,9 +54,17 @@ namespace Suanpan.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("inserted_count");
 
+                    b.Property<int>("LockedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("locked_count");
+
                     b.Property<DateTime?>("NextAttemptAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("next_attempt_at");
+
+                    b.Property<string>("ParseOutput")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("parse_output");
 
                     b.Property<DateTime>("QueuedAt")
                         .HasColumnType("timestamp with time zone")
@@ -342,6 +350,131 @@ namespace Suanpan.Data.Migrations
                         .HasDatabaseName("ux_col_source_name");
 
                     b.ToTable("col_source", (string)null);
+                });
+
+            modelBuilder.Entity("Suanpan.Core.Collect.Entities.Snapshot", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<short>("Attempt")
+                        .HasColumnType("smallint")
+                        .HasColumnName("attempt");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("char(64)")
+                        .HasColumnName("content_hash");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTime>("FetchedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fetched_at");
+
+                    b.Property<short>("HttpStatus")
+                        .HasColumnType("smallint")
+                        .HasColumnName("http_status");
+
+                    b.Property<string>("InvalidReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("invalid_reason");
+
+                    b.Property<bool>("IsValid")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_valid");
+
+                    b.Property<bool>("Referenced")
+                        .HasColumnType("boolean")
+                        .HasColumnName("referenced");
+
+                    b.Property<string>("RequestKey")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("request_key");
+
+                    b.Property<long>("RunId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("run_id");
+
+                    b.Property<short>("Seq")
+                        .HasColumnType("smallint")
+                        .HasColumnName("seq");
+
+                    b.Property<int>("Size")
+                        .HasColumnType("integer")
+                        .HasColumnName("size");
+
+                    b.Property<long>("SourceId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_id");
+
+                    b.Property<long>("TaskId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("task_id");
+
+                    b.Property<bool>("Unchanged")
+                        .HasColumnType("boolean")
+                        .HasColumnName("unchanged");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("url");
+
+                    b.HasKey("Id")
+                        .HasName("pk_col_snapshot");
+
+                    b.HasIndex("ContentHash")
+                        .HasDatabaseName("ix_col_snapshot_content_hash");
+
+                    b.HasIndex("FetchedAt")
+                        .HasDatabaseName("ix_col_snapshot_fetched_at");
+
+                    b.HasIndex("RunId")
+                        .HasDatabaseName("ix_col_snapshot_run_id");
+
+                    b.HasIndex("SourceId", "FetchedAt")
+                        .HasDatabaseName("ix_col_snapshot_source_id_fetched_at");
+
+                    b.HasIndex("TaskId", "FetchedAt")
+                        .HasDatabaseName("ix_col_snapshot_task_id_fetched_at");
+
+                    b.HasIndex("SourceId", "RequestKey", "Id")
+                        .HasDatabaseName("ix_col_snapshot_source_id_request_key_id");
+
+                    b.ToTable("col_snapshot", (string)null);
+                });
+
+            modelBuilder.Entity("Suanpan.Core.Collect.Entities.SnapshotContent", b =>
+                {
+                    b.Property<string>("ContentHash")
+                        .HasColumnType("char(64)")
+                        .HasColumnName("content_hash");
+
+                    b.Property<byte[]>("Body")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("body");
+
+                    b.Property<DateTime>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_used_at");
+
+                    b.HasKey("ContentHash")
+                        .HasName("pk_col_snapshot_content");
+
+                    b.ToTable("col_snapshot_content", (string)null);
                 });
 
             modelBuilder.Entity("Suanpan.Core.Reference.Entities.Currency", b =>

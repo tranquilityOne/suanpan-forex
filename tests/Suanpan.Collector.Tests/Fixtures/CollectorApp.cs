@@ -13,13 +13,16 @@ using Suanpan.Infrastructure.Http;
 using Suanpan.Infrastructure.Messaging;
 using Suanpan.Services.Collect.Ingest;
 using Suanpan.Services.Collect.Runs;
+using Suanpan.Services.Collect.Snapshots;
+using Suanpan.Services.Common.Alerts;
 using Suanpan.Shared.Messages.Collect;
 
 namespace Suanpan.Collector.Tests.Fixtures;
 
 /// <summary>
 /// 在内存中启动的 Collector（WebApplicationFactory）：连测试容器，采集用的 HttpClient 接到 <see cref="StubHttp"/>，
-/// 另注册测试用的适配器、解析器和入库服务（<see cref="FakeAdapter"/> 等）。消息接收、限流、分布式锁都是真实的
+/// 另注册测试用的适配器、解析器和入库服务（<see cref="FakeAdapter"/> 等），快照服务可以按数据源模拟写入失败，告警被记录下来。
+/// 消息接收、限流、分布式锁都是真实的
 /// </summary>
 public sealed class CollectorApp(string connectionString, string redis, string rabbitMq, StubHttp http) : WebApplicationFactory<Program>
 {
@@ -38,6 +41,11 @@ public sealed class CollectorApp(string connectionString, string redis, string r
             services.AddSingleton<ICollectAdapter, FakeAdapter>();
             services.AddSingleton<IParser, FakeParser>();
             services.AddSingleton<ICollectIngestor, FakeIngestor>();
+            services.AddSingleton<SnapshotFaults>();
+            services.AddScoped<SnapshotService>();
+            services.AddScoped<ISnapshotService>(sp => new FaultySnapshotService(sp.GetRequiredService<SnapshotService>(), sp.GetRequiredService<SnapshotFaults>()));
+            services.AddSingleton<RecordingAlertService>();
+            services.AddSingleton<IAlertService>(sp => sp.GetRequiredService<RecordingAlertService>());
             services.AddHttpClient(CollectHttp.ClientName).ConfigurePrimaryHttpMessageHandler(http.CreateHandler);
         });
     }
@@ -84,6 +92,20 @@ public sealed class CollectorApp(string connectionString, string redis, string r
         return result is { Success: true, Published: true, RunId: { } runId }
             ? runId
             : throw new InvalidOperationException($"立即执行失败：{result.Error}");
+    }
+
+    public FakeIngestor Ingestor => Services.GetServices<ICollectIngestor>().OfType<FakeIngestor>().Single();
+
+    public SnapshotFaults SnapshotFaults => Services.GetRequiredService<SnapshotFaults>();
+
+    public RecordingAlertService Alerts => Services.GetRequiredService<RecordingAlertService>();
+
+    /// <summary>运行记录的快照，按第几次请求、响应序号排序</summary>
+    public async Task<List<Snapshot>> GetSnapshotsAsync(long runId)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<SuanpanDbContext>().Snapshots.AsNoTracking()
+            .Where(s => s.RunId == runId).OrderBy(s => s.Attempt).ThenBy(s => s.Seq).ToListAsync();
     }
 
     /// <summary>直接发一条指令，模拟重复投递</summary>

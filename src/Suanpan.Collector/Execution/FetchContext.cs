@@ -43,7 +43,10 @@ public sealed class FetchContext(
         {
             using var response = await client.SendAsync(request, timeoutSource.Token);
             var body = await response.Content.ReadAsByteArrayAsync(timeoutSource.Token);
-            return new FetchedResponse(request.RequestUri!, (int)response.StatusCode, response.Content.Headers.ContentType?.ToString(), body);
+            return new FetchedResponse(request.RequestUri!, (int)response.StatusCode, response.Content.Headers.ContentType?.ToString(), body)
+            {
+                ReceivedAt = timeProvider.GetUtcNow().UtcDateTime,
+            };
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {

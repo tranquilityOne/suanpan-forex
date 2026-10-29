@@ -1,14 +1,19 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Collect.Enums;
 using Suanpan.Core.Collect.Rules;
+using Suanpan.Core.Ops.Enums;
 using Suanpan.Data;
 using Suanpan.Infrastructure.Http;
 using Suanpan.Infrastructure.Messaging;
 using Suanpan.Infrastructure.Redis;
 using Suanpan.Services.Collect.Ingest;
 using Suanpan.Services.Collect.Runs;
+using Suanpan.Services.Collect.Snapshots;
+using Suanpan.Services.Collect.Snapshots.Models;
+using Suanpan.Services.Common.Alerts;
 using Suanpan.Services.Sys.Configs;
 using Suanpan.Services.Sys.Security;
 using Suanpan.Shared.Messages.Collect;
@@ -22,7 +27,7 @@ namespace Suanpan.Collector.Execution;
 /// <item>前置检查：数据源必须启用；任务也必须启用，手动触发的除外（BR-155）。不满足时记为"跳过"，不发请求</item>
 /// <item>认领：第一次请求在任务锁内检查同一任务有没有其他"运行中"的记录（BR-010），有则跳过（ERR-COL-004）；
 /// 认领时写入本次的请求记录（开始时间），执行中断的回收据此判断</item>
-/// <item>请求 → 解析 → 入库；可重试的失败写入 next_attempt_at 并延时下发下一次请求（BR-009），用完记为失败</item>
+/// <item>请求 → 保存快照（FR-004，先存快照再解析）→ 解析 → 入库；可重试的失败写入 next_attempt_at 并延时下发下一次请求（BR-009），用完记为失败</item>
 /// </list>
 /// 改运行记录都在行锁内进行，与重复投递的指令、执行中断的回收互斥
 /// </summary>
@@ -37,6 +42,8 @@ public sealed class CollectExecutor(
     IEnumerable<ICollectAdapter> adapters,
     IEnumerable<IParser> parsers,
     IEnumerable<ICollectIngestor> ingestors,
+    ISnapshotService snapshots,
+    IAlertService alerts,
     TimeProvider timeProvider,
     ILogger<CollectExecutor> logger)
 {
@@ -46,6 +53,11 @@ public sealed class CollectExecutor(
     private static readonly TimeSpan TaskLockWait = TimeSpan.FromSeconds(10);
 
     private const int MaxErrorMessageLength = 2000;
+
+    /// <summary>运行记录的 parse_output 最多存这么多条记录（采集设计 §2.1）</summary>
+    private const int MaxParseOutputRecords = 1000;
+
+    private static readonly JsonSerializerOptions ParseOutputJsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task ExecuteAsync(CollectRunCommand command, CancellationToken ct)
     {
@@ -158,8 +170,7 @@ public sealed class CollectExecutor(
             httpStatus = (failed ?? fetched.Responses.LastOrDefault())?.StatusCode;
             if (failed is not null)
             {
-                // 地址只保留路径：有的数据源把凭据放在查询串里
-                error = $"HTTP {failed.StatusCode}：{failed.Url.GetLeftPart(UriPartial.Path)}";
+                error = $"HTTP {failed.StatusCode}：{PathOnly(failed.Url)}";
                 retryable = RetryPolicy.IsRetryable(httpStatus);
             }
         }
@@ -184,6 +195,25 @@ public sealed class CollectExecutor(
             a.DeferredMs = context.DeferredMs;
         }
 
+        // 先存快照再判断成败、解析（FR-004，硬性规则 14）：非 2xx 的响应也存，排查被拦截、限流时能看到当时的内容
+        IReadOnlyList<long> snapshotIds = [];
+        if (fetched is not null)
+        {
+            try
+            {
+                snapshotIds = await SaveSnapshotsAsync(runId, attempt, task, fetched, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // 快照写入失败（ERR-COL-007）：不解析、不重试，告警
+                logger.LogError(ex, "运行记录 {RunId}（任务 {TaskId}）快照写入失败", runId, task.Id);
+                await FinishAttemptAsync(runId, attempt, Record,
+                    r => End(r, CollectRunStatus.Failed, CollectErrorCodes.SnapshotWriteFailed, $"快照写入失败：{ex.Message}"), ct);
+                await RaiseAlertAsync(AlertLevel.Important, source.Name, $"运行记录 {runId}（任务 {task.Name}）快照写入失败：{ex.Message}", ct);
+                return;
+            }
+        }
+
         if (error is not null)
         {
             var delays = await RetryDelaysAsync(ct);
@@ -204,11 +234,34 @@ public sealed class CollectExecutor(
             return;
         }
 
-        // 5. 解析（M2 起先保存快照，FR-004）
+        // 内容为空的响应：快照无效（ERR-PARSE-003），不解析
+        var emptyIds = fetched!.Responses
+            .Select((response, i) => (response, i))
+            .Where(x => x.response.Body.Length == 0)
+            .Select(x => snapshotIds[x.i])
+            .ToList();
+        if (emptyIds.Count > 0)
+        {
+            logger.LogError("运行记录 {RunId}（任务 {TaskId}）有 {Count} 个响应的内容为空", runId, task.Id, emptyIds.Count);
+            await snapshots.MarkInvalidAsync(emptyIds, "内容为空", ct);
+            await FinishAttemptAsync(runId, attempt, Record,
+                r => End(r, CollectRunStatus.Failed, CollectErrorCodes.InvalidSnapshot, $"{emptyIds.Count} 个响应的内容为空"), ct);
+            return;
+        }
+
+        // 5. 解析
         ParseResult parsed;
         try
         {
-            parsed = parser.Parse(fetched!, task.Params);
+            parsed = parser.Parse(fetched, task.Params);
+        }
+        catch (InvalidSnapshotException ex)
+        {
+            // 内容是拦截页等：这次请求的快照都标记为无效，不参与重新解析（ERR-PARSE-003）
+            logger.LogError("运行记录 {RunId}（任务 {TaskId}，解析器 {ParserKey}）快照无效：{Reason}", runId, task.Id, task.ParserKey, ex.Message);
+            await snapshots.MarkInvalidAsync(snapshotIds, ex.Message, ct);
+            await FinishAttemptAsync(runId, attempt, Record, r => End(r, CollectRunStatus.Failed, CollectErrorCodes.InvalidSnapshot, ex.Message), ct);
+            return;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -217,16 +270,22 @@ public sealed class CollectExecutor(
             return;
         }
 
-        // 6. 入库
+        var parseOutput = ParseOutputJson(runId, parsed.Records);
+
+        // 6. 入库：带上快照 id，入库服务据此记下来源快照（BR-045）
         IngestResult ingested;
         try
         {
-            ingested = await ingestor.IngestAsync(new IngestRequest(runId, task.Id, source.Id, parsed.Records), ct);
+            ingested = await ingestor.IngestAsync(new IngestRequest(runId, task.Id, source.Id, parsed.Records, snapshotIds), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "运行记录 {RunId}（任务 {TaskId}）入库失败", runId, task.Id);
-            await FinishAttemptAsync(runId, attempt, Record, r => End(r, CollectRunStatus.Failed, null, $"入库失败：{ex.Message}"), ct);
+            await FinishAttemptAsync(runId, attempt, Record, r =>
+            {
+                r.ParseOutput = parseOutput;
+                End(r, CollectRunStatus.Failed, null, $"入库失败：{ex.Message}");
+            }, ct);
             return;
         }
 
@@ -247,6 +306,8 @@ public sealed class CollectExecutor(
             r.InsertedCount = ingested.Inserted;
             r.UpdatedCount = ingested.Updated;
             r.SkippedCount = ingested.Skipped;
+            r.LockedCount = ingested.Locked;
+            r.ParseOutput = parseOutput;
             if (problems.Count > 0)
             {
                 End(r, CollectRunStatus.PartiallySucceeded, CollectErrorCodes.PartialData, string.Join("；", problems));
@@ -256,6 +317,49 @@ public sealed class CollectExecutor(
                 End(r, CollectRunStatus.Succeeded, null, null);
             }
         }, ct);
+    }
+
+    /// <summary>一次请求的全部响应存为快照（采集设计 §5.5），返回各响应的快照 id</summary>
+    private async Task<IReadOnlyList<long>> SaveSnapshotsAsync(long runId, int attempt, CollectTask task, FetchResult fetched, CancellationToken ct)
+    {
+        var now = Now;
+        var inputs = fetched.Responses
+            .Select(r => new SnapshotInput(PathOnly(r.Url), r.RequestKey ?? PathOnly(r.Url), r.StatusCode, r.ContentType, r.Body, r.ReceivedAt ?? now))
+            .ToList();
+        var ids = await snapshots.SaveAsync(new SnapshotBatch(runId, (short)attempt, task.Id, task.SourceId, inputs), skipUnchanged: false, ct);
+        return ids.Select(id => id ?? throw new InvalidOperationException("快照服务没有返回快照 id")).ToList();
+    }
+
+    /// <summary>
+    /// 解析器输出的记录（最多前 1000 条）存进运行记录，快照详情中"当时的解析结果"用（FR-004 主流程第 2 步）；序列化失败时不存
+    /// </summary>
+    private string? ParseOutputJson(long runId, IReadOnlyList<object> records)
+    {
+        try
+        {
+            return JsonSerializer.Serialize(new { total = records.Count, records = records.Take(MaxParseOutputRecords) }, ParseOutputJsonOptions);
+        }
+        catch (Exception ex) when (ex is NotSupportedException or JsonException or InvalidOperationException)
+        {
+            logger.LogWarning(ex, "运行记录 {RunId} 的解析结果无法序列化，不保存", runId);
+            return null;
+        }
+    }
+
+    /// <summary>地址只保留路径：有的数据源把凭据放在查询串里</summary>
+    private static string PathOnly(Uri url) => url.GetLeftPart(UriPartial.Path);
+
+    /// <summary>告警是附带动作，失败只记日志，不影响执行（后端约定 §11）</summary>
+    private async Task RaiseAlertAsync(AlertLevel level, string subject, string message, CancellationToken ct)
+    {
+        try
+        {
+            await alerts.RaiseAsync(level, subject, message, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "告警发送失败：{Subject} {Message}", subject, message);
+        }
     }
 
     /// <summary>认领第 n 次请求：请求次数加一，写入这次请求的记录（开始时间），清掉等待重试的时间</summary>

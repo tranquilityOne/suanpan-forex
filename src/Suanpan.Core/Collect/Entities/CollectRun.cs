@@ -45,6 +45,15 @@ public class CollectRun
 
     public int SkippedCount { get; set; }
 
+    /// <summary>因字段锁定没有更新的条数（BR-062、FR-004 主流程第 4 步）</summary>
+    public int LockedCount { get; set; }
+
+    /// <summary>
+    /// 解析器输出的记录（jsonb）：<c>{"total": 总条数, "records": [前 1000 条]}</c>，快照详情中"当时的解析结果"用（FR-004 主流程第 2 步）；
+    /// 没有解析到这一步时为空
+    /// </summary>
+    public string? ParseOutput { get; set; }
+
     /// <summary>失败或跳过的错误码（采集设计 §9）</summary>
     public string? ErrorCode { get; set; }
 

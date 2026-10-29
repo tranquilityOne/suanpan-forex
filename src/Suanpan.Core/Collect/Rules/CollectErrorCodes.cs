@@ -11,6 +11,9 @@ public static class CollectErrorCodes
     /// <summary>同一任务上一次运行还没有结束，本次跳过（BR-010）</summary>
     public const string ConcurrentRun = "ERR-COL-004";
 
+    /// <summary>快照写入失败：不解析、不重试，记为失败并告警（采集设计 §4.3）</summary>
+    public const string SnapshotWriteFailed = "ERR-COL-007";
+
     /// <summary>排队超过 10 分钟仍未开始：下发失败（采集设计 §4.2）</summary>
     public const string DispatchFailed = "ERR-COL-008";
 
@@ -22,4 +25,7 @@ public static class CollectErrorCodes
 
     /// <summary>部分记录缺失或入库失败，记为部分成功</summary>
     public const string PartialData = "ERR-PARSE-002";
+
+    /// <summary>快照无效：内容为空或被判定为拦截页，记为失败（采集设计 §5.5）</summary>
+    public const string InvalidSnapshot = "ERR-PARSE-003";
 }

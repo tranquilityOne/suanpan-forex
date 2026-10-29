@@ -1,9 +1,11 @@
 using System.Net;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Suanpan.Collector.Tests.Fixtures;
 using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Collect.Enums;
 using Suanpan.Core.Collect.Rules;
+using Suanpan.Core.Ops.Enums;
 using Xunit;
 
 namespace Suanpan.Collector.Tests.Handlers;
@@ -57,6 +59,70 @@ public class CollectRunCommandHandlerTests(CollectorFixture fixture)
         Assert.Equal((CollectRunStatus.Failed, CollectErrorCodes.RequestFailed, (short)4), (run.Status, run.ErrorCode, run.AttemptCount));
         Assert.Equal([(1, 500), (2, 500), (3, 500), (4, 500)], run.Attempts.Select(a => ((int)a.No, a.HttpStatus ?? 0)));
         Assert.Equal(4, fixture.Http.Requests(host).Count);
+
+        // 非 2xx 的响应也存为快照（采集设计 §4.3）
+        Assert.Equal([(1, 500), (2, 500), (3, 500), (4, 500)], (await app.GetSnapshotsAsync(run.Id)).Select(s => ((int)s.Attempt, (int)s.HttpStatus)));
+    }
+
+    /// <summary>
+    /// FR-004、硬性规则 14：每个响应先存为快照再解析，入库服务收到与响应一一对应的快照 id（BR-045 的前提）；
+    /// 解析结果存进运行记录（FR-004 主流程第 2 步），入库服务报告的因锁定跳过的条数写进运行记录
+    /// </summary>
+    [Fact]
+    public async Task Run_SavesSnapshotsAndPassesTheirIdsToIngestor()
+    {
+        var app = await fixture.GetAppAsync();
+        var host = fixture.Http.NewHost((request, _) => Task.FromResult(StubHttp.Reply(
+            HttpStatusCode.OK, request.RequestUri!.AbsolutePath.EndsWith("/2", StringComparison.Ordinal) ? FakeIngestor.LockedRecord : "ok")));
+        var task = await app.AddTaskAsync(host, parameters: "{\"pages\": 2}");
+
+        var runId = await app.TriggerAsync(task);
+        var run = await app.WaitUntilFinishedAsync(runId);
+
+        var snapshots = await app.GetSnapshotsAsync(runId);
+        Assert.Equal((CollectRunStatus.Succeeded, 1, 1), (run.Status, run.InsertedCount, run.LockedCount));
+        Assert.Equal([$"https://{host}/page/1", $"https://{host}/page/2"], snapshots.Select(s => s.Url));
+        Assert.Equal(snapshots.Select(s => s.Id), app.Ingestor.Requests[runId].SnapshotIds);
+        Assert.Equal(2, JsonDocument.Parse(run.ParseOutput!).RootElement.GetProperty("total").GetInt32());
+    }
+
+    /// <summary>ERR-PARSE-003：内容为空、或解析器判定为拦截页时，快照标记为无效，运行记为失败，不入库</summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData(FakeParser.BlockedPage)]
+    public async Task InvalidContent_MarksSnapshotInvalidAndFails(string body)
+    {
+        var app = await fixture.GetAppAsync();
+        var host = fixture.Http.NewHost((_, _) => Task.FromResult(StubHttp.Reply(HttpStatusCode.OK, body)));
+        var task = await app.AddTaskAsync(host);
+
+        var runId = await app.TriggerAsync(task);
+        var run = await app.WaitUntilFinishedAsync(runId);
+
+        Assert.Equal((CollectRunStatus.Failed, CollectErrorCodes.InvalidSnapshot), (run.Status, run.ErrorCode));
+        Assert.False(Assert.Single(await app.GetSnapshotsAsync(runId)).IsValid);
+        Assert.False(app.Ingestor.Requests.ContainsKey(runId));
+    }
+
+    /// <summary>ERR-COL-007：快照写入失败时运行记为失败、不重试、不解析，并发出"重要"告警</summary>
+    [Fact]
+    public async Task SnapshotWriteFailure_FailsRunAndRaisesAlert()
+    {
+        var app = await fixture.GetAppAsync();
+        var host = fixture.Http.NewHost();
+        var task = await app.AddTaskAsync(host);
+        app.SnapshotFaults.FailSource(task.SourceId);
+        string sourceName = "";
+        await app.ExecuteAsync(async db => sourceName = await db.DataSources.Where(s => s.Id == task.SourceId).Select(s => s.Name).SingleAsync(Ct));
+
+        var run = await app.WaitUntilFinishedAsync(await app.TriggerAsync(task));
+
+        Assert.Equal((CollectRunStatus.Failed, CollectErrorCodes.SnapshotWriteFailed, (short)1, (string?)null),
+            (run.Status, run.ErrorCode, run.AttemptCount, run.ParseOutput));
+        await Eventually.GetAsync(
+            () => Task.FromResult(app.Alerts.Raised.ToList()),
+            alerts => alerts.Contains(new RaisedAlert(AlertLevel.Important, sourceName)),
+            alerts => $"已有 {alerts.Count} 条告警");
     }
 
     /// <summary>

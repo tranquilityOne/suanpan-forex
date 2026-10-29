@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Suanpan.Services.Collect.Jobs;
 using Suanpan.Services.Collect.Runs;
+using Suanpan.Services.Collect.Snapshots;
 using Suanpan.Services.Collect.Sources;
 using Suanpan.Services.Collect.Tasks;
 using Suanpan.Services.Common.Alerts;
@@ -77,8 +78,11 @@ public static class ServicesServiceCollectionExtensions
         services.TryAddSingleton<IParserCatalog, DefaultParserCatalog>();
         services.AddScoped<ICollectTaskService, CollectTaskService>();
         services.AddScoped<ICollectRunService, CollectRunService>();
+        services.AddScoped<ISnapshotService, SnapshotService>();
+        services.AddScoped<ISnapshotContentStore, PostgresSnapshotContentStore>();
         services.AddScoped<CollectDispatchJob>();
         services.AddScoped<CollectRunCleanupJob>();
+        services.AddScoped<CollectSnapshotCleanupJob>();
 
         return services;
     }

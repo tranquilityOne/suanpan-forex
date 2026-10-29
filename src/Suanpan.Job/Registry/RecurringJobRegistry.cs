@@ -12,8 +12,10 @@ public static class RecurringJobRegistry
 {
     public static void RegisterRecurringJobs(this IRecurringJobManager jobs)
     {
-        // 数据采集（采集设计 §4.2、§4.5）
+        // 数据采集（采集设计 §4.2、§4.5、§4.6）
         jobs.AddOrUpdateUtc<CollectDispatchJob>(CollectDispatchJob.JobId, job => job.RunAsync(CancellationToken.None), CollectDispatchJob.Cron);
         jobs.AddOrUpdateUtc<CollectRunCleanupJob>(CollectRunCleanupJob.JobId, job => job.RunAsync(CancellationToken.None), CollectRunCleanupJob.Cron);
+        jobs.AddOrUpdateUtc<CollectSnapshotCleanupJob>(
+            CollectSnapshotCleanupJob.JobId, job => job.RunAsync(CancellationToken.None), CollectSnapshotCleanupJob.Cron);
     }
 }

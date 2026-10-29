@@ -16,4 +16,10 @@ public interface IParser
 public sealed record ParseResult(IReadOnlyList<object> Records, IReadOnlyList<string> Missing);
 
 /// <summary>解析失败（ERR-PARSE-001）：运行记为失败，不入库、不重试</summary>
-public sealed class ParseException(string message) : Exception(message);
+public class ParseException(string message) : Exception(message);
+
+/// <summary>
+/// 快照无效（ERR-PARSE-003，采集设计 §5.5）：内容不是数据而是拦截页（如"Access Denied"页面）等。
+/// 执行器把这次请求的快照标记为无效（不参与重新解析），运行记为失败；Message 为原因
+/// </summary>
+public sealed class InvalidSnapshotException(string message) : ParseException(message);
