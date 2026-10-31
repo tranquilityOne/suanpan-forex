@@ -37,7 +37,12 @@ public class CollectRunConfiguration : IEntityTypeConfiguration<CollectRun>
         builder.ComplexProperty(x => x.Reparse, reparse => reparse.ToJson("reparse"));
         builder.Property(x => x.HeartbeatAt).HasColumnName("heartbeat_at");
 
-        // 同一任务同一 cron 时间点只创建一次运行：调度分发重复执行时不会重复下发（采集设计 §4.2）
+        // 同一任务同一 cron 时间点只创建一次定时运行：调度分发重复执行时不会重复下发（采集设计 §4.2）；
+        // 同一任务同一排期时间只有一路盯盘（§5.7）。带上触发方式，定时和盯盘的时间点相同时互不冲突
+        builder.HasIndex(x => new { x.TaskId, x.Trigger, x.ScheduledFor }).IsUnique().HasFilter("scheduled_for IS NOT NULL");
+
+        // 旧的唯一索引：上一版程序的调度分发按它写 ON CONFLICT，这一版先保留（数据库变更约定 §5 的扩展阶段），
+        // 开始写盯盘的运行记录前（FR-003.3）删除
         builder.HasIndex(x => new { x.TaskId, x.ScheduledFor }).IsUnique().HasFilter("scheduled_for IS NOT NULL");
 
         // 按任务、数据源、时间查看运行记录；删除任务前检查；清理过期记录

@@ -20,6 +20,9 @@ public static class CollectErrorCodes
     /// <summary>执行中断：进程退出或重试消息丢失，运行记录停在"运行中"（采集设计 §4.3）</summary>
     public const string Interrupted = "ERR-COL-009";
 
+    /// <summary>数据源当日的请求数达到每日上限（BR-003）：不发请求，记为失败、不重试（采集设计 §4.3）</summary>
+    public const string DailyLimitExceeded = "ERR-COL-010";
+
     /// <summary>解析失败，不入库</summary>
     public const string ParseFailed = "ERR-PARSE-001";
 

@@ -1,3 +1,4 @@
+@using Suanpan.Core.Collect.Rules
 @using Suanpan.Core.Reference.Enums
 @model IndicatorSourceEditViewModel
 @{
@@ -75,6 +76,24 @@
             <input asp-for="ExternalId" class="form-control font-monospace" placeholder="如：CES0000000001、empsit" />
             <div class="form-text">公布值映射填数据源中这个指标的标识，如 BLS 的序列 ID；排期映射填官方日程中的发布标识，如 BLS 就业报告的 empsit</div>
             <span asp-validation-for="ExternalId"></span>
+        </div>
+
+        <div class="row" data-release-only>
+            <div class="col-md-6 mb-3">
+                <label asp-for="WatchLeadSeconds" class="form-label"></label>
+                <input asp-for="WatchLeadSeconds" class="form-control" min="@WatchRule.MinLeadSeconds" max="@WatchRule.MaxLeadSeconds"
+                       style="max-width: 8rem" placeholder="默认" disabled="@isSchedule" />
+                <div class="form-text">排期前多少秒开始盯盘，@WatchRule.MinLeadSeconds ~ @WatchRule.MaxLeadSeconds</div>
+                <span asp-validation-for="WatchLeadSeconds"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="WatchWindowMinutes" class="form-label"></label>
+                <input asp-for="WatchWindowMinutes" class="form-control" min="@WatchRule.MinWindowMinutes" max="@WatchRule.MaxWindowMinutes"
+                       style="max-width: 8rem" placeholder="默认" disabled="@isSchedule" />
+                <div class="form-text">排期后多少分钟结束盯盘，@WatchRule.MinWindowMinutes ~ @WatchRule.MaxWindowMinutes</div>
+                <span asp-validation-for="WatchWindowMinutes"></span>
+            </div>
+            <div class="col-12 form-text mt-n2 mb-3">只对公布值映射的主源有效（高重要性事件公布时刻的盯盘，BR-013）；留空用系统配置的默认值。排期映射不填</div>
         </div>
 
         <div class="mb-3">

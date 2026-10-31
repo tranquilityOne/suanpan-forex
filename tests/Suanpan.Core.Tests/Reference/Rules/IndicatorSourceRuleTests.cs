@@ -1,4 +1,5 @@
 using Suanpan.Core.Collect.Enums;
+using Suanpan.Core.Collect.Rules;
 using Suanpan.Core.Reference.Entities;
 using Suanpan.Core.Reference.Enums;
 using Suanpan.Core.Reference.Rules;
@@ -33,6 +34,24 @@ public class IndicatorSourceRuleTests
         mapping.ExternalId = externalId;
         mapping.Purpose = purpose;
         mapping.Priority = priority;
+
+        Assert.Equal(field, IndicatorSourceRule.Validate(mapping)?.Field);
+    }
+
+    /// <summary>BR-013：盯盘参数只对公布值映射有效，在范围内；留空表示用默认值</summary>
+    [Theory]
+    [InlineData(IndicatorSourcePurpose.Release, (short)WatchRule.MinLeadSeconds, (short)WatchRule.MaxWindowMinutes, null)]
+    [InlineData(IndicatorSourcePurpose.Release, null, null, null)]
+    [InlineData(IndicatorSourcePurpose.Release, (short)(WatchRule.MinLeadSeconds - 1), null, "WatchLeadSeconds")]
+    [InlineData(IndicatorSourcePurpose.Release, null, (short)(WatchRule.MaxWindowMinutes + 1), "WatchWindowMinutes")]
+    [InlineData(IndicatorSourcePurpose.Schedule, (short)60, null, "WatchLeadSeconds")]
+    public void Validate_WatchSettings(IndicatorSourcePurpose purpose, short? leadSeconds, short? windowMinutes, string? field)
+    {
+        var mapping = Valid();
+        mapping.Purpose = purpose;
+        mapping.Priority = purpose == IndicatorSourcePurpose.Release ? IndicatorSourceRule.MainPriority : null;
+        mapping.WatchLeadSeconds = leadSeconds;
+        mapping.WatchWindowMinutes = windowMinutes;
 
         Assert.Equal(field, IndicatorSourceRule.Validate(mapping)?.Field);
     }

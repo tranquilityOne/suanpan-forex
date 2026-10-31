@@ -73,6 +73,20 @@
                 <span asp-validation-for="TimeoutSeconds"></span>
             </div>
         </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="DailyLimit" class="form-label"></label>
+                <input asp-for="DailyLimit" class="form-control" min="1" style="max-width: 10rem" placeholder="不限" />
+                <div class="form-text">按 UTC 自然日计，采集、盯盘和连通性测试合计；用到 90% 时告警，用完后当日不再请求（如 BLS API 填 500）。留空表示不限</div>
+                <span asp-validation-for="DailyLimit"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="WatchIntervalSeconds" class="form-label"></label>
+                <input asp-for="WatchIntervalSeconds" class="form-control" min="@WatchRule.MinIntervalSeconds" max="@WatchRule.MaxIntervalSeconds" style="max-width: 10rem" placeholder="默认" />
+                <div class="form-text">公布时刻盯盘时每隔多少秒请求一次，@WatchRule.MinIntervalSeconds ~ @WatchRule.MaxIntervalSeconds 秒；留空用系统配置的默认值，实际不小于频率上限换算的间隔</div>
+                <span asp-validation-for="WatchIntervalSeconds"></span>
+            </div>
+        </div>
         <div class="mb-2">
             <label class="form-check form-switch">
                 <input asp-for="CredentialRequired" class="form-check-input" />

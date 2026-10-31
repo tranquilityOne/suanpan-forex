@@ -43,6 +43,10 @@
                     <dd class="col-sm-8"><span class="font-monospace">@source.RateLimit</span> @CollectDisplayNames.Get(source.RateLimitUnit)</dd>
                     <dt class="col-sm-4">请求超时</dt>
                     <dd class="col-sm-8"><span class="font-monospace">@source.TimeoutSeconds</span> 秒</dd>
+                    <dt class="col-sm-4">每日请求上限</dt>
+                    <dd class="col-sm-8">@(source.DailyLimit is { } dailyLimit ? $"{dailyLimit} 次（UTC 自然日）" : "不限")</dd>
+                    <dt class="col-sm-4">盯盘请求间隔</dt>
+                    <dd class="col-sm-8">@(source.WatchIntervalSeconds is { } interval ? $"{interval} 秒" : "默认（系统配置）")</dd>
                     <dt class="col-sm-4">凭据</dt>
                     <dd class="col-sm-8">@(source.CredentialRequired ? "需要" : "不需要")，@(source.Credential is null ? "未设置" : "已设置")</dd>
                 </dl>

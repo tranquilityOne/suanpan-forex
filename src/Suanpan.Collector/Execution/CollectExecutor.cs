@@ -11,6 +11,7 @@ using Suanpan.Infrastructure.Messaging;
 using Suanpan.Infrastructure.Redis;
 using Suanpan.Services.Collect.Ingest;
 using Suanpan.Services.Collect.Runs;
+using Suanpan.Services.Collect.Sources;
 using Suanpan.Services.Collect.Snapshots;
 using Suanpan.Services.Collect.Snapshots.Models;
 using Suanpan.Services.Common.Alerts;
@@ -35,6 +36,7 @@ public sealed class CollectExecutor(
     SuanpanDbContext db,
     IDistributedLock distributedLock,
     IRateLimiter rateLimiter,
+    IDataSourceDailyQuota dailyQuota,
     IHttpClientFactory httpClientFactory,
     ISecretProtector secretProtector,
     IConfigService config,
@@ -158,7 +160,8 @@ public sealed class CollectExecutor(
         CancellationToken ct)
     {
         var credential = source.Credential is { } encrypted ? secretProtector.Decrypt(encrypted) : null;
-        var context = new FetchContext(source, credential, task.Params, httpClientFactory.CreateClient(CollectHttp.ClientName), rateLimiter, timeProvider);
+        var context = new FetchContext(
+            source, credential, task.Params, httpClientFactory.CreateClient(CollectHttp.ClientName), rateLimiter, dailyQuota, timeProvider);
 
         // 4. 请求
         var started = timeProvider.GetTimestamp();
@@ -166,6 +169,7 @@ public sealed class CollectExecutor(
         int? httpStatus = null;
         string? error = null;
         var retryable = false;
+        var errorCode = CollectErrorCodes.RequestFailed;
         try
         {
             fetched = await adapter.FetchAsync(context, ct);
@@ -185,6 +189,12 @@ public sealed class CollectExecutor(
         catch (FetchParametersException ex)
         {
             error = $"任务参数不正确：{ex.Message}";
+        }
+        catch (DailyLimitExceededException ex)
+        {
+            // 每日上限用完（ERR-COL-010）：没有发请求，当日重试也没用；多页请求时前面几页的响应照样存快照
+            error = ex.Message;
+            errorCode = CollectErrorCodes.DailyLimitExceeded;
         }
         catch (HttpRequestException ex)
         {
@@ -237,7 +247,7 @@ public sealed class CollectExecutor(
 
             logger.LogError("运行记录 {RunId}（任务 {TaskId}）请求失败，共请求 {Attempts} 次：{Error}", runId, task.Id, attempt, error);
             await FinishAttemptAsync(runId, attempt, Record,
-                r => End(r, CollectRunStatus.Failed, CollectErrorCodes.RequestFailed, $"请求失败，共请求 {attempt} 次：{error}"), ct);
+                r => End(r, CollectRunStatus.Failed, errorCode, $"请求失败，共请求 {attempt} 次：{error}"), ct);
             return;
         }
 

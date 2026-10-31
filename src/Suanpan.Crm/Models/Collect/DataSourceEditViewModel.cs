@@ -47,6 +47,14 @@ public sealed class DataSourceEditViewModel
     [Display(Name = "请求超时（秒）")]
     public short? TimeoutSeconds { get; set; }
 
+    [Range(1, int.MaxValue)]
+    [Display(Name = "每日请求上限")]
+    public int? DailyLimit { get; set; }
+
+    [Range(WatchRule.MinIntervalSeconds, WatchRule.MaxIntervalSeconds)]
+    [Display(Name = "盯盘请求间隔（秒）")]
+    public short? WatchIntervalSeconds { get; set; }
+
     [Display(Name = "需要凭据")]
     public bool CredentialRequired { get; set; }
 

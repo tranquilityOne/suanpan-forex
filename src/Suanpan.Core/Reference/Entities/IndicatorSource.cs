@@ -28,4 +28,10 @@ public class IndicatorSource : AuditedEntity
 
     /// <summary>公布值映射：1 为主源，2 起为备源，数字越小越优先；排期映射为空</summary>
     public short? Priority { get; set; }
+
+    /// <summary>盯盘提前秒数（BR-013，只对公布值映射有效）；为空时用系统配置的默认值（采集设计 §5.7）</summary>
+    public short? WatchLeadSeconds { get; set; }
+
+    /// <summary>盯盘窗口：排期后多少分钟结束（BR-013，只对公布值映射有效）；为空时用默认值</summary>
+    public short? WatchWindowMinutes { get; set; }
 }

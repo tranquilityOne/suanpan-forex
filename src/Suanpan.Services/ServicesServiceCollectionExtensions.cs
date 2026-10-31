@@ -83,6 +83,7 @@ public static class ServicesServiceCollectionExtensions
 
         // Collect：数据采集
         services.AddScoped<IDataSourceService, DataSourceService>();
+        services.AddScoped<IDataSourceDailyQuota, DataSourceDailyQuota>();
         services.TryAddSingleton<IParserCatalog, DefaultParserCatalog>();
         services.AddScoped<ICollectTaskService, CollectTaskService>();
         services.AddScoped<ICollectRunService, CollectRunService>();

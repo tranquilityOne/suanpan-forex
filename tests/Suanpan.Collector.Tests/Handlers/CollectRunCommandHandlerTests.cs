@@ -194,6 +194,26 @@ public class CollectRunCommandHandlerTests(CollectorFixture fixture)
         Assert.Single(fixture.Http.Requests(host));
     }
 
+    /// <summary>
+    /// BR-003、ERR-COL-010：每日上限 2 次时，一次执行中的第 3 个请求不发出，运行记为失败、不重试；
+    /// 用到 90% 和第一次被拦下时各告警一次（重要）
+    /// </summary>
+    [Fact]
+    public async Task DailyLimit_StopsRequestsWithoutRetry()
+    {
+        var app = await fixture.GetAppAsync();
+        var host = fixture.Http.NewHost();
+        var task = await app.AddTaskAsync(host, parameters: "{\"pages\": 3}", dailyLimit: 2);
+        var sourceName = string.Empty;
+        await app.ExecuteAsync(async db => sourceName = (await db.DataSources.SingleAsync(s => s.Id == task.SourceId)).Name);
+
+        var run = await app.WaitUntilFinishedAsync(await app.TriggerAsync(task));
+
+        Assert.Equal((CollectRunStatus.Failed, CollectErrorCodes.DailyLimitExceeded, (short)1), (run.Status, run.ErrorCode, run.AttemptCount));
+        Assert.Equal(2, fixture.Http.Requests(host).Count);
+        Assert.Equal([AlertLevel.Important, AlertLevel.Important], app.Alerts.Raised.Where(a => a.Subject == sourceName).Select(a => a.Level));
+    }
+
     /// <summary>BR-003：上限 1 次/秒时，一次执行中的 3 个请求至少有一个要等下一个窗口，请求记录写入延后的时长（ERR-COL-003）</summary>
     [Fact]
     public async Task RateLimit_DefersRequestsBeyondTheLimit()

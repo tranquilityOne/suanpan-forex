@@ -31,6 +31,8 @@ public class SourceControllerTests
             ["RateLimit"] = "2",
             ["RateLimitUnit"] = nameof(RateLimitUnit.PerSecond),
             ["TimeoutSeconds"] = "30",
+            ["DailyLimit"] = "500",
+            ["WatchIntervalSeconds"] = "",
             ["CredentialRequired"] = "true",
             ["Credential"] = Credential,
             ["ComplianceClass"] = nameof(ComplianceClass.GovernmentPublic),
@@ -39,7 +41,8 @@ public class SourceControllerTests
         }, action: "/Collect/Source/Create");
 
         Assert.Equal("/Collect/Source", response.RedirectPath());
-        Assert.Equal(Credential, Assert.Single(app.DataSources.Created).Credential);
+        var created = Assert.Single(app.DataSources.Created);
+        Assert.Equal((Credential, (int?)500, (short?)null), (created.Credential, created.DailyLimit, created.WatchIntervalSeconds));
         var log = Assert.Single(app.OpLogs.Written, l => l.Action == "新增数据源");
         Assert.Equal(("collect:source:create", true), (log.PermCode, log.IsSuccess));
         Assert.DoesNotContain(Credential, log.RequestParams);

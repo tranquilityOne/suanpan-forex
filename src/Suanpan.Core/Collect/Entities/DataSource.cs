@@ -31,6 +31,12 @@ public class DataSource : AuditedEntity
     /// <summary>单次请求超时（秒）</summary>
     public short TimeoutSeconds { get; set; } = DataSourceRule.DefaultTimeoutSeconds;
 
+    /// <summary>每日请求上限（BR-003），按 UTC 自然日计，盯盘和普通采集共用；为空表示不限</summary>
+    public int? DailyLimit { get; set; }
+
+    /// <summary>盯盘的请求间隔（秒，BR-014）；为空时用系统配置的默认值</summary>
+    public short? WatchIntervalSeconds { get; set; }
+
     /// <summary>为 true 时必须有凭据（ERR-SRC-004）</summary>
     public bool CredentialRequired { get; set; }
 

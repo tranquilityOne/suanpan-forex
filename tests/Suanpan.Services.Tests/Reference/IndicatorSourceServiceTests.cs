@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Suanpan.Core.Reference.Enums;
 using Suanpan.Data;
 using Suanpan.Services.Reference.IndicatorSources;
@@ -15,7 +16,10 @@ namespace Suanpan.Services.Tests.Reference;
 [Trait(TestCategory.Key, TestCategory.Integration)]
 public class IndicatorSourceServiceTests(PostgresFixture postgres)
 {
-    /// <summary>BR-034：一个指标配置主源和备源，按优先级排列；映射到停用的数据源照样保存（ERR-IND-003 只是警告）</summary>
+    /// <summary>
+    /// BR-034：一个指标配置主源和备源，按优先级排列；映射到停用的数据源照样保存（ERR-IND-003 只是警告）。
+    /// 主源上的盯盘参数照存（BR-013）
+    /// </summary>
     [Fact]
     public async Task Create_SavesMainAndBackupSources()
     {
@@ -26,12 +30,15 @@ public class IndicatorSourceServiceTests(PostgresFixture postgres)
         var backup = await TestData.AddDataSourceAsync(db, Ct, enabled: false);
 
         var backupResult = await service.CreateAsync(Input(code, backup.Id, priority: 2), Ct);
-        var mainResult = await service.CreateAsync(Input(code.ToLowerInvariant(), main.Id, priority: 1), Ct);
+        var mainResult = await service.CreateAsync(
+            Input(code.ToLowerInvariant(), main.Id, priority: 1) with { WatchLeadSeconds = 90, WatchWindowMinutes = 30 }, Ct);
 
         Assert.True(backupResult.Success && mainResult.Success, backupResult.Error ?? mainResult.Error);
         var rows = await service.GetByIndicatorAsync(code, Ct);
         Assert.Equal([(main.Id, (short)1, true), (backup.Id, (short)2, false)], rows.Select(r => (r.SourceId, r.Priority, r.SourceEnabled)));
         Assert.Equal(StubParserCatalog.Release.Name, rows[0].ParserName);
+        var saved = await db.IndicatorSources.AsNoTracking().SingleAsync(m => m.IndicatorCode == code && m.SourceId == main.Id, Ct);
+        Assert.Equal(((short?)90, (short?)30), (saved.WatchLeadSeconds, saved.WatchWindowMinutes));
     }
 
     /// <summary>

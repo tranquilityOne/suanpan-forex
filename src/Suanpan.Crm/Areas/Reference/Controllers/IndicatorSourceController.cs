@@ -70,10 +70,10 @@ public sealed class IndicatorSourceController(
             ModelState.AddModelError(nameof(model.IndicatorCode), "请选择指标");
         }
 
-        // 排期映射不设优先级：表单上的优先级输入框此时停用不提交，没有脚本时也不让残留的值导致校验失败
+        // 排期映射不设优先级和盯盘参数：表单上的这几个输入框此时停用不提交，没有脚本时也不让残留的值导致校验失败
         if (model.Purpose == IndicatorSourcePurpose.Schedule)
         {
-            model.Priority = null;
+            ClearReleaseOnlyFields(model);
         }
 
         if (ModelState.IsValid)
@@ -106,6 +106,8 @@ public sealed class IndicatorSourceController(
             ExternalId = mapping.ExternalId,
             ParserKey = mapping.ParserKey,
             Priority = mapping.Priority,
+            WatchLeadSeconds = mapping.WatchLeadSeconds,
+            WatchWindowMinutes = mapping.WatchWindowMinutes,
         };
         return View(await WithOptionsAsync(model, mapping, ct));
     }
@@ -125,7 +127,7 @@ public sealed class IndicatorSourceController(
         ModelState.Remove(nameof(model.Purpose));
         if (mapping.Purpose == IndicatorSourcePurpose.Schedule)
         {
-            model.Priority = null;
+            ClearReleaseOnlyFields(model);
         }
 
         if (ModelState.IsValid)
@@ -170,7 +172,20 @@ public sealed class IndicatorSourceController(
         ExternalId = model.ExternalId!,
         ParserKey = model.ParserKey!,
         Priority = model.Priority,
+        WatchLeadSeconds = model.WatchLeadSeconds,
+        WatchWindowMinutes = model.WatchWindowMinutes,
     };
+
+    /// <summary>只对公布值映射有效的字段：优先级、盯盘参数</summary>
+    private void ClearReleaseOnlyFields(IndicatorSourceEditViewModel model)
+    {
+        model.Priority = null;
+        model.WatchLeadSeconds = null;
+        model.WatchWindowMinutes = null;
+        ModelState.Remove(nameof(model.Priority));
+        ModelState.Remove(nameof(model.WatchLeadSeconds));
+        ModelState.Remove(nameof(model.WatchWindowMinutes));
+    }
 
     private async Task<IndicatorSourceEditViewModel> WithOptionsAsync(IndicatorSourceEditViewModel model, IndicatorSource? existing, CancellationToken ct)
     {

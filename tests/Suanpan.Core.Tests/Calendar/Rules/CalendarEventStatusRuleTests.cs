@@ -5,7 +5,7 @@ using S = Suanpan.Core.Calendar.Enums.CalendarEventStatus;
 
 namespace Suanpan.Core.Tests.Calendar.Rules;
 
-/// <summary>日历事件的状态流转（PRD §8.1.3，含 v1.0.0.22、v1.0.0.24 补的几条），日历设计 §3.2</summary>
+/// <summary>日历事件的状态流转（PRD §8.1.3，含 v1.0.0.22、v1.0.0.24、v1.0.0.26 补的几条），日历设计 §3.2</summary>
 public class CalendarEventStatusRuleTests
 {
     /// <summary>状态机中的每一条边</summary>
@@ -23,6 +23,7 @@ public class CalendarEventStatusRuleTests
         { S.Watching, S.Released },
         { S.Watching, S.PendingReview },
         { S.Watching, S.Delayed },
+        { S.Watching, S.Scheduled },
         { S.Delayed, S.Scheduled },
         { S.Delayed, S.Released },
         { S.Delayed, S.PendingReview },

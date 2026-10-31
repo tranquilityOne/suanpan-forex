@@ -23,8 +23,11 @@ public static class CalendarEventStatusRule
             CalendarEventStatus.Scheduled, CalendarEventStatus.Released, CalendarEventStatus.PendingReview, CalendarEventStatus.Cancelled,
         ],
 
-        // 拿到值（校验通过 / 未通过）；T+10 分钟无值
-        [CalendarEventStatus.Watching] = [CalendarEventStatus.Released, CalendarEventStatus.PendingReview, CalendarEventStatus.Delayed],
+        // 拿到值（校验通过 / 未通过）；T+10 分钟无值；官方改期，退出盯盘（PRD v1.0.0.26）
+        [CalendarEventStatus.Watching] =
+        [
+            CalendarEventStatus.Released, CalendarEventStatus.PendingReview, CalendarEventStatus.Delayed, CalendarEventStatus.Scheduled,
+        ],
 
         // 官方改期；补采到值（校验通过 / 未通过）
         [CalendarEventStatus.Delayed] = [CalendarEventStatus.Scheduled, CalendarEventStatus.Released, CalendarEventStatus.PendingReview],

@@ -24,6 +24,12 @@ public sealed record DataSourceInput
 
     public required short TimeoutSeconds { get; init; }
 
+    /// <summary>每日请求上限（BR-003）；为空表示不限</summary>
+    public int? DailyLimit { get; init; }
+
+    /// <summary>盯盘请求间隔（秒，BR-014）；为空时用系统配置的默认值</summary>
+    public short? WatchIntervalSeconds { get; init; }
+
     public required bool CredentialRequired { get; init; }
 
     public string? Credential { get; init; }

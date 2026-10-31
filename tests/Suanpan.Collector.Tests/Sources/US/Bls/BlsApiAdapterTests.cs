@@ -5,6 +5,7 @@ using Suanpan.Collector.Sources.US.Bls;
 using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Collect.Enums;
 using Suanpan.Infrastructure.Redis;
+using Suanpan.Services.Collect.Sources;
 using Xunit;
 
 namespace Suanpan.Collector.Tests.Sources.US.Bls;
@@ -22,7 +23,7 @@ public class BlsApiAdapterTests
         var context = new FetchContext(
             new DataSource { Id = 1, BaseUrl = "https://api.bls.gov/publicAPI/v2", RateLimit = 1, RateLimitUnit = RateLimitUnit.PerSecond, TimeoutSeconds = 30 },
             ApiKey, """{"series": ["CUSR0000SA0:pct", "CUUR0000SA0:pct12", "CUSR0000SA0", "LNS14000000"]}""",
-            new HttpClient(handler), new UnlimitedRateLimiter(), TimeProvider.System);
+            new HttpClient(handler), new UnlimitedRateLimiter(), new UnlimitedDailyQuota(), TimeProvider.System);
 
         var fetched = await new BlsApiAdapter().FetchAsync(context, TestContext.Current.CancellationToken);
 
@@ -43,6 +44,11 @@ public class BlsApiAdapterTests
             Requests.Add((request.RequestUri!, JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct))));
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") };
         }
+    }
+
+    private sealed class UnlimitedDailyQuota : IDataSourceDailyQuota
+    {
+        public Task<bool> TryConsumeAsync(DataSource source, CancellationToken ct = default) => Task.FromResult(true);
     }
 
     private sealed class UnlimitedRateLimiter : IRateLimiter

@@ -49,8 +49,19 @@ public class DataSourceRuleTests
         { "RateLimit", s => s.RateLimit = 0 },
         { "TimeoutSeconds", s => s.TimeoutSeconds = DataSourceRule.MaxTimeoutSeconds + 1 },
         { "TimeoutSeconds", s => s.TimeoutSeconds = 0 },
+        { "DailyLimit", s => s.DailyLimit = 0 },                         // BR-003：不限时留空，不能填 0
+        { "WatchIntervalSeconds", s => s.WatchIntervalSeconds = 0 },
+        { "WatchIntervalSeconds", s => s.WatchIntervalSeconds = WatchRule.MaxIntervalSeconds + 1 },
         { "Credential", s => s.Credential = null },                   // ERR-SRC-004：需要凭据但没有
     };
+
+    /// <summary>BR-003：每日请求数用到上限的 90% 时告警，向上取整，上限很小时就是上限本身</summary>
+    [Theory]
+    [InlineData(500, 450)]
+    [InlineData(25, 23)]
+    [InlineData(1, 1)]
+    public void DailyLimitAlertAt_NinetyPercentRoundedUp(int limit, long expected)
+        => Assert.Equal(expected, DataSourceRule.DailyLimitAlertAt(limit));
 
     /// <summary>BR-002、ERR-SRC-001：合规类别为"待确认"或 robots.txt 为"不允许"时不能启用</summary>
     [Theory]

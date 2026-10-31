@@ -58,7 +58,7 @@ public sealed class CollectorApp(string connectionString, string redis, string r
     }
 
     /// <summary>启用的数据源和它下面一个停用的任务（停用的任务可以手动触发，BR-155）；数据源的基础地址指向 StubHttp 的主机</summary>
-    public async Task<CollectTask> AddTaskAsync(string host, int rateLimit = 100, string? parameters = null)
+    public async Task<CollectTask> AddTaskAsync(string host, int rateLimit = 100, string? parameters = null, int? dailyLimit = null)
     {
         await using var scope = Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<SuanpanDbContext>();
@@ -70,6 +70,7 @@ public sealed class CollectorApp(string connectionString, string redis, string r
             BaseUrl = $"https://{host}/",
             RateLimit = rateLimit,
             RateLimitUnit = RateLimitUnit.PerSecond,
+            DailyLimit = dailyLimit,
             ComplianceClass = ComplianceClass.GovernmentPublic,
             TermsUrl = $"https://{host}/terms",
             RobotsResult = RobotsResult.NotApplicable,

@@ -21,6 +21,8 @@ public class DataSourceConfiguration : IEntityTypeConfiguration<DataSource>
         builder.Property(x => x.RateLimit).HasColumnName("rate_limit");
         builder.Property(x => x.RateLimitUnit).HasColumnName("rate_limit_unit").HasConversion<short>();
         builder.Property(x => x.TimeoutSeconds).HasColumnName("timeout_seconds");
+        builder.Property(x => x.DailyLimit).HasColumnName("daily_limit");
+        builder.Property(x => x.WatchIntervalSeconds).HasColumnName("watch_interval_seconds");
         builder.Property(x => x.CredentialRequired).HasColumnName("credential_required");
         builder.Property(x => x.Credential).HasColumnName("credential");
         builder.Property(x => x.ComplianceClass).HasColumnName("compliance_class").HasConversion<short>();

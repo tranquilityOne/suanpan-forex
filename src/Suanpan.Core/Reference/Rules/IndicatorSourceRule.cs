@@ -1,4 +1,5 @@
 using Suanpan.Core.Collect.Enums;
+using Suanpan.Core.Collect.Rules;
 using Suanpan.Core.Common.Validation;
 using Suanpan.Core.Reference.Entities;
 using Suanpan.Core.Reference.Enums;
@@ -15,13 +16,31 @@ public static class IndicatorSourceRule
     public const short MainPriority = 1;
 
     /// <summary>
-    /// 外部标识必填；公布值映射的优先级必填且从 1 开始，排期映射不设优先级。返回第一条错误，全部通过时返回 null
+    /// 外部标识必填；公布值映射的优先级必填且从 1 开始，排期映射不设优先级；盯盘参数只对公布值映射有效，在范围内（BR-013）。
+    /// 返回第一条错误，全部通过时返回 null
     /// </summary>
     public static FieldError? Validate(IndicatorSource mapping)
     {
         if (string.IsNullOrWhiteSpace(mapping.ExternalId))
         {
             return new(nameof(IndicatorSource.ExternalId), "请填写外部标识");
+        }
+
+        if (mapping.Purpose == IndicatorSourcePurpose.Schedule && (mapping.WatchLeadSeconds is not null || mapping.WatchWindowMinutes is not null))
+        {
+            return new(nameof(IndicatorSource.WatchLeadSeconds), "排期映射不设盯盘参数，请留空");
+        }
+
+        if (mapping.WatchLeadSeconds is < WatchRule.MinLeadSeconds or > WatchRule.MaxLeadSeconds)
+        {
+            return new(nameof(IndicatorSource.WatchLeadSeconds),
+                $"盯盘提前秒数必须在 {WatchRule.MinLeadSeconds} ~ {WatchRule.MaxLeadSeconds} 之间，用默认值时留空");
+        }
+
+        if (mapping.WatchWindowMinutes is < WatchRule.MinWindowMinutes or > WatchRule.MaxWindowMinutes)
+        {
+            return new(nameof(IndicatorSource.WatchWindowMinutes),
+                $"盯盘窗口必须在 {WatchRule.MinWindowMinutes} ~ {WatchRule.MaxWindowMinutes} 分钟之间，用默认值时留空");
         }
 
         return mapping.Purpose switch

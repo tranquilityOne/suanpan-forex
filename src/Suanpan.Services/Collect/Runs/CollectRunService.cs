@@ -127,14 +127,14 @@ public sealed class CollectRunService(
         long runId;
         if (scheduledFor is { } point)
         {
-            // 定时触发：同一任务同一时间点只创建一次（ux_col_run_task_id_scheduled_for），调度分发重复执行或中途退出后重跑，
+            // 定时触发：同一任务同一时间点只创建一次（ux_col_run_task_id_trigger_scheduled_for），调度分发重复执行或中途退出后重跑，
             // 都不会重复下发（采集设计 §4.2，后端约定 §6.4）
             var inserted = await db.Database.SqlQuery<long>($"""
                 INSERT INTO col_run (task_id, source_id, "trigger", scheduled_for, triggered_by, status, queued_at,
                                      attempt_count, inserted_count, updated_count, skipped_count, attempts)
                 VALUES ({task.Id}, {task.SourceId}, {(short)trigger}, {point}, {triggeredBy}, {(short)CollectRunStatus.Queued}, {queuedAt},
                         0, 0, 0, 0, '[]'::jsonb)
-                ON CONFLICT (task_id, scheduled_for) WHERE scheduled_for IS NOT NULL DO NOTHING
+                ON CONFLICT (task_id, "trigger", scheduled_for) WHERE scheduled_for IS NOT NULL DO NOTHING
                 RETURNING id AS "Value"
                 """).ToListAsync(ct);
             if (inserted.Count == 0)

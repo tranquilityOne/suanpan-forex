@@ -34,21 +34,23 @@ public class DataSourceServiceTests(PostgresFixture postgres)
 
     private readonly StubHttp _http = new();
     private readonly StubRateLimiter _rateLimiter = new();
+    private readonly StubDailyQuota _dailyQuota = new();
 
-    /// <summary>FR-001 验收第 1、2 条：新建为停用；凭据在库中为密文，能解密回原值</summary>
+    /// <summary>FR-001 验收第 1、2 条：新建为停用；凭据在库中为密文，能解密回原值。每日上限、盯盘间隔照存（BR-003、BR-014）</summary>
     [Fact]
     public async Task Create_SavesDisabledWithEncryptedCredential()
     {
         await using var db = await postgres.CreateAppContextAsync();
         var name = TestData.Unique("源");
 
-        var result = await Create(db).CreateAsync(Input(name) with { Credential = $" {Key} " }, Ct);
+        var result = await Create(db).CreateAsync(Input(name) with { Credential = $" {Key} ", DailyLimit = 500, WatchIntervalSeconds = 5 }, Ct);
 
         Assert.True(result.Success, result.Error);
         var saved = await db.DataSources.AsNoTracking().SingleAsync(s => s.Name == name, Ct);
         Assert.False(saved.IsEnabled);
         Assert.StartsWith("enc:", saved.Credential);
         Assert.Equal(Key, _protector.Decrypt(saved.Credential!));
+        Assert.Equal(((int?)500, (short?)5), (saved.DailyLimit, saved.WatchIntervalSeconds));
     }
 
     [Fact]
@@ -250,17 +252,19 @@ public class DataSourceServiceTests(PostgresFixture postgres)
         Assert.Equal(["https://api.example.org/v2/"], _http.Requested);
     }
 
-    /// <summary>robots.txt 为"不允许"、或已达到频率上限（BR-003）时不发请求</summary>
+    /// <summary>robots.txt 为"不允许"、已达到频率上限或每日上限（BR-003）时不发请求</summary>
     [Theory]
-    [InlineData(RobotsResult.Disallowed, true)]
-    [InlineData(RobotsResult.Allowed, false)]
-    public async Task Test_SendsNothingWhenDisallowedOrThrottled(RobotsResult robots, bool rateLimiterAllows)
+    [InlineData(RobotsResult.Disallowed, true, true)]
+    [InlineData(RobotsResult.Allowed, false, true)]
+    [InlineData(RobotsResult.Allowed, true, false)]
+    public async Task Test_SendsNothingWhenDisallowedOrThrottled(RobotsResult robots, bool rateLimiterAllows, bool dailyQuotaAllows)
     {
         await using var db = await postgres.CreateAppContextAsync();
         var service = Create(db);
         var name = TestData.Unique("源");
         await service.CreateAsync(Input(name) with { RobotsResult = robots }, Ct);
         _rateLimiter.Allow = rateLimiterAllows;
+        _dailyQuota.Allow = dailyQuotaAllows;
 
         var result = await service.TestAsync(await IdOf(db, name), Ct);
 
@@ -269,7 +273,7 @@ public class DataSourceServiceTests(PostgresFixture postgres)
         Assert.Empty(_http.Requested);
     }
 
-    private DataSourceService Create(SuanpanDbContext db) => new(db, _protector, _http, _rateLimiter, TimeProvider.System);
+    private DataSourceService Create(SuanpanDbContext db) => new(db, _protector, _http, _rateLimiter, _dailyQuota, TimeProvider.System);
 
     private static DataSourceInput Input(string name) => new()
     {
@@ -320,5 +324,13 @@ public class DataSourceServiceTests(PostgresFixture postgres)
         public bool Allow { get; set; } = true;
 
         public Task<bool> TryAcquireAsync(string key, int limit, TimeSpan window) => Task.FromResult(Allow);
+    }
+
+    /// <summary>每日上限的计数在 DataSourceDailyQuotaTests 中测试，这里只决定放不放行</summary>
+    private sealed class StubDailyQuota : IDataSourceDailyQuota
+    {
+        public bool Allow { get; set; } = true;
+
+        public Task<bool> TryConsumeAsync(DataSource source, CancellationToken ct = default) => Task.FromResult(Allow);
     }
 }

@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.18 |
+| 版本 | v0.19 |
 | 日期 | 2026-10-31 |
 | 状态 | FR-001、FR-002 部分已评审（2026-10-23，vivo.li；§11 第 7 项的联系邮箱 2026-10-29 提供）；v0.11 新增的快照与重新解析（FR-004）已评审（2026-10-29，vivo.li：§11 第 14 ~ 20 项均按建议执行）；v0.17 新增的盯盘（FR-003）已评审（2026-10-31，vivo.li：§11 第 21 ~ 33 项，第 22 项不作为设计问题，计划时长和补采间隔改为配置，其余按建议执行） |
 | 覆盖 | FR-001 数据源管理、FR-002 采集任务配置与调度、FR-003 公布时刻高频盯盘（v0.17）、FR-004 原始快照与重新解析 |
@@ -156,6 +156,7 @@
 | `col_task` | `ux_col_task_name` | 名称唯一 |
 | | `ix_col_task_source_id` | 删除数据源前检查引用；数据源停用时找到它的任务 |
 | `col_run` | `ux_col_run_task_id_trigger_scheduled_for`（条件：`scheduled_for IS NOT NULL`） | 同一任务同一 cron 时间点只创建一次定时运行，调度分发重复执行时不会重复下发；同一任务同一排期时间只有一路盯盘（v0.17 由 `ux_col_run_task_id_scheduled_for` 改为带上触发方式，定时和盯盘的时间点相同时互不冲突） |
+| | `ux_col_run_task_id_scheduled_for`（条件同上，待删除） | 旧索引：上一版程序的调度分发按它写 `ON CONFLICT`，FR-003.1 按数据库变更约定 §5 的扩展阶段先保留，FR-003.3 开始写盯盘的运行记录前删除 |
 | | `ix_col_run_task_id_queued_at` | 按任务查看运行记录；删除任务前检查 |
 | | `ix_col_run_source_id_queued_at` | 按数据源筛选 |
 | | `ix_col_run_queued_at` | 按时间筛选；清理过期记录 |
@@ -293,6 +294,7 @@ Collector 的消息处理器 `CollectRunCommandHandler`（`Suanpan.Collector/Han
 4. **请求**：
    - 频率限制（BR-003，ERR-COL-003）：每次请求前向 `IRateLimiter` 申请配额，键为 `collect:source:{sourceId}`，窗口为 1 秒或 1 分钟，按数据源的单位换算。拿不到配额就等到下一个窗口再申请，等待的时长记进本次请求的记录，运行记录页面显示"已延后 N 秒"。所有任务和盯盘共用这一个键，合计不超过上限。
    - 每日上限（BR-003，v0.18）：数据源设了每日上限时，每次请求前另向键 `collect:source:{sourceId}:day:{UTC 日期}` 计数（25 小时过期）。用到 90% 时告警一次（重要，Redis 键防重复）；用完后不发请求，运行记为失败、不重试（ERR-COL-010），盯盘停止请求。计数与频率配额一样放在 `FetchContext` 中，适配器的每次请求都计入。
+   - 实现（FR-003.1）：`IDataSourceDailyQuota.TryConsumeAsync(数据源)`（`Services/Collect/Sources/DataSourceDailyQuota`），`FetchContext.SendAsync` 先计每日请求数、再申请频率配额，超过上限时抛出 `DailyLimitExceededException`，执行器记为失败（ERR-COL-010）、不重试；多页请求中途用完时，已收到的响应照样存快照。计数是原子递增，等于 90% 阈值（`DataSourceRule.DailyLimitAlertAt`，向上取整）的那一次和第一次超过上限的那一次各告警一次（重要，对象为数据源名称），不需要另设防重复的键。Redis 不可用时放行并记 Error 日志。后台的连通性测试同样计入，用完时不发请求、提示明天（UTC）再试。
    - 发请求：用适配器（§5.1）。HttpClient 由 Infrastructure 统一配置 User-Agent（BR-005），超时取数据源的 `timeout_seconds`。
    - 保存快照（FR-004，§5.5）：每个响应（包括非 2xx 的）都先保存为快照，再判断成败、交给解析器（硬性规则 14）。快照写入失败时本次运行记为"失败"并告警（ERR-COL-007），不解析、不重试。
 5. **解析**：调用解析器（纯函数，§5.2），解析器输出的记录存入 `parse_output`。解析失败记为"失败"（ERR-PARSE-001），不入库；内容为空或被判定为拦截页时，这次请求的快照标记为无效，记为"失败"（ERR-PARSE-003）。
@@ -535,7 +537,7 @@ Suanpan.Data/Configurations/Collect/   五张表的实体配置
 Suanpan.Infrastructure/Http/           采集用的命名 HttpClient
 
 Suanpan.Services/Collect/
-├─ Sources/       IDataSourceService、DataSourceService、Models/
+├─ Sources/       IDataSourceService、DataSourceService、DataSourceRateLimit（限流和每日计数的键）、IDataSourceDailyQuota、DataSourceDailyQuota（v0.19）、Models/
 ├─ Tasks/         ICollectTaskService、CollectTaskService、CronSchedule、IParserCatalog、Models/
 ├─ Runs/          ICollectRunService、CollectRunService（含发起重新解析）、CollectConfigKeys（§10 的系统配置）、Models/（含 ReparseSelection）
 ├─ Snapshots/     ISnapshotService、SnapshotService、SnapshotQueries（筛选）、ISnapshotContentStore、PostgresSnapshotContentStore、Models/
@@ -831,9 +833,9 @@ v0.17 的盯盘评审通过（v0.18），拆成 4 个子任务（父工单 JAN-1
 
 | 子任务 | 工单 | 内容 | 依赖 |
 |---|---|---|---|
-| FR-003.1 盯盘规则与配置 | JAN-98 | `WatchRule` 及单元测试；系统配置；迁移（`col_source` 加盯盘间隔和每日上限、`ref_indicator_source` 加盯盘参数、`col_run` 的唯一索引带上触发方式）；数据源、指标数据源表单的输入；每日上限的计数和告警（ERR-COL-010）；日历状态规则补"盯盘中 → 待公布" | — |
+| FR-003.1 盯盘规则与配置 | JAN-98 | `WatchRule` 及单元测试；系统配置；迁移 `AddWatchSettings`（`col_source` 加盯盘间隔和每日上限、`ref_indicator_source` 加盯盘参数、`col_run` 新建带触发方式的唯一索引，旧索引留到 FR-003.3 删除）；数据源、指标数据源表单的输入；每日上限的计数和告警（ERR-COL-010）；日历状态规则补"盯盘中 → 待公布" | — |
 | FR-003.2 盯盘计划与日历状态 | JAN-99 | `IWatchPlanService`；日历模块的 `ICalendarWatchService`（盯盘中、延迟、退回待公布，告警）；不能盯盘的告警；集成测试 | FR-003.1 |
-| FR-003.3 盯盘执行 | JAN-100 | 分布式锁续期；Collector 的 `WatchService`、`WatchSession`；`SaveAsync` 在 `skipUnchanged` 时返回上一个快照的 id；退避、改期、恢复、延迟后的补采；回收跳过盯盘的运行记录；Collector 集成测试（含回放） | FR-003.2 |
+| FR-003.3 盯盘执行 | JAN-100 | 删除旧的唯一索引 `ux_col_run_task_id_scheduled_for`（数据库变更约定 §5 的收缩阶段）；分布式锁续期；Collector 的 `WatchService`、`WatchSession`；`SaveAsync` 在 `skipUnchanged` 时返回上一个快照的 id；退避、改期、恢复、延迟后的补采；回收跳过盯盘的运行记录；Collector 集成测试（含回放） | FR-003.2 |
 | FR-003.4 盯盘状态页面 | JAN-101 | 盯盘状态页（HTMX）；运行详情的请求记录折叠；预置角色规则；管道测试 | FR-003.2 |
 
 FR-003.3 与 FR-003.4 可以并行。第 22 项的实测在 11 月 6 日，不阻塞实施；如果 BLS API 不能及时更新，另开 ENG-009 的子任务接新闻稿网页。
@@ -860,5 +862,6 @@ FR-003.3 与 FR-003.4 可以并行。第 22 项的实测在 11 月 6 日，不�
 | v0.14 | 2026-10-29 | vivo.li / Claude | §11 第 7 项的联系邮箱已提供：§5.4、§10 配置 `Collect:UserAgent` 改为 `Collect:ContactEmail`（部署配置，代码里不写邮箱），程序拼出 User-Agent，没配置时启动告警；Collector 的 `appsettings.json` 不再配置 |
 | v0.16 | 2026-10-29 | vivo.li / Claude | FR-004.2（JAN-90）实施：§2.1 `reparse` 列的键名；§4.2 重新下发按触发方式发指令；§4.3 `CollectRunWriter`、回收比对心跳；§5.6 实现说明（发起放在 `ICollectRunService`、`ReparseRule`、范围与列表共用筛选、执行的细节、表单页）；§7.1、§7.2 目录和接口按实现调整（`ISnapshotService` 不再有 `GetContentAsync`、`ReparseAsync`）；§8.1 快照页面和运行详情的实现说明；§10 表格整理 |
 | v0.18 | 2026-10-31 | vivo.li / Claude | 评审通过：§11 第 21 ~ 33 项改为评审结论（第 22 项不作为设计问题，记为 §5.7 的已知风险；计划时长、补采间隔做成配置，新增第 33 项）；同步 PRD v1.0.0.26（BR-003 每日上限、BR-017 分段补采、FR-003 主流程第 1 步、§8.1.3 盯盘中 → 待公布）；§3.5 计划时长和补采间隔的规则；§4.3 每日上限的计数；§9 新增 ERR-COL-010；§10 新增 4 个配置；§12 补充测试；§13 回填工单号 |
+| v0.19 | 2026-10-31 | vivo.li / Claude | FR-003.1（JAN-98）实施：§2.2 旧的唯一索引先保留（上一版程序的调度分发按它写 `ON CONFLICT`），FR-003.3 删除；§4.3 每日上限的实现（`IDataSourceDailyQuota`、`DailyLimitExceededException`、告警的时机、连通性测试也计入）；§7.1 目录；§13 两个子任务的内容同步 |
 | v0.17 | 2026-10-31 | vivo.li / Claude | 补充盯盘（FR-003）：§1 范围；§2.1 `col_source` 加盯盘间隔、每日上限，`ref_indicator_source` 加盯盘参数，`col_run` 的 `scheduled_for`、`attempts` 用于盯盘；§2.2 唯一索引带上触发方式；新增 §3.5 `WatchRule`、§5.7 盯盘；§4.3 回收不处理盯盘的运行记录；§6 ~ §10 关系、目录、接口、盯盘状态页面、权限、错误码、配置；§11 第 21 ~ 32 项待评审；§12、§13 测试和拟拆分的子任务。依据改为 PRD v1.0.0.25 |
 | v0.15 | 2026-10-29 | vivo.li / Claude | ENG-009.1（JAN-93）实施：§5.1 同一机构的多个数据源各一个适配器，适配器抛出 `FetchParametersException` 表示任务参数不正确；§5.2 解析器标识的中间一段为数据源（BLS 为 `us.blsweb`、`us.blsapi`），目录加入 BLS 的两个解析器；§7.1 `Sources/US/Bls/` 的内容 |

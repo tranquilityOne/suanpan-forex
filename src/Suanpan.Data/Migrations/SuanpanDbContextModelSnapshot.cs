@@ -691,6 +691,11 @@ namespace Suanpan.Data.Migrations
                         .HasDatabaseName("ux_col_run_task_id_scheduled_for")
                         .HasFilter("scheduled_for IS NOT NULL");
 
+                    b.HasIndex("TaskId", "Trigger", "ScheduledFor")
+                        .IsUnique()
+                        .HasDatabaseName("ux_col_run_task_id_trigger_scheduled_for")
+                        .HasFilter("scheduled_for IS NOT NULL");
+
                     b.ToTable("col_run", (string)null);
                 });
 
@@ -820,6 +825,10 @@ namespace Suanpan.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("credential_required");
 
+                    b.Property<int?>("DailyLimit")
+                        .HasColumnType("integer")
+                        .HasColumnName("daily_limit");
+
                     b.Property<string>("EconomyCode")
                         .HasMaxLength(2)
                         .HasColumnType("character(2)")
@@ -875,6 +884,10 @@ namespace Suanpan.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("updated_by");
+
+                    b.Property<short?>("WatchIntervalSeconds")
+                        .HasColumnType("smallint")
+                        .HasColumnName("watch_interval_seconds");
 
                     b.HasKey("Id")
                         .HasName("pk_col_source");
@@ -1371,6 +1384,14 @@ namespace Suanpan.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("updated_by");
+
+                    b.Property<short?>("WatchLeadSeconds")
+                        .HasColumnType("smallint")
+                        .HasColumnName("watch_lead_seconds");
+
+                    b.Property<short?>("WatchWindowMinutes")
+                        .HasColumnType("smallint")
+                        .HasColumnName("watch_window_minutes");
 
                     b.HasKey("Id")
                         .HasName("pk_ref_indicator_source");

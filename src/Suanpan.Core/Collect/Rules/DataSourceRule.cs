@@ -46,6 +46,17 @@ public static class DataSourceRule
             return new(nameof(DataSource.TimeoutSeconds), $"请求超时必须在 {MinTimeoutSeconds} ~ {MaxTimeoutSeconds} 秒之间");
         }
 
+        if (source.DailyLimit is <= 0)
+        {
+            return new(nameof(DataSource.DailyLimit), "每日请求上限必须是正整数，不限时留空");
+        }
+
+        if (source.WatchIntervalSeconds is < WatchRule.MinIntervalSeconds or > WatchRule.MaxIntervalSeconds)
+        {
+            return new(nameof(DataSource.WatchIntervalSeconds),
+                $"盯盘请求间隔必须在 {WatchRule.MinIntervalSeconds} ~ {WatchRule.MaxIntervalSeconds} 秒之间，用默认值时留空");
+        }
+
         if (source.CredentialRequired && string.IsNullOrEmpty(source.Credential))
         {
             return new(nameof(DataSource.Credential), "这个数据源需要凭据，请填写");
@@ -67,6 +78,9 @@ public static class DataSourceRule
             ? new(nameof(DataSource.RobotsResult), "robots.txt 不允许采集，不能启用")
             : null;
     }
+
+    /// <summary>每日请求数用到上限的 90% 时告警（BR-003、BR-129）：达到这个数的那一次请求触发，每天只有一次</summary>
+    public static long DailyLimitAlertAt(int dailyLimit) => (long)Math.Ceiling(dailyLimit * 0.9m);
 
     /// <summary>频率上限的计数窗口（BR-003）：次/秒为 1 秒，次/分为 1 分钟</summary>
     public static TimeSpan RateLimitWindow(RateLimitUnit unit) => unit == RateLimitUnit.PerMinute ? TimeSpan.FromMinutes(1) : TimeSpan.FromSeconds(1);

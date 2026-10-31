@@ -110,6 +110,8 @@ public sealed class IndicatorSourceService(SuanpanDbContext db, IParserCatalog p
         mapping.ExternalId = input.ExternalId.Trim();
         mapping.ParserKey = input.ParserKey.Trim();
         mapping.Priority = input.Priority;
+        mapping.WatchLeadSeconds = input.WatchLeadSeconds;
+        mapping.WatchWindowMinutes = input.WatchWindowMinutes;
 
         if (IndicatorSourceRule.Validate(mapping) is { } error)
         {

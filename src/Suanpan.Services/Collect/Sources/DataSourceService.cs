@@ -19,6 +19,7 @@ public sealed class DataSourceService(
     ISecretProtector secretProtector,
     IHttpClientFactory httpClientFactory,
     IRateLimiter rateLimiter,
+    IDataSourceDailyQuota dailyQuota,
     TimeProvider timeProvider) : IDataSourceService
 {
     /// <summary>连通性测试的超时（PRD FR-001 异常流程"连通性失败"）</summary>
@@ -154,6 +155,12 @@ public sealed class DataSourceService(
             return DataSourceTestResult.NotSent("robots.txt 不允许采集，不发请求");
         }
 
+        // 连通性测试同样计入每日请求数（BR-003）
+        if (!await dailyQuota.TryConsumeAsync(source, ct))
+        {
+            return DataSourceTestResult.NotSent($"今日请求数已达这个数据源的每日上限 {source.DailyLimit}，明天（UTC）再试");
+        }
+
         if (!await rateLimiter.TryAcquireAsync(DataSourceRateLimit.Key(source.Id), source.RateLimit, DataSourceRule.RateLimitWindow(source.RateLimitUnit)))
         {
             return DataSourceTestResult.NotSent("已达到这个数据源的请求频率上限，请稍后再试");
@@ -217,6 +224,8 @@ public sealed class DataSourceService(
         source.RateLimit = input.RateLimit;
         source.RateLimitUnit = input.RateLimitUnit;
         source.TimeoutSeconds = input.TimeoutSeconds;
+        source.DailyLimit = input.DailyLimit;
+        source.WatchIntervalSeconds = input.WatchIntervalSeconds;
         source.CredentialRequired = input.CredentialRequired;
         source.ComplianceClass = input.ComplianceClass;
         source.TermsUrl = input.TermsUrl.Trim();

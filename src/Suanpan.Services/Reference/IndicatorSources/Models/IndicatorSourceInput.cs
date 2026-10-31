@@ -17,4 +17,9 @@ public sealed record IndicatorSourceInput
 
     /// <summary>公布值映射：1 为主源，2 起为备源；排期映射为空</summary>
     public required short? Priority { get; init; }
+
+    /// <summary>盯盘提前秒数、窗口分钟（BR-013，只对公布值映射有效）；为空时用系统配置的默认值</summary>
+    public short? WatchLeadSeconds { get; init; }
+
+    public short? WatchWindowMinutes { get; init; }
 }

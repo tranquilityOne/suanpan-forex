@@ -21,6 +21,8 @@ public class IndicatorSourceConfiguration : IEntityTypeConfiguration<IndicatorSo
         builder.Property(x => x.ExternalId).HasColumnName("external_id").HasMaxLength(128).IsRequired();
         builder.Property(x => x.ParserKey).HasColumnName("parser_key").HasMaxLength(64).IsRequired();
         builder.Property(x => x.Priority).HasColumnName("priority");
+        builder.Property(x => x.WatchLeadSeconds).HasColumnName("watch_lead_seconds");
+        builder.Property(x => x.WatchWindowMinutes).HasColumnName("watch_window_minutes");
         builder.HasAuditColumns();
 
         // 一个指标对同一数据源每种用途只映射一次（PRD §8.1.2）；同一指标公布值映射的优先级不重复，主备顺序明确（基础数据设计 §2.2）
