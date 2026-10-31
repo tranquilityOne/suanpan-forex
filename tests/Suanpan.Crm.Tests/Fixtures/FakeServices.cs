@@ -7,6 +7,8 @@ using Suanpan.Core.Sys.Entities;
 using Suanpan.Core.Collect.Enums;
 using Suanpan.Services.Calendar.Events;
 using Suanpan.Services.Calendar.Events.Models;
+using Suanpan.Services.Calendar.Forecasts;
+using Suanpan.Services.Calendar.Forecasts.Models;
 using Suanpan.Services.Calendar.Unmatched;
 using Suanpan.Services.Calendar.Unmatched.Models;
 using Suanpan.Services.Collect.Runs;
@@ -313,6 +315,39 @@ public sealed class FakeCalendarEventService : ICalendarEventService
     }
 
     public Task<ManageResult> RejectReviewAsync(long id, string? reason, int rowVersion, CancellationToken ct = default) => throw new NotSupportedException();
+}
+
+/// <summary>预期值：清单和行返回预设的事件，保存、更正时记下参数并返回预设的结果</summary>
+public sealed class FakeForecastService : IForecastService
+{
+    public Dictionary<long, EventRow> Rows { get; } = [];
+
+    public List<string> NoteOptions { get; } = [];
+
+    public ManageResult Result { get; set; } = ManageResult.Ok;
+
+    public List<(long Id, ForecastInput Input, int RowVersion)> Saved { get; } = [];
+
+    public List<(long Id, ForecastInput Input, string? Reason, int RowVersion)> Corrected { get; } = [];
+
+    public Task<PagedResult<EventRow>> QueryPendingAsync(ForecastQuery query, CancellationToken ct = default)
+        => Task.FromResult(new PagedResult<EventRow>(Rows.Values.ToList(), Rows.Count, query.Page, query.PageSize));
+
+    public Task<EventRow?> GetRowAsync(long id, CancellationToken ct = default) => Task.FromResult(Rows.GetValueOrDefault(id));
+
+    public Task<IReadOnlyList<string>> GetNoteOptionsAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<string>>(NoteOptions);
+
+    public Task<ManageResult> SaveAsync(long id, ForecastInput input, int rowVersion, CancellationToken ct = default)
+    {
+        Saved.Add((id, input, rowVersion));
+        return Task.FromResult(Result);
+    }
+
+    public Task<ManageResult> CorrectAsync(long id, ForecastInput input, string? reason, int rowVersion, CancellationToken ct = default)
+    {
+        Corrected.Add((id, input, reason, rowVersion));
+        return Task.FromResult(Result);
+    }
 }
 
 /// <summary>未匹配条目返回预设的分组；忽略时记下参数</summary>

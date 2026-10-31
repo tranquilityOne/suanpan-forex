@@ -8,6 +8,7 @@ using Suanpan.Core.Reference.Rules;
 using Suanpan.Crm.Models.Calendar;
 using Suanpan.Crm.Mvc;
 using Suanpan.Services.Calendar.Events;
+using Suanpan.Services.Calendar.Forecasts;
 using Suanpan.Services.Reference.Economies;
 using Suanpan.Shared.Auth;
 using Suanpan.Shared.Mvc;
@@ -23,6 +24,7 @@ namespace Suanpan.Crm.Areas.Calendar.Controllers;
 [PermMenu("日历事件", Icon = "calendar-event", Sort = 10)]
 public sealed class EventController(
     ICalendarEventService events,
+    IForecastService forecasts,
     IEconomyService economies,
     IOperatorTimeZone operatorTimeZone,
     TimeProvider timeProvider) : Controller
@@ -51,9 +53,22 @@ public sealed class EventController(
         });
     }
 
+    /// <summary>公布前的事件带预期值表单（日历设计 §9.4），来源说明的常用选项放在 ViewData["ForecastNoteOptions"]</summary>
     [HttpGet]
     public async Task<IActionResult> Detail(long id, CancellationToken ct)
-        => await events.GetDetailAsync(id, ct) is { } detail ? View(detail) : NotFound();
+    {
+        if (await events.GetDetailAsync(id, ct) is not { } detail)
+        {
+            return NotFound();
+        }
+
+        if (ForecastRule.CanEnter(detail.Event))
+        {
+            ViewData["ForecastNoteOptions"] = await forecasts.GetNoteOptionsAsync(ct);
+        }
+
+        return View(detail);
+    }
 
     /// <summary>修改数值（日历设计 §3.7）：单独的表单页，原因必填，提交前再确认一次</summary>
     [HttpGet]

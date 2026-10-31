@@ -1,0 +1,72 @@
+@model ForecastCorrectViewModel
+@using Suanpan.Core.Reference.Enums
+@*
+    公布后更正预期值（日历设计 §9.4，BR-057）：只有管理员，原因必填，写进变更历史、锁定信息和操作日志
+*@
+@{
+    var detail = Model.Detail!;
+    var e = detail.Event;
+    var indicator = detail.Indicator;
+    var unit = EventValueFormat.InputUnit(indicator.Unit);
+    var step = EventValueFormat.Step(indicator.Decimals);
+    ViewData["Title"] = "更正预期值";
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">更正预期值</h2>
+    <div class="text-secondary">事件公布后预期值不再修改，确需更正时由管理员在这里操作；原因必填，写进变更历史和操作日志。</div>
+</div>
+
+<div class="card" style="max-width: 44rem">
+    <div class="card-body border-bottom">
+        <partial name="_EventSummary" model="detail" />
+        <dl class="row mb-0 mt-2">
+            <dt class="col-sm-3">当前预期值</dt>
+            <dd class="col-sm-9 mb-0 font-monospace">@(EventValueFormat.Format(e.Forecast, e.ForecastUpper, indicator.Unit, indicator.Decimals) ?? "-")</dd>
+        </dl>
+    </div>
+    <form asp-action="Correct" asp-route-id="@e.Id" method="post" class="card-body"
+          data-confirm="@($"更正 {e.IndicatorCode} {e.ReferencePeriod} 的预期值？事件已公布，更正会记入变更历史。")" data-confirm-button="更正">
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        <input type="hidden" asp-for="RowVersion" />
+        <div class="row g-3 mb-3">
+            <div class="col-sm-6">
+                <label asp-for="Forecast" class="form-label required"></label>
+                <div class="input-group">
+                    <input asp-for="Forecast" type="number" step="@step" class="form-control" required />
+                    @if (indicator.ValueType == IndicatorValueType.Range)
+                    {
+                        <span class="input-group-text">~</span>
+                        <input asp-for="ForecastUpper" type="number" step="@step" class="form-control" required aria-label="预期值上限" />
+                    }
+                    @if (unit.Length > 0)
+                    {
+                        <span class="input-group-text">@unit</span>
+                    }
+                </div>
+                <span asp-validation-for="Forecast"></span>
+            </div>
+            <div class="col-sm-6">
+                <label asp-for="Note" class="form-label"></label>
+                <input asp-for="Note" class="form-control" list="forecast-note-options" placeholder="选填，仅内部可见" />
+                <span asp-validation-for="Note"></span>
+            </div>
+        </div>
+        <div class="form-text mb-3">最多 @indicator.Decimals 位小数</div>
+        <div class="mb-3">
+            <label asp-for="Reason" class="form-label required"></label>
+            <textarea asp-for="Reason" class="form-control" rows="3" placeholder="如：录入时把 0.3 误填为 3"></textarea>
+            <div class="form-text">写进变更历史、锁定信息和操作日志</div>
+            <span asp-validation-for="Reason"></span>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">更正</button>
+            <a asp-controller="Event" asp-action="Detail" asp-route-id="@e.Id" class="btn">返回</a>
+        </div>
+    </form>
+    <partial name="_ForecastNoteOptions" model="Model.NoteOptions" />
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

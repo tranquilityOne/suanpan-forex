@@ -2,8 +2,8 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.11 |
-| 日期 | 2026-10-29 |
+| 版本 | v1.12 |
+| 日期 | 2026-10-31 |
 | 适用范围 | 后台 Suanpan.Crm 和前台 Suanpan.Portal 的页面、视图、静态资源 |
 | 依据 | data-hub PRD v1.0.0.2（DEC-014、NFR-131、§10.10）；web-portal PRD v1.0.0.2（DEC-005 ~ DEC-007、NFR-120 ~ NFR-124）；VVPay `doc/frontend.md` |
 | 相关约定 | [后端技术约定](backend.md) |
@@ -145,6 +145,8 @@ Suanpan.Crm/
 - **出错处理**：在 site.js 中统一监听 `htmx:responseError`，在页面顶部显示错误提示。
 - **会话超时和无权限**：HTMX 请求未登录（如会话超时）时，服务端返回 401 并带 `HX-Redirect`，htmx 自动整页跳转到登录页；无权限返回 403，按出错处理提示（sys 设计 §5.2）。
 - **表单校验**：HTMX 插入的表单，要在 `htmx.onLoad` 中重新执行 `$.validator.unobtrusive.parse`，否则客户端校验不生效。
+- **行内提交**：表单放在行内的一个单元格里（`<form>` 不能跨 `<td>`），`hx-target="closest tr"`、`hx-swap="outerHTML"`；出错时照常返回 200 和这一行（带错误提示、保留填写的值），htmx 默认不替换 4xx、5xx 的响应。
+- **保存后定位**：返回的元素带 `data-focus="next"` 时，site.js 聚焦它后面第一个带 `data-focus-target` 的输入框；`data-focus="self"` 聚焦它自己里面的（如出错的行）。
 - 写操作照常标 `[OpLog]`，和整页提交的写操作完全一样。
 
 ## 5. 页面写法
@@ -406,3 +408,4 @@ Suanpan.Portal/
 | v1.9 | 2026-10-23 | vivo.li / Claude | FR-006.2 实施：§5.2 小数、时间输入框的格式；下拉框选项放进可空对象，不记进操作日志 |
 | v1.10 | 2026-10-29 | vivo.li / Claude | §7.2 时间一条去掉"CSV 导入"的例子：日历排期只来自数据源，不再支持导入（data-hub PRD DEC-024） |
 | v1.11 | 2026-10-29 | vivo.li / Claude | FR-007.4 实施：§5.3 要先填内容的危险操作做成表单页，在 `<form>` 上写 `data-confirm` 二次确认 |
+| v1.12 | 2026-10-31 | vivo.li / Claude | FR-010.1 实施：§4.2 补充行内提交的写法和保存后定位（`data-focus`、`data-focus-target`） |

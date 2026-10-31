@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Suanpan.Services.Calendar.Events;
+using Suanpan.Services.Calendar.Forecasts;
 using Suanpan.Services.Calendar.Unmatched;
 using Suanpan.Services.Collect.Runs;
 using Suanpan.Services.Collect.Snapshots;
@@ -55,6 +56,8 @@ public sealed class CrmApp(string environment = "Testing") : WebApplicationFacto
     public FakeSnapshotService Snapshots { get; } = new();
 
     public FakeCalendarEventService CalendarEvents { get; } = new();
+
+    public FakeForecastService Forecasts { get; } = new();
 
     public FakeUnmatchedEntryService Unmatched { get; } = new();
 
@@ -110,6 +113,7 @@ public sealed class CrmApp(string environment = "Testing") : WebApplicationFacto
             services.AddSingleton<ICollectRunService>(CollectRuns);
             services.AddSingleton<ISnapshotService>(Snapshots);
             services.AddSingleton<ICalendarEventService>(CalendarEvents);
+            services.AddSingleton<IForecastService>(Forecasts);
             services.AddSingleton<IUnmatchedEntryService>(Unmatched);
 
             // Hangfire 面板改用空存储；IGlobalConfiguration 直接给出，不执行连接数据库的存储配置

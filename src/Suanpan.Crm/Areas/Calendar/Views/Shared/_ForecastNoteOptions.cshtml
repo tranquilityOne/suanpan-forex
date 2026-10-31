@@ -1,0 +1,8 @@
+@model IReadOnlyList<string>
+@* 来源说明的常用选项（系统配置 calendar:forecast_note_options，BR-054）：输入框用 list="forecast-note-options" 提示，也可以自由填写 *@
+<datalist id="forecast-note-options">
+    @foreach (var option in Model)
+    {
+        <option value="@option"></option>
+    }
+</datalist>

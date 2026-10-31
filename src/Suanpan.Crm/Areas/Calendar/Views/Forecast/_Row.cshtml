@@ -1,0 +1,46 @@
+@model ForecastRowViewModel
+@inject CurrentPermissions Permissions
+@*
+    待录入清单中的一行（日历设计 §9.4，BR-059）：行内提交只刷新这一行（HTMX，前端约定 §4.1）。
+    保存成功的行带 data-focus="next"，出错的行带 data-focus="self"，由 site.js 聚焦；没有保存权限时只读
+*@
+@{
+    var row = Model.Row;
+    var e = row.Event;
+    var focus = Model.Saved ? "next" : Model.Error is null ? null : "self";
+}
+<tr data-focus="@focus">
+    <td class="text-nowrap"><partial name="_EventSchedule" model="new EventScheduleView(e.ScheduledAt, e.ScheduledLocal, e.TimeZone, e.TimePrecision)" /></td>
+    <td>@row.EconomyCode</td>
+    <td>
+        <div>@row.ShortName.Get(ContentLanguage.Zh)</div>
+        <code class="small">@e.IndicatorCode</code>
+    </td>
+    <td><code>@e.ReferencePeriod</code></td>
+    <td>@Suanpan.Core.Reference.Rules.ReferenceDisplayNames.Get(row.Importance).Get(ContentLanguage.Zh)</td>
+    <td class="text-end text-nowrap font-monospace">@(EventValueFormat.Format(e.Previous, e.PreviousUpper, row.Unit, row.Decimals) ?? "-")</td>
+    <td>
+        @if (Model.Saved)
+        {
+            <span class="font-monospace me-2">@EventValueFormat.Format(e.Forecast, e.ForecastUpper, row.Unit, row.Decimals)</span>
+            <status-badge tone="Success" text="已录入" />
+            <a asp-controller="Event" asp-action="Detail" asp-route-id="@e.Id" class="ms-2">详情</a>
+        }
+        else if (await Permissions.HasAsync("calendar:forecast:save"))
+        {
+            <form hx-post="@Url.Action("Save", new { id = e.Id })" hx-target="closest tr" hx-swap="outerHTML" class="d-flex flex-wrap gap-2 align-items-center">
+                <input type="hidden" name="RowVersion" value="@Model.RowVersion" />
+                <partial name="_ForecastInputs" model="new ForecastInputsView(Model.Forecast, Model.ForecastUpper, Model.Note, row.ValueType, row.Unit, row.Decimals, Model.Error is not null)" />
+                <button type="submit" class="btn btn-sm btn-primary">保存</button>
+            </form>
+            @if (Model.Error is not null)
+            {
+                <div class="text-danger small mt-1">@Model.Error</div>
+            }
+        }
+        else
+        {
+            <span class="text-secondary">未录入</span>
+        }
+    </td>
+</tr>

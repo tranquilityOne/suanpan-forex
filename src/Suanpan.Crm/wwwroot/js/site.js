@@ -1,4 +1,4 @@
-// 后台公共脚本（前端约定 §4.2、§6）：二次确认弹窗、HTMX 出错提示、HTMX 插入内容后重新解析表单校验
+// 后台公共脚本（前端约定 §4.2、§6）：二次确认弹窗、HTMX 出错提示、HTMX 插入内容后重新解析表单校验和定位输入框
 (function () {
     'use strict';
 
@@ -74,5 +74,23 @@
         }
 
         jQuery.validator.unobtrusive.parse(element);
+    });
+
+    // HTMX 换进来的元素带 data-focus 时定位输入框（预期值录入保存后定位下一条，BR-059）：
+    // next 聚焦它后面第一个带 data-focus-target 的输入框，self 聚焦它自己里面的
+    htmx.onLoad(function (element) {
+        const focus = element.dataset ? element.dataset.focus : null;
+        let target = null;
+        if (focus === 'self') {
+            target = element.querySelector('[data-focus-target]');
+        } else if (focus === 'next') {
+            for (let next = element.nextElementSibling; next && !target; next = next.nextElementSibling) {
+                target = next.querySelector('[data-focus-target]');
+            }
+        }
+
+        if (target) {
+            target.focus();
+        }
     });
 })();

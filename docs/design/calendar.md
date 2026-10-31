@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.13 |
+| 版本 | v0.14 |
 | 日期 | 2026-10-31 |
 | 状态 | 已评审：FR-007、FR-008（2026-10-29，vivo.li：§12 第 1 ~ 9 项均按建议执行）；FR-009 ~ FR-011（2026-10-31，vivo.li：§12 第 10 ~ 23 项均按建议执行） |
 | 覆盖 | FR-007 日历排期采集、FR-008 公布值与前值采集、FR-009 日历事件管理、FR-010 预期值人工录入、FR-011 字段锁定与人工优先 |
@@ -605,15 +605,18 @@ Suanpan.Services/Calendar/
 ├─ Releases/      CalendarReleaseIngestor、IReleaseValidator（含 ReleaseCandidate、ReleaseValidation、PassThroughReleaseValidator）
 ├─ Events/        EventChanges（变更历史的写法，FR-007.3）；ICalendarEventService、CalendarEventService（待确认事件的保留、取消；
 │                 FR-009 的查询、详情、人工修改、待复核、解锁）、Models/
-├─ Forecasts/     IForecastService、ForecastService、ForecastReminderJob（FR-010）、Models/
+├─ Forecasts/     IForecastService、ForecastService、CalendarConfigKeys（FR-010）、Models/（ForecastQuery、ForecastInput）
+├─ Jobs/          ForecastReminderJob（FR-010 的提醒，后端约定 §8.3：任务类放在 Services/{模块}/Jobs/）
 ├─ Conflicts/     ILockConflictService、LockConflictService（FR-011）、Models/
 └─ Unmatched/     IUnmatchedEntryService、UnmatchedEntryService、Models/（UnmatchedEntryQuery、UnmatchedReleaseGroup 等）
 
 Suanpan.Crm/
 ├─ Areas/Calendar/    Controllers/（Event、Review、Forecast、Conflict、Unconfirmed、Unmatched）、Views/（Unconfirmed：Index、Cancel、_Schedule；
-│                     Unmatched：Index、Ignored、_Tabs、_SourceFilter；Event：Index、Detail；Shared/_EventSchedule 为排期的显示，
-│                     事件和待确认事件共用；FR-009.2 起的视图随实施补充）
-└─ Models/Calendar/
+│                     Unmatched：Index、Ignored、_Tabs、_SourceFilter；Event：Index、Detail、Edit、Cancel；Review：Index、Reject；
+│                     Forecast：Index、_Row、Correct；Shared/_EventSchedule 为排期的显示，事件和待确认事件共用，
+│                     Shared/_EventSummary 为表单页上方的事件信息，Shared/_ForecastInputs、_ForecastNoteOptions 为预期值的输入框，
+│                     清单和事件详情共用）
+└─ Models/Calendar/   预期值的 ViewModel 放在 Forecasts/ 子文件夹
 ```
 
 ### 8.2 主要接口
@@ -626,7 +629,7 @@ Suanpan.Crm/
 | `IUnmatchedEntryService` | `QueryAsync(query)`、`QueryIgnoredAsync(query)`、`IgnoreAsync(sourceId, releaseKey)`、`RestoreAsync(id)`、`RematchAsync()` | §4.5；`QueryAsync` 按发布分组分页，最近要发布的组在前；`RematchAsync` 返回匹配上启用指标的条数 |
 | `IReleaseValidator` | `ValidateAsync(candidate)` | §5.6 |
 | `ICalendarEventService`（v0.10 扩充） | `QueryAsync(EventQuery)`、`GetDetailAsync(id)`（FR-009.1）、`EditValuesAsync(id, EventValuesInput, reason, rowVersion)`、`UnlockAsync(id, field, rowVersion)`、`QueryReviewAsync(page, pageSize)`、`ConfirmReviewAsync(id, sourceId, rowVersion)`、`RejectReviewAsync(id, reason, rowVersion)` | §3.7；`EventQuery` 为 BR-048 的筛选，分页；`GetDetailAsync` 带各数据源数值、变更历史、锁定信息、锁定冲突 |
-| `IForecastService` | `QueryPendingAsync(ForecastQuery)`、`SaveAsync(id, ForecastInput, rowVersion)`、`CorrectAsync(id, ForecastInput, reason, rowVersion)` | §3.8；`CorrectAsync` 只给管理员的 action 调用 |
+| `IForecastService` | `QueryPendingAsync(ForecastQuery)`、`GetRowAsync(id)`、`GetNoteOptionsAsync()`、`SaveAsync(id, ForecastInput, rowVersion)`、`CorrectAsync(id, ForecastInput, reason, rowVersion)` | §3.8；`CorrectAsync` 只给管理员的 action 调用；`GetRowAsync` 给 HTMX 保存后返回的那一行（v0.14） |
 | `ILockConflictService` | `QueryAsync(query)`、`KeepAsync(id, rowVersion)`、`AdoptAsync(id, rowVersion)` | §3.9；`rowVersion` 为事件的 |
 
 两个入库服务在 `AddSuanpanServices` 中注册为 `ICollectIngestor`，Collector 按目标数据类型取用（采集设计 §5.3）。
@@ -710,6 +713,16 @@ Suanpan.Crm/
 | 预期值录入 | `/Calendar/Forecast` | `calendar:forecast:index` | 待录入清单（§3.8），可切换"全部重要性"；每行：指标、参考期、排期（操作者时区）、前值、预期值输入（区间型两个框，旁边显示单位）、来源说明、保存。行内提交只刷新当前行，保存成功的行显示"已录入"并聚焦下一行的输入框（HTMX，前端约定 §4.1 已登记，BR-059）；没有保存权限时只读 |
 | 保存预期值 | POST | `calendar:forecast:save` | 公布前（§3.8）；格式不对时在这一行提示（ERR-FC-001），被他人改过时提示刷新（ERR-FC-003）。事件详情中也有同样的表单，供列表以外的事件录入 |
 | 更正预期值 | `/Calendar/Forecast/Correct/{id}` | `calendar:forecast:correct` | 公布后，只有管理员；从事件详情进入，原因必填 |
+
+实现说明（FR-010.1）：
+
+- 清单（`QueryPendingAsync`）：状态为待公布、盯盘中、延迟、待确认，公布值和预期值都为空，`scheduled_at` 在 [现在, 现在 + 7 天) 之间（`ForecastRule.PendingDays`），默认只取高重要性的指标，按 `scheduled_at`、`id` 升序，每页 50 条。排期已过的延迟事件不在清单中，仍可在事件详情中录入。
+- 保存（`SaveAsync`）：来源说明去掉首尾空白，空的存为空，超过 100 字时提示在 `Note`；已公布的拒绝（"事件已公布"，ERR-FC-002），取消的也拒绝；格式按 `EventValueRule`，错误提示在 `Forecast`（ERR-FC-001）；数值型指标忽略提交的上限；预期值和来源说明都没变时直接返回成功，不写历史、不改 `row_version`。只改来源说明时不写变更历史（历史只记预期值）。保存时写来源类型"人工录入"，锁定预期值（原因"录入预期值"），`row_version` 加一；比对、并发处理与 §9.3 相同（ERR-FC-003）。
+- 更正（`CorrectAsync`）：原因必填、不超过 500 字（与修改数值相同）；取消的事件不能更正；没有改动时提示"没有修改预期值"；原因写进变更历史和锁定信息。不发 `EventValueEditedEvent`（§6.3：预期值的变化由 FR-023 的发布消息覆盖）。
+- 常用来源（`GetNoteOptionsAsync`）：系统配置按英文逗号和中文逗号拆分，去掉空项和重复项（运营人员在配置页面里常写中文逗号）。
+- 清单页：页签切换"高重要性""全部重要性"（`?all=true`）；每行一个 `<form hx-post>`，只刷新这一行（`hx-target="closest tr"`、`hx-swap="outerHTML"`），HTMX 请求返回 `Forecast/_Row`，整页提交（事件详情中的表单）回到事件详情。保存成功的行显示"已录入"和值；出错的行保留填写的值（不按小数位取整）和提交时的 `row_version`（被他人改过时要刷新页面才能再保存），输入框标红，错误显示在行内。定位用 `data-focus`："next" 聚焦后面第一行的输入框，"self" 聚焦本行的（site.js，前端约定 §4.2）。输入框按指标小数位设 `step`、必填，浏览器即时提示格式不对；来源说明 `maxlength=100`，用 `<datalist>` 提示常用来源。没有保存权限时清单只读（显示"未录入"）。菜单图标 `target-arrow`。
+- 事件详情：公布前（`ForecastRule.CanEnter`）在"数值"下方显示"录入预期值"表单（`calendar:forecast:save`），预填当前值；公布后（未取消）在标题区显示"更正预期值"（`calendar:forecast:correct`）。更正页与修改数值页相同：单独的表单页，`<form>` 上二次确认，原因由操作日志过滤器记入原因列。
+- 提醒（`ForecastReminderJob`，Job 的 `calendar-forecast-reminder`，cron `*/15 * * * *`）：按 §3.8 的条件，`scheduled_at` 在 (现在, 现在 + 24 小时]；分布式锁 `calendar:forecast-reminder`；先 `SET NX` Redis 键 `calendar:forecast-reminded:{eventId}`（48 小时过期）再告警，告警对象"预期值录入"；告警发送失败时删掉这个键，下一次再提醒。
 
 ### 9.5 锁定冲突（FR-011）
 
@@ -869,8 +882,9 @@ FR-007.4 与 FR-008.1 可以并行。ENG-009.1 的前置条件已满足：BLS �
 | v0.6 | 2026-10-29 | vivo.li / Claude | FR-008.1（JAN-92）实施：§3.5 `ReleaseValueRule` 的接口；§5.2 实现说明（行锁范围、补建的写法、各数据源数值的更新、来源快照、计数）；§8.1 不建 `CalendarErrorCodes`，`Releases/` 不分 Models |
 | v0.7 | 2026-10-29 | vivo.li / Claude | FR-007.4（JAN-91）实施：§4.4、§4.5 保留、取消、重新匹配的实现说明；§8.1 目录；§8.2 增加 `GetUnconfirmedAsync`、列表筛选；§9.1 实现说明（取消用表单页、已忽略用页签、"新增映射"链接的权限） |
 | v0.8 | 2026-10-29 | vivo.li / Claude | §14 ENG-009.1 的前置条件：User-Agent 的联系邮箱已提供，API Key 填在后台 BLS 数据源的凭据中；变更记录按版本排序 |
-| v0.10 | 2026-10-31 | vivo.li / Claude | 补充 FR-009 ~ FR-011 的人工部分：§1 范围；新增 §3.7 人工修改、§3.8 预期值、§3.9 锁定冲突的处理；§6.1 人工操作的事务；§6.3 新增 `EventValueEditedEvent`；§8 目录和接口；新增 §9.3 ~ §9.5 页面，§9.1 菜单排序，§9.2 预置角色；§10 错误码；§11 配置；§12 第 10 ~ 23 项待评审；§13 测试要点；§14 拟拆分的子任务 |
-| v0.13 | 2026-10-31 | vivo.li / Claude | FR-009.2（JAN-95）实施：§6.3 `EventValueEditedEvent` 已登记；§8.2 `QueryReviewAsync` 的参数；§9.3 实现说明（修改数值的取舍、人工录入和确认采集值都填下一期的前值、并发、解锁和 `LockConflictResolution.Unlocked` 在本单实现、页面） |
-| v0.12 | 2026-10-31 | vivo.li / Claude | FR-009.1（JAN-94）实施：§8.1 目录（`Shared/_EventSchedule`）；§8.2 查询和详情已实现；§9.3 实现说明（`EventRow`、`EventDetail`、默认本周、数值格式、性能验证结果） |
-| v0.11 | 2026-10-31 | vivo.li / Claude | 评审通过：§12 第 10 ~ 23 项均按建议执行，改为评审结论，第 10、11、14、15、16 项已补进 PRD v1.0.0.25；§14 回填 Linear 工单号（JAN-94 ~ JAN-97） |
 | v0.9 | 2026-10-29 | vivo.li / Claude | ENG-009.1（JAN-93）实施：BLS 拆成"BLS 发布日程"（官网）和"BLS API"两个数据源，各一个适配器（`us.blsweb`、`us.blsapi`），解析器标识改为 `us.blsweb.schedule`、`us.blsapi.release`；§4.1、§5.1 补充请求方式、任务参数、日期写法、缺值月份、单位的判断和首批 9 个指标的映射；§14 前置条件已满足 |
+| v0.10 | 2026-10-31 | vivo.li / Claude | 补充 FR-009 ~ FR-011 的人工部分：§1 范围；新增 §3.7 人工修改、§3.8 预期值、§3.9 锁定冲突的处理；§6.1 人工操作的事务；§6.3 新增 `EventValueEditedEvent`；§8 目录和接口；新增 §9.3 ~ §9.5 页面，§9.1 菜单排序，§9.2 预置角色；§10 错误码；§11 配置；§12 第 10 ~ 23 项待评审；§13 测试要点；§14 拟拆分的子任务 |
+| v0.11 | 2026-10-31 | vivo.li / Claude | 评审通过：§12 第 10 ~ 23 项均按建议执行，改为评审结论，第 10、11、14、15、16 项已补进 PRD v1.0.0.25；§14 回填 Linear 工单号（JAN-94 ~ JAN-97） |
+| v0.12 | 2026-10-31 | vivo.li / Claude | FR-009.1（JAN-94）实施：§8.1 目录（`Shared/_EventSchedule`）；§8.2 查询和详情已实现；§9.3 实现说明（`EventRow`、`EventDetail`、默认本周、数值格式、性能验证结果） |
+| v0.13 | 2026-10-31 | vivo.li / Claude | FR-009.2（JAN-95）实施：§6.3 `EventValueEditedEvent` 已登记；§8.2 `QueryReviewAsync` 的参数；§9.3 实现说明（修改数值的取舍、人工录入和确认采集值都填下一期的前值、并发、解锁和 `LockConflictResolution.Unlocked` 在本单实现、页面） |
+| v0.14 | 2026-10-31 | vivo.li / Claude | FR-010.1（JAN-96）实施：§3.8 提醒任务放在 `Services/Calendar/Jobs/`（后端约定 §8.3）；§8.1 目录；§8.2 `IForecastService` 增加 `GetRowAsync`、`GetNoteOptionsAsync`；§9.4 实现说明（清单范围、保存和更正的取舍、常用来源、HTMX 行内保存和定位下一条、事件详情中的表单、提醒的去重）；变更记录按版本排序 |

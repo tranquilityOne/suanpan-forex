@@ -1,5 +1,6 @@
 using Hangfire;
 using Suanpan.Infrastructure.Hangfire;
+using Suanpan.Services.Calendar.Jobs;
 using Suanpan.Services.Collect.Jobs;
 
 namespace Suanpan.Job.Registry;
@@ -17,5 +18,8 @@ public static class RecurringJobRegistry
         jobs.AddOrUpdateUtc<CollectRunCleanupJob>(CollectRunCleanupJob.JobId, job => job.RunAsync(CancellationToken.None), CollectRunCleanupJob.Cron);
         jobs.AddOrUpdateUtc<CollectSnapshotCleanupJob>(
             CollectSnapshotCleanupJob.JobId, job => job.RunAsync(CancellationToken.None), CollectSnapshotCleanupJob.Cron);
+
+        // 财经日历（日历设计 §3.8）
+        jobs.AddOrUpdateUtc<ForecastReminderJob>(ForecastReminderJob.JobId, job => job.RunAsync(CancellationToken.None), ForecastReminderJob.Cron);
     }
 }

@@ -9,8 +9,8 @@
     var e = detail.Event;
     var indicator = detail.Indicator;
     var isRange = indicator.ValueType == IndicatorValueType.Range;
-    var unit = indicator.Unit == IndicatorUnit.Index ? "" : Suanpan.Core.Reference.Rules.ReferenceDisplayNames.Get(indicator.Unit).Get(ContentLanguage.Zh);
-    var step = indicator.Decimals == 0 ? "1" : "0." + new string('0', indicator.Decimals - 1) + "1";
+    var unit = EventValueFormat.InputUnit(indicator.Unit);
+    var step = EventValueFormat.Step(indicator.Decimals);
     var review = e.Status == CalendarEventStatus.PendingReview;
     ViewData["Title"] = review ? "改为人工值" : "修改数值";
 }

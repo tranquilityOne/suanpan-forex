@@ -1,0 +1,27 @@
+@model ForecastInputsView
+@using Suanpan.Core.Reference.Enums
+@*
+    预期值的输入框（日历设计 §9.4）：待录入清单的行、事件详情共用，字段名 Forecast、ForecastUpper、Note。
+    step 按指标小数位，浏览器即时提示小数位不对（ERR-FC-001）；data-focus-target 供保存后定位下一条（site.js，BR-059）
+*@
+@{
+    var step = EventValueFormat.Step(Model.Decimals);
+    var unit = EventValueFormat.InputUnit(Model.Unit);
+    var inputClass = Model.Invalid ? "form-control is-invalid" : "form-control";
+    // 预填的值已按指标小数位取整；出错时原样显示填写的值，不取整
+    string? Value(decimal? value) => value?.ToString(System.Globalization.CultureInfo.InvariantCulture);
+}
+<div class="input-group input-group-sm flex-nowrap w-auto">
+    <input name="Forecast" type="number" step="@step" value="@Value(Model.Forecast)" required class="@inputClass" style="width: 7rem" aria-label="预期值" data-focus-target />
+    @if (Model.ValueType == IndicatorValueType.Range)
+    {
+        <span class="input-group-text">~</span>
+        <input name="ForecastUpper" type="number" step="@step" value="@Value(Model.ForecastUpper)" required class="@inputClass" style="width: 7rem" aria-label="预期值上限" />
+    }
+    @if (unit.Length > 0)
+    {
+        <span class="input-group-text">@unit</span>
+    }
+</div>
+<input name="Note" value="@Model.Note" maxlength="@ForecastRule.MaxNoteLength" list="forecast-note-options" class="form-control form-control-sm w-auto"
+       style="min-width: 12rem" placeholder="来源说明（选填）" aria-label="来源说明" />

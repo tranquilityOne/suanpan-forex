@@ -12,6 +12,7 @@
     string SourceName(long? id) => id is { } sourceId ? Model.SourceNames.GetValueOrDefault(sourceId, $"#{sourceId}（已删除）") : "—";
     string? Format(decimal? value, decimal? upper) => EventValueFormat.Format(value, upper, indicator.Unit, indicator.Decimals);
     EventFieldLock? LockOf(EventField field) => e.LockedFields.FirstOrDefault(l => l.Field == field);
+    IReadOnlyList<string> forecastNoteOptions = ViewData["ForecastNoteOptions"] as IReadOnlyList<string> ?? [];
 }
 
 <div class="page-header mb-3">
@@ -40,6 +41,10 @@
                 @if (e.Status == CalendarEventStatus.PendingReview)
                 {
                     <a asp-controller="Review" asp-action="Index" asp-permission="calendar:review:index" class="btn">去待复核处理</a>
+                }
+                @if (ForecastRule.IsReleased(e) && ForecastRule.CanCorrect(e))
+                {
+                    <a asp-controller="Forecast" asp-action="Correct" asp-route-id="@e.Id" asp-permission="calendar:forecast:correct" class="btn">更正预期值</a>
                 }
                 @if (CalendarEventStatusRule.CanTransition(e.Status, CalendarEventStatus.Cancelled))
                 {
@@ -127,6 +132,23 @@
                 </table>
             </div>
         </div>
+
+        @if (ForecastRule.CanEnter(e))
+        {
+            @* 公布前录入、修改预期值（日历设计 §9.4）：供待录入清单以外的事件，如中低重要性、7 天以后的 *@
+            <div class="card mb-3" asp-permission="calendar:forecast:save">
+                <div class="card-header"><h3 class="card-title">录入预期值</h3></div>
+                <form asp-controller="Forecast" asp-action="Save" asp-route-id="@e.Id" method="post" class="card-body">
+                    <input type="hidden" name="RowVersion" value="@e.RowVersion" />
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <partial name="_ForecastInputs" model="new ForecastInputsView(EventValueFormat.Round(e.Forecast, indicator.Decimals), EventValueFormat.Round(e.ForecastUpper, indicator.Decimals), e.ForecastNote, indicator.ValueType, indicator.Unit, indicator.Decimals)" />
+                        <button type="submit" class="btn btn-sm btn-primary">保存</button>
+                    </div>
+                    <div class="form-text mt-2">保存后预期值被锁定；事件公布后只有管理员能更正</div>
+                </form>
+                <partial name="_ForecastNoteOptions" model="forecastNoteOptions" />
+            </div>
+        }
     </div>
 
     <div class="col-lg-7">

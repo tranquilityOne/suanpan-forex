@@ -36,11 +36,10 @@ public sealed class EventEditViewModel
     [BindNever]
     public EventDetail? Detail { get; set; }
 
-    /// <summary>预填当前值，按指标小数位显示（库里是 numeric(18,6)，不然会显示成 29.000000）</summary>
+    /// <summary>预填当前值，按指标小数位显示</summary>
     public static EventEditViewModel From(EventDetail detail)
     {
-        var decimals = detail.Indicator.Decimals;
-        decimal? Round(decimal? value) => value is { } number ? Math.Round(number, decimals, MidpointRounding.AwayFromZero) : null;
+        decimal? Round(decimal? value) => EventValueFormat.Round(value, detail.Indicator.Decimals);
         return new EventEditViewModel
         {
             Actual = Round(detail.Event.Actual),
