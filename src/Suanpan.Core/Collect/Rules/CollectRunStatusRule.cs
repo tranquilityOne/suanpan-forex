@@ -24,10 +24,14 @@ public static class CollectRunStatusRule
     /// <summary>执行中断的判断留出的余量（采集设计 §4.3）</summary>
     public static readonly TimeSpan InterruptGrace = TimeSpan.FromMinutes(5);
 
+    /// <summary>一路盯盘的运行记录（触发方式为盯盘、记了排期时间）；延迟后的补采也是触发方式"盯盘"，但没有排期时间</summary>
+    public static bool IsWatchSession(CollectRun run) => run.Trigger == CollectRunTrigger.Watch && run.ScheduledFor is not null;
+
     /// <summary>
     /// "运行中"的记录是否已经执行中断（ERR-COL-009，采集设计 §4.3）：等待重试的，计划的重试时间已过去 5 分钟以上（重试消息丢失）；
     /// 不在等待重试的，最近一次请求开始已超过"请求超时 + 5 分钟"（执行到一半进程退出）。每次请求开始时就写入请求记录，
-    /// 所以最近一条请求记录的开始时间就是当前这次的。重新解析不发请求，按心跳判断：心跳（没有时取开始时间）超过 5 分钟没有更新（§5.6）
+    /// 所以最近一条请求记录的开始时间就是当前这次的。重新解析不发请求，按心跳判断：心跳（没有时取开始时间）超过 5 分钟没有更新（§5.6）。
+    /// 一路盯盘的记录不在这里回收（§5.7）
     /// </summary>
     public static bool IsInterrupted(CollectRun run, TimeSpan requestTimeout, DateTime now)
     {
@@ -39,6 +43,12 @@ public static class CollectRunStatusRule
         if (run.Trigger == CollectRunTrigger.Reparse)
         {
             return now - (run.HeartbeatAt ?? run.StartedAt ?? run.QueuedAt) > InterruptGrace;
+        }
+
+        // 一路盯盘的运行记录由持有租约的盯盘服务接着写或收尾（采集设计 §5.7），这里不回收；延迟后的补采是普通运行记录，照常回收
+        if (IsWatchSession(run))
+        {
+            return false;
         }
 
         if (run.NextAttemptAt is { } nextAttemptAt)

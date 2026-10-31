@@ -343,8 +343,7 @@ public sealed class CollectExecutor(
         var inputs = fetched.Responses
             .Select(r => new SnapshotInput(PathOnly(r.Url), r.RequestKey ?? PathOnly(r.Url), r.StatusCode, r.ContentType, r.Body, r.ReceivedAt ?? now))
             .ToList();
-        var ids = await snapshots.SaveAsync(new SnapshotBatch(runId, (short)attempt, task.Id, task.SourceId, inputs), skipUnchanged: false, ct);
-        return ids.Select(id => id ?? throw new InvalidOperationException("快照服务没有返回快照 id")).ToList();
+        return await snapshots.SaveAsync(new SnapshotBatch(runId, (short)attempt, task.Id, task.SourceId, inputs), skipUnchanged: false, ct);
     }
 
     /// <summary>地址只保留路径：有的数据源把凭据放在查询串里</summary>

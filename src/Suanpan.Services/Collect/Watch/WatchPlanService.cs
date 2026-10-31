@@ -63,49 +63,21 @@ public sealed class WatchPlanService(
                 select new { e.Id, e.IndicatorCode, i.ShortName, i.Importance, e.ReferencePeriod, e.Status, e.ScheduledAt })
             .ToListAsync(ct);
 
-        var codes = events.Select(e => e.IndicatorCode).Distinct().ToList();
-        var mappings = await (
-                from m in db.IndicatorSources.AsNoTracking()
-                where m.Purpose == IndicatorSourcePurpose.Release && codes.Contains(m.IndicatorCode)
-                join s in db.DataSources on m.SourceId equals s.Id
-                select new { Mapping = m, Source = s })
-            .ToListAsync(ct);
-        var sourceIds = mappings.Select(x => x.Source.Id).Distinct().ToList();
-        var tasks = await db.CollectTasks.AsNoTracking()
-            .Where(t => sourceIds.Contains(t.SourceId) && t.TargetType == CollectTargetType.Release && t.IsEnabled)
-            .OrderBy(t => t.Id)
-            .ToListAsync(ct);
-
+        var targets = await WatchTargets.LoadAsync(db, events.Select(e => e.IndicatorCode).Distinct().ToList(), ct);
         var problems = new List<WatchProblem>();
         var members = new List<(WatchEventItem Item, DateTime ScheduledAt, DataSource Source, CollectTask Task, short? Lead, short? Window)>();
         foreach (var e in events)
         {
             var item = new WatchEventItem(e.Id, e.IndicatorCode, e.ShortName, e.Importance, e.ReferencePeriod, e.Status);
             var scheduledAt = e.ScheduledAt!.Value;
-            var candidates = mappings.Where(x => x.Mapping.IndicatorCode == e.IndicatorCode).OrderBy(x => x.Mapping.Priority).ToList();
-            if (candidates.Count == 0)
+            var target = targets.Resolve(e.IndicatorCode);
+            if (target.Kind is { } kind)
             {
-                problems.Add(new WatchProblem(item, scheduledAt, WatchProblemKind.NoMapping, "指标没有\"公布值\"映射"));
+                problems.Add(new WatchProblem(item, scheduledAt, kind, target.Reason!));
                 continue;
             }
 
-            // 取优先级最高、已启用的数据源（采集设计 §11 第 24 项）
-            if (candidates.FirstOrDefault(x => x.Source.IsEnabled) is not { } chosen)
-            {
-                problems.Add(new WatchProblem(item, scheduledAt, WatchProblemKind.SourceDisabled,
-                    $"映射的数据源已停用：{string.Join("、", candidates.Select(x => x.Source.Name).Distinct())}"));
-                continue;
-            }
-
-            // 用这个数据源已启用、解析器与映射相同的公布值任务，多个时取 id 最小的（§11 第 23 项）
-            if (tasks.FirstOrDefault(t => t.SourceId == chosen.Source.Id && t.ParserKey == chosen.Mapping.ParserKey) is not { } task)
-            {
-                problems.Add(new WatchProblem(item, scheduledAt, WatchProblemKind.NoTask,
-                    $"数据源 {chosen.Source.Name} 没有已启用的公布值采集任务（解析器 {chosen.Mapping.ParserKey}）"));
-                continue;
-            }
-
-            members.Add((item, scheduledAt, chosen.Source, task, chosen.Mapping.WatchLeadSeconds, chosen.Mapping.WatchWindowMinutes));
+            members.Add((item, scheduledAt, target.Source!, target.Task!, target.Mapping!.WatchLeadSeconds, target.Mapping.WatchWindowMinutes));
         }
 
         var groups = members

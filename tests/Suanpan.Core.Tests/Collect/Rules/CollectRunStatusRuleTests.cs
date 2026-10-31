@@ -33,6 +33,19 @@ public class CollectRunStatusRuleTests
 
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
 
+    /// <summary>一路盯盘的记录由盯盘服务接着写或收尾，不按请求时间回收；延迟后的补采（没有排期时间）照常回收</summary>
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void IsInterrupted_SkipsWatchSessions(bool hasScheduledFor, bool expected)
+    {
+        var run = Running(startedAt: Now.AddHours(-1));
+        run.Trigger = CollectRunTrigger.Watch;
+        run.ScheduledFor = hasScheduledFor ? Now.AddMinutes(-59) : null;
+
+        Assert.Equal(expected, CollectRunStatusRule.IsInterrupted(run, Timeout, Now));
+    }
+
     /// <summary>ERR-COL-009：等待重试的，重试时间过去 5 分钟以上（重试消息丢失）才算中断；刚好 5 分钟不算</summary>
     [Theory]
     [InlineData(-301, true)]

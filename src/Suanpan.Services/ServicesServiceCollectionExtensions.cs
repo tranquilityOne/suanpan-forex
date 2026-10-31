@@ -95,6 +95,7 @@ public static class ServicesServiceCollectionExtensions
         services.AddScoped<CollectRunCleanupJob>();
         services.AddScoped<CollectSnapshotCleanupJob>();
         services.AddScoped<IWatchPlanService, WatchPlanService>();
+        services.AddScoped<IWatchBackfillService, WatchBackfillService>();
 
         // Calendar：财经日历。入库服务注册为 ICollectIngestor，Collector 按目标数据类型取用（采集设计 §5.3）
         services.AddScoped<ScheduleApplier>();

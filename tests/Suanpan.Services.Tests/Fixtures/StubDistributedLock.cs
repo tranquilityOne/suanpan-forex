@@ -7,11 +7,13 @@ internal sealed class StubDistributedLock : IDistributedLock
 {
     public bool Held { get; set; }
 
-    public Task<IAsyncDisposable?> AcquireAsync(string key, TimeSpan expiry, TimeSpan? wait = null, CancellationToken ct = default)
-        => Task.FromResult(Held ? null : (IAsyncDisposable?)new Handle());
+    public Task<IDistributedLockHandle?> AcquireAsync(string key, TimeSpan expiry, TimeSpan? wait = null, CancellationToken ct = default)
+        => Task.FromResult(Held ? null : (IDistributedLockHandle?)new Handle());
 
-    private sealed class Handle : IAsyncDisposable
+    private sealed class Handle : IDistributedLockHandle
     {
+        public Task<bool> ExtendAsync(TimeSpan expiry) => Task.FromResult(true);
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

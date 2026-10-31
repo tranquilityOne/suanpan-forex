@@ -686,11 +686,6 @@ namespace Suanpan.Data.Migrations
                     b.HasIndex("TaskId", "QueuedAt")
                         .HasDatabaseName("ix_col_run_task_id_queued_at");
 
-                    b.HasIndex("TaskId", "ScheduledFor")
-                        .IsUnique()
-                        .HasDatabaseName("ux_col_run_task_id_scheduled_for")
-                        .HasFilter("scheduled_for IS NOT NULL");
-
                     b.HasIndex("TaskId", "Trigger", "ScheduledFor")
                         .IsUnique()
                         .HasDatabaseName("ux_col_run_task_id_trigger_scheduled_for")

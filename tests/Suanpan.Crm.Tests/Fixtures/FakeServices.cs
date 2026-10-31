@@ -261,7 +261,7 @@ public sealed class FakeSnapshotService : ISnapshotService
 
     public Task<PagedResult<SnapshotRow>> QueryAsync(SnapshotQuery query, CancellationToken ct = default) => throw new NotSupportedException();
 
-    public Task<IReadOnlyList<long?>> SaveAsync(SnapshotBatch batch, bool skipUnchanged, CancellationToken ct = default) => throw new NotSupportedException();
+    public Task<IReadOnlyList<long>> SaveAsync(SnapshotBatch batch, bool skipUnchanged, CancellationToken ct = default) => throw new NotSupportedException();
 
     public Task MarkInvalidAsync(IReadOnlyCollection<long> snapshotIds, string reason, CancellationToken ct = default) => throw new NotSupportedException();
 

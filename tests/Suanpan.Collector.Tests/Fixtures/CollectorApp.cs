@@ -5,13 +5,16 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Suanpan.Collector.Execution;
+using Suanpan.Collector.Watch;
 using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Collect.Enums;
 using Suanpan.Core.Collect.Rules;
 using Suanpan.Data;
 using Suanpan.Infrastructure.Http;
 using Suanpan.Infrastructure.Messaging;
+using Suanpan.Services.Calendar.Releases;
 using Suanpan.Services.Collect.Ingest;
 using Suanpan.Services.Collect.Runs;
 using Suanpan.Services.Collect.Snapshots;
@@ -45,9 +48,14 @@ public sealed class CollectorApp(string connectionString, string redis, string r
         {
             services.AddSingleton<ICollectAdapter, FakeAdapter>();
             services.AddSingleton<IParser, FakeParser>();
-            // 换掉真实的入库服务：执行框架的测试用假的日历排期入库（日历的入库在 Services.Tests 中测试）
+            // 换掉真实的入库服务：执行框架的测试用假的日历排期入库（日历的入库在 Services.Tests 中测试）；
+            // 公布值用真实的入库服务，盯盘的测试按事件状态判断拿到值
             services.RemoveAll<ICollectIngestor>();
             services.AddSingleton<ICollectIngestor, FakeIngestor>();
+            services.AddScoped<ICollectIngestor, CalendarReleaseIngestor>();
+
+            // 盯盘的后台服务按真实时钟运行，测试中去掉，由盯盘的测试按手动推进的时钟自己调用
+            services.Remove(services.Single(d => d.ServiceType == typeof(IHostedService) && d.ImplementationType == typeof(WatchService)));
             services.AddSingleton<SnapshotFaults>();
             services.AddScoped<SnapshotService>();
             services.AddScoped<ISnapshotService>(sp => new FaultySnapshotService(sp.GetRequiredService<SnapshotService>(), sp.GetRequiredService<SnapshotFaults>()));

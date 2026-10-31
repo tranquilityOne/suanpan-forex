@@ -17,9 +17,18 @@ public sealed class RedisDistributedLock(IConnectionMultiplexer redis, IOptions<
         end
         """;
 
+    /// <summary>值等于自己的 token 才续期</summary>
+    private const string ExtendScript = """
+        if redis.call('get', KEYS[1]) == ARGV[1] then
+            return redis.call('pexpire', KEYS[1], ARGV[2])
+        else
+            return 0
+        end
+        """;
+
     private readonly string _prefix = options.Value.InstanceName + "lock:";
 
-    public async Task<IAsyncDisposable?> AcquireAsync(string key, TimeSpan expiry, TimeSpan? wait = null, CancellationToken ct = default)
+    public async Task<IDistributedLockHandle?> AcquireAsync(string key, TimeSpan expiry, TimeSpan? wait = null, CancellationToken ct = default)
     {
         var db = redis.GetDatabase();
         RedisKey redisKey = _prefix + key;
@@ -42,9 +51,13 @@ public sealed class RedisDistributedLock(IConnectionMultiplexer redis, IOptions<
         }
     }
 
-    private sealed class LockHandle(IDatabase db, RedisKey key, string token) : IAsyncDisposable
+    private sealed class LockHandle(IDatabase db, RedisKey key, string token) : IDistributedLockHandle
     {
         private int _released;
+
+        public async Task<bool> ExtendAsync(TimeSpan expiry)
+            => Volatile.Read(ref _released) == 0
+                && (long)await db.ScriptEvaluateAsync(ExtendScript, [key], [token, (long)expiry.TotalMilliseconds]) == 1;
 
         public async ValueTask DisposeAsync()
         {

@@ -18,4 +18,7 @@ public sealed class CollectAttempt
 
     /// <summary>因数据源频率上限等待的毫秒数（ERR-COL-003），运行详情显示"已延后"</summary>
     public int DeferredMs { get; set; }
+
+    /// <summary>盯盘：这次响应的内容与上一次相比有没有变化（只有变化时才解析，BR-015）；其他触发方式为空</summary>
+    public bool? Changed { get; set; }
 }

@@ -34,7 +34,7 @@ public class SnapshotServiceTests(PostgresFixture postgres)
         var first = await service.SaveAsync(Batch(1, (key, body)), skipUnchanged: false, Ct);
         var second = await service.SaveAsync(Batch(2, (key, body), (key + "_other", body)), skipUnchanged: false, Ct);
 
-        var ids = new[] { first[0]!.Value, second[0]!.Value, second[1]!.Value };
+        var ids = new[] { first[0], second[0], second[1] };
         var saved = await db.Snapshots.Where(s => ids.Contains(s.Id)).OrderBy(s => s.Id).ToListAsync(Ct);
         Assert.Equal([false, true, false], saved.Select(s => s.Unchanged));
         Assert.Equal([(short)0, (short)0, (short)1], saved.Select(s => s.Seq));
@@ -43,7 +43,7 @@ public class SnapshotServiceTests(PostgresFixture postgres)
         Assert.Equal(body, await new PostgresSnapshotContentStore(db, new FixedTimeProvider(FetchedAt)).GetAsync(saved[0].ContentHash, Ct));
     }
 
-    /// <summary>盯盘只保存内容有变化的快照（BR-016）：未变化的响应不写快照记录，对应位置返回 null</summary>
+    /// <summary>盯盘只保存内容有变化的快照（BR-016）：未变化的响应不写快照记录，对应位置返回上一个相同内容的快照 id</summary>
     [Fact]
     public async Task Save_SkipUnchanged_WritesNoRecordForUnchangedResponse()
     {
@@ -51,13 +51,13 @@ public class SnapshotServiceTests(PostgresFixture postgres)
         var service = Service(db);
         var key = TestData.Unique("key");
         var body = Encoding.UTF8.GetBytes($"内容 {Guid.NewGuid()}");
-        await service.SaveAsync(Batch(1, (key, body)), skipUnchanged: true, Ct);
+        var first = await service.SaveAsync(Batch(1, (key, body)), skipUnchanged: true, Ct);
 
         var again = await service.SaveAsync(Batch(2, (key, body)), skipUnchanged: true, Ct);
         var changed = await service.SaveAsync(Batch(3, (key, Encoding.UTF8.GetBytes($"新的内容 {Guid.NewGuid()}"))), skipUnchanged: true, Ct);
 
-        Assert.Null(Assert.Single(again));
-        Assert.NotNull(Assert.Single(changed));
+        Assert.Equal(Assert.Single(first), Assert.Single(again));
+        Assert.NotEqual(Assert.Single(first), Assert.Single(changed));
         Assert.Equal(2, await db.Snapshots.CountAsync(s => s.SourceId == SourceId && s.RequestKey == key, Ct));
     }
 
@@ -77,17 +77,17 @@ public class SnapshotServiceTests(PostgresFixture postgres)
         var body = Encoding.UTF8.GetBytes($"内容 {Guid.NewGuid()}");
         var first = await service.SaveAsync(TaskBatch(succeeded, task, body, body), skipUnchanged: false, Ct);
         var second = await service.SaveAsync(TaskBatch(failed, task, body), skipUnchanged: false, Ct);
-        await service.MarkInvalidAsync([first[1]!.Value], "拦截页", Ct);
+        await service.MarkInvalidAsync([first[1]], "拦截页", Ct);
 
         var all = (await service.QueryAsync(new SnapshotQuery(TaskId: task.Id), Ct)).Items;
         var ofFailedRuns = (await service.QueryAsync(new SnapshotQuery(TaskId: task.Id, RunStatus: CollectRunStatus.Failed), Ct)).Items;
         var invalid = (await service.QueryAsync(new SnapshotQuery(TaskId: task.Id, IsValid: false), Ct)).Items;
-        var detail = await service.GetAsync(first[0]!.Value, Ct);
+        var detail = await service.GetAsync(first[0], Ct);
 
         Assert.Equal([second[0], first[1], first[0]], all.Select(r => (long?)r.Id));
         Assert.Equal((source.Name, task.Name, (CollectRunStatus?)CollectRunStatus.Failed), (all[0].SourceName, all[0].TaskName, all[0].RunStatus));
-        Assert.Equal([second[0]!.Value], ofFailedRuns.Select(r => r.Id));
-        Assert.Equal([first[1]!.Value], invalid.Select(r => r.Id));
+        Assert.Equal([second[0]], ofFailedRuns.Select(r => r.Id));
+        Assert.Equal([first[1]], invalid.Select(r => r.Id));
         Assert.Equal(body, detail!.Content);
         Assert.Equal(succeeded.Id, detail.Run!.Id);
     }

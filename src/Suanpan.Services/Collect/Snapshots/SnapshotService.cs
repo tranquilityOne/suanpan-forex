@@ -53,12 +53,15 @@ public sealed class SnapshotService(SuanpanDbContext db, ISnapshotContentStore c
         return new SnapshotDetail(item.Snapshot, item.SourceName, item.TaskName, run, content);
     }
 
-    public async Task<IReadOnlyList<long?>> SaveAsync(SnapshotBatch batch, bool skipUnchanged, CancellationToken ct = default)
+    public async Task<IReadOnlyList<long>> SaveAsync(SnapshotBatch batch, bool skipUnchanged, CancellationToken ct = default)
     {
         var added = new List<(int Index, Snapshot Snapshot)>();
 
-        // 同一批中出现过的请求标识 → 内容哈希：同一次请求里重复请求同一个地址时，后一个与前一个比较
-        var latestHashes = new Dictionary<string, string>(StringComparer.Ordinal);
+        // 盯盘时没写记录的响应 → 上一个相同内容的快照（库中已有的 id，或同一批中刚加的快照）
+        var reused = new List<(int Index, long? Id, Snapshot? Added)>();
+
+        // 同一批中出现过的请求标识 → 最近的快照：同一次请求里重复请求同一个地址时，后一个与前一个比较
+        var latest = new Dictionary<string, (string Hash, long? Id, Snapshot? Added)>(StringComparer.Ordinal);
         try
         {
             await db.InTransactionAsync(async () =>
@@ -68,18 +71,20 @@ public sealed class SnapshotService(SuanpanDbContext db, ISnapshotContentStore c
                     var response = batch.Responses[i];
                     var requestKey = Truncate(response.RequestKey, MaxRequestKeyLength);
                     var hash = Convert.ToHexStringLower(SHA256.HashData(response.Body));
-                    var previous = latestHashes.TryGetValue(requestKey, out var seen)
+                    (string Hash, long? Id, Snapshot? Added)? previous = latest.TryGetValue(requestKey, out var seen)
                         ? seen
                         : await db.Snapshots.AsNoTracking()
                             .Where(s => s.SourceId == batch.SourceId && s.RequestKey == requestKey)
                             .OrderByDescending(s => s.Id)
-                            .Select(s => s.ContentHash)
-                            .FirstOrDefaultAsync(ct);
-                    latestHashes[requestKey] = hash;
+                            .Select(s => new { s.ContentHash, s.Id })
+                            .FirstOrDefaultAsync(ct) is { } stored
+                            ? (stored.ContentHash, stored.Id, null)
+                            : null;
 
-                    var unchanged = previous == hash;
+                    var unchanged = previous?.Hash == hash;
                     if (unchanged && skipUnchanged)
                     {
+                        reused.Add((i, previous!.Value.Id, previous.Value.Added));
                         continue;
                     }
 
@@ -102,15 +107,21 @@ public sealed class SnapshotService(SuanpanDbContext db, ISnapshotContentStore c
                     };
                     db.Snapshots.Add(snapshot);
                     added.Add((i, snapshot));
+                    latest[requestKey] = (hash, null, snapshot);
                 }
 
                 await db.SaveChangesAsync(ct);
             }, ct);
 
-            var ids = new long?[batch.Responses.Count];
+            var ids = new long[batch.Responses.Count];
             foreach (var (index, snapshot) in added)
             {
                 ids[index] = snapshot.Id;
+            }
+
+            foreach (var (index, id, addedSnapshot) in reused)
+            {
+                ids[index] = id ?? addedSnapshot!.Id;
             }
 
             return ids;

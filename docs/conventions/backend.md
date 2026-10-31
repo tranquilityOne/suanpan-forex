@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v1.37 |
+| 版本 | v1.38 |
 | 日期 | 2026-10-29 |
 | 适用范围 | 解决方案中的全部 .NET 项目：Collector、Job、Crm、Portal 四个程序和共享类库 |
 | 依据 | data-hub PRD v1.0.0.2（§7.15 技术约束、§10.6 决策日志、§10.10 技术基础）；VVPay `doc/architecture.md`、`doc/backend.md` |
@@ -361,7 +361,7 @@ Hangfire 的表放在独立的 `hangfire` schema 中。
 沿用 VVPay 的三个组件，均为 Singleton：
 
 - `IRedisCache`：JSON 序列化，带实例前缀。用 `SetIfNotExistsAsync` 做幂等标记，`IncrementAsync` 做计数。
-- `IDistributedLock`：`await using` 获取锁句柄；过期时间必须大于临界区耗时；拿不到锁时返回 null，调用方直接跳过本轮。
+- `IDistributedLock`：`await using` 获取锁句柄；过期时间必须大于临界区耗时；拿不到锁时返回 null，调用方直接跳过本轮。长时间持有的锁（如 Collector 的盯盘租约）用较短的过期时间，定期调用句柄的 `ExtendAsync` 续期，返回 false 时说明锁已被别人拿走，立即停止临界区内的工作。
 - `IRateLimiter`：秒级固定窗口；Redis 异常时放行并告警。本项目用它控制每个数据源的请求频率（PRD BR-003）。
 
 Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流）放行，可用性优先；安全控制类（TOTP 防重放）拒绝，安全优先（sys 设计 §5.4）。新增依赖 Redis 的功能时写明属于哪一类。
@@ -418,7 +418,7 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 - **解析器写成纯函数**：输入快照内容，输出标准化记录，不访问数据库和网络，这样可以直接用保存下来的快照写单元测试。
 - 每个数据源使用独立的命名 HttpClient，各自设置超时；User-Agent 带项目名和联系邮箱（PRD BR-005）。
 - 请求频率受数据源上限约束，用 `IRateLimiter` 控制（PRD BR-003）；遵守 robots.txt 和数据源条款。
-- **盯盘**是 Collector 中的常驻后台服务（`BackgroundService`）：每分钟扫描未来 10 分钟内需要盯盘的事件，用 Redis 分布式锁保证全局只有一个实例在盯（PRD FR-003、DEC-017）。
+- **盯盘**是 Collector 中的常驻后台服务（`BackgroundService`）：每分钟扫描未来 N 分钟（系统配置，默认 10）内需要盯盘的事件，用 Redis 分布式锁做租约（15 秒过期、每 5 秒续期），保证全局只有一个实例在盯（PRD FR-003、DEC-017，采集设计 §5.7）。
 - 服务器必须开启 NTP 时间同步，时钟偏差超过 1 秒要告警（PRD NFR-113）。
 
 ---
@@ -645,3 +645,4 @@ Redis 异常时放行还是拒绝，按用途决定：流量控制类（限流�
 | v1.35 | 2026-10-29 | vivo.li / Claude | §9 同一机构的多个数据源各一个适配器，适配器标识的写法（ENG-009.1 实施） |
 | v1.36 | 2026-10-29 | vivo.li / Claude | §8.2 `ReparseCommand` 的发送方加上 Job（重新下发），写明内容（FR-004.2 实施） |
 | v1.37 | 2026-10-31 | vivo.li / Claude | §8.2 消息清单增加 `EventValueEditedEvent`（日历设计 §6.3，FR-009.2 实施） |
+| v1.38 | 2026-10-31 | vivo.li / Claude | FR-003.3 实施：分布式锁句柄可以续期（`IDistributedLockHandle.ExtendAsync`），长时间持有的锁用短过期时间加续期；盯盘的扫描时长可配置、租约的过期和续期时间 |

@@ -52,6 +52,24 @@ public class RedisDistributedLockTests(ValkeyFixture valkey)
         Assert.Equal("another-holder", await db.StringGetAsync(key));
     }
 
+    /// <summary>续期（盯盘租约，采集设计 §5.7）：自己持有时重设过期时间；被别人拿走或已释放后续期失败</summary>
+    [Fact]
+    public async Task Extend_OnlyWhileStillHeld()
+    {
+        var handle = await (await CreateLockAsync()).AcquireAsync("lease", TimeSpan.FromSeconds(5), ct: Ct);
+        var key = _options.Value.InstanceName + "lock:lease";
+        var db = (await valkey.GetRedisAsync()).GetDatabase();
+
+        var extended = await handle!.ExtendAsync(TimeSpan.FromMinutes(10));
+        var ttl = await db.KeyTimeToLiveAsync(key);
+        await db.StringSetAsync(key, "another-holder");
+        var takenOver = await handle.ExtendAsync(TimeSpan.FromMinutes(10));
+
+        Assert.True(extended);
+        Assert.True(ttl > TimeSpan.FromMinutes(9));
+        Assert.False(takenOver);
+    }
+
     private async Task<RedisDistributedLock> CreateLockAsync() => new(await valkey.GetRedisAsync(), _options, TimeProvider.System);
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

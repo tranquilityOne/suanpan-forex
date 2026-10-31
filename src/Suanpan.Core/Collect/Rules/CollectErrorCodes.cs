@@ -23,6 +23,9 @@ public static class CollectErrorCodes
     /// <summary>数据源当日的请求数达到每日上限（BR-003）：不发请求，记为失败、不重试（采集设计 §4.3）</summary>
     public const string DailyLimitExceeded = "ERR-COL-010";
 
+    /// <summary>盯盘窗口结束仍没拿到值：官方延迟（日历的错误码，盯盘的运行记录用它表示结果，采集设计 §5.7）</summary>
+    public const string OfficialDelay = "ERR-EVT-001";
+
     /// <summary>解析失败，不入库</summary>
     public const string ParseFailed = "ERR-PARSE-001";
 

@@ -14,5 +14,15 @@ public interface IDistributedLock
     /// <param name="expiry">锁自动过期的时间，防止持有者崩溃后锁永远不释放</param>
     /// <param name="wait">最长等待时间；为空时不等待，拿不到立即返回 null</param>
     /// <returns>锁句柄（释放句柄即释放锁）；拿不到锁时返回 null</returns>
-    Task<IAsyncDisposable?> AcquireAsync(string key, TimeSpan expiry, TimeSpan? wait = null, CancellationToken ct = default);
+    Task<IDistributedLockHandle?> AcquireAsync(string key, TimeSpan expiry, TimeSpan? wait = null, CancellationToken ct = default);
+}
+
+/// <summary>
+/// 持有中的锁。长时间持有的锁（如 Collector 的盯盘租约，采集设计 §5.7）用较短的过期时间，定期续期：
+/// 持有者崩溃时锁很快过期，别的实例可以接手
+/// </summary>
+public interface IDistributedLockHandle : IAsyncDisposable
+{
+    /// <summary>仍由自己持有时把过期时间重设为 expiry，返回 true；锁已过期或被别人拿走时返回 false，调用方应停止临界区内的工作</summary>
+    Task<bool> ExtendAsync(TimeSpan expiry);
 }
