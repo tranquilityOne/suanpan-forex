@@ -21,7 +21,8 @@ namespace Suanpan.Collector.Tests.Watch;
 /// <summary>
 /// 盯盘的回放场景（FR-003 验收第 6 条）：指向 StubHttp 的"BLS API"数据源和它的公布值任务（us.blsapi.release），
 /// 非农、失业率、平均时薪三个高重要性指标，以及它们 2026-09 的事件（排期为 at）。数据源先返回公布前的内容
-/// （真实快照 timeseries-data.json 去掉最新一期），<see cref="Release"/> 之后返回真实快照。
+/// （真实快照 timeseries-data.json 去掉最新一期），<see cref="Release()"/> 之后返回真实快照；<see cref="Release(int)"/>
+/// 只发布前几个序列（模拟同一份报告中部分指标缺失）。
 /// 各测试用不同的排期时间，盯盘计划互不影响
 /// </summary>
 internal sealed class BlsWatchScenario
@@ -39,9 +40,7 @@ internal sealed class BlsWatchScenario
 
     private static readonly byte[] After = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Sources", "US", "Bls", "Snapshots", "timeseries-data.json"));
 
-    private static readonly byte[] Before = WithoutLatest(After);
-
-    private volatile bool _released;
+    private volatile int _released;
 
     private BlsWatchScenario(DateTime at) => ScheduledAt = at;
 
@@ -59,7 +58,10 @@ internal sealed class BlsWatchScenario
     public HttpStatusCode? Status { get; set; }
 
     /// <summary>官方发布：之后返回真实快照</summary>
-    public void Release() => _released = true;
+    public void Release() => _released = Series.Length;
+
+    /// <summary>只发布前 count 个序列，其余仍是上一期</summary>
+    public void Release(int count) => _released = count;
 
     public static async Task<BlsWatchScenario> CreateAsync(CollectorFixture fixture, CollectorApp app, DateTime at, short? intervalSeconds = null)
     {
@@ -143,7 +145,10 @@ internal sealed class BlsWatchScenario
     private HttpResponseMessage Respond()
         => Status is { } status
             ? StubHttp.Reply(status, "Too Many Requests")
-            : new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(_released ? After : Before) };
+            : new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(_released == Series.Length ? After : WithoutLatest(After, Series.Take(_released).Select(s => s.Spec.Split(':')[0]))),
+            };
 
     private static IndicatorInput Indicator(string code, IndicatorUnit unit, short decimals) => new()
     {
@@ -167,11 +172,12 @@ internal sealed class BlsWatchScenario
         DefaultReleaseTime = new TimeOnly(8, 30),
     };
 
-    /// <summary>公布前的内容：每个序列去掉最新的一期（API 按时间倒序返回，第一项就是最新的），下一项标为最新</summary>
-    private static byte[] WithoutLatest(byte[] after)
+    /// <summary>公布前的内容：released 以外的序列去掉最新的一期（API 按时间倒序返回，第一项就是最新的），下一项标为最新</summary>
+    private static byte[] WithoutLatest(byte[] after, IEnumerable<string> released)
     {
+        var keep = released.ToHashSet(StringComparer.Ordinal);
         var root = JsonNode.Parse(after)!;
-        foreach (var series in root["Results"]!["series"]!.AsArray())
+        foreach (var series in root["Results"]!["series"]!.AsArray().Where(s => !keep.Contains((string)s!["seriesID"]!)))
         {
             var data = series!["data"]!.AsArray();
             data.RemoveAt(0);

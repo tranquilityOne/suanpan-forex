@@ -55,6 +55,78 @@ public class WatchSessionTests(CollectorFixture fixture)
         Assert.All(await scenario.EventsAsync(app), e => Assert.Equal((CalendarEventStatus.Released, true), (e.Status, e.DetectedAt is not null)));
     }
 
+    /// <summary>
+    /// FR-003 验收第 3 条、异常流程"部分指标缺失"：报告先只出了前两个指标，拿到的两个先入库、停止盯盘，缺的一个继续盯；
+    /// 它出现后这一路结束，运行记录为成功
+    /// </summary>
+    [Fact]
+    public async Task PartialRelease_KeepsWatchingTheRest()
+    {
+        var (app, scenario, group) = await SetUpAsync(BaseTime.AddDays(5));
+        var clock = new ManualTimeProvider(scenario.ScheduledAt.AddSeconds(-60));
+        var session = Session(app, group, clock);
+        await session.BeginAsync(Ct);
+        await session.PollAsync(Ct);
+
+        clock.Advance(TimeSpan.FromSeconds(60));
+        scenario.Release(2);
+        await session.PollAsync(Ct);
+        var partly = await scenario.EventsAsync(app);
+        var stillPending = session.Pending.ToList();
+        clock.Advance(group.Timing.Interval);
+        scenario.Release();
+        await session.PollAsync(Ct);
+        await session.EndAsync(null, Ct);
+
+        var missing = scenario.Events[2].Id;
+        Assert.Equal([missing], stillPending);
+        Assert.All(partly, e => Assert.Equal(e.Id == missing ? CalendarEventStatus.Watching : CalendarEventStatus.Released, e.Status));
+        Assert.Empty(session.Pending);
+        Assert.All(await scenario.EventsAsync(app), e => Assert.Equal(CalendarEventStatus.Released, e.Status));
+        Assert.Equal(CollectRunStatus.Succeeded, (await app.GetRunAsync(session.RunId)).Status);
+    }
+
+    /// <summary>
+    /// FR-003 验收第 6 条、NFR-004：10 个数据源的 30 个事件在同一时刻公布，各路同时请求；官方在 T 发布后，每一路的下一次请求都拿到
+    /// 全部值，没有漏采，每个数据源只有自己的请求。时延按手动时钟计算，不超过一个请求间隔（不含处理耗时）
+    /// </summary>
+    [Fact]
+    public async Task Replay_TenSourcesAtOnce()
+    {
+        var app = await fixture.GetAppAsync();
+        var at = BaseTime.AddDays(6);
+        List<BlsWatchScenario> scenarios = [];
+        List<WatchSession> sessions = [];
+        var clock = new ManualTimeProvider(at.AddSeconds(-60));
+        for (var i = 0; i < 10; i++)
+        {
+            var scenario = await BlsWatchScenario.CreateAsync(fixture, app, at);
+            scenarios.Add(scenario);
+            sessions.Add(Session(app, await scenario.GroupAsync(app), clock));
+        }
+
+        await Task.WhenAll(sessions.Select(s => s.BeginAsync(Ct)));
+        await Task.WhenAll(sessions.Select(s => s.PollAsync(Ct)));
+        clock.Advance(TimeSpan.FromSeconds(60));
+        scenarios.ForEach(s => s.Release());
+        await Task.WhenAll(sessions.Select(s => s.PollAsync(Ct)));
+        await Task.WhenAll(sessions.Select(s => s.EndAsync(null, Ct)));
+
+        Assert.All(sessions, s => Assert.Empty(s.Pending));
+        Assert.All(scenarios, s => Assert.Equal(2, fixture.Http.Requests(s.Host).Count));
+        foreach (var scenario in scenarios)
+        {
+            Assert.All(await scenario.EventsAsync(app), e => Assert.Equal(CalendarEventStatus.Released, e.Status));
+        }
+
+        foreach (var session in sessions)
+        {
+            var run = await app.GetRunAsync(session.RunId);
+            Assert.Equal(CollectRunStatus.Succeeded, run.Status);
+            Assert.True(run.Attempts[^1].StartedAt - at <= session.Group.Timing.Interval);
+        }
+    }
+
     /// <summary>FR-003 验收第 4 条：官方延迟，T+10 分钟事件改为延迟并告警（高重要性为紧急）；窗口结束后运行记录为失败（官方延迟）</summary>
     [Fact]
     public async Task NoValue_DelaysAtTenMinutes()
