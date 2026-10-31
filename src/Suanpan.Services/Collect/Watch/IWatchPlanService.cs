@@ -21,6 +21,9 @@ public interface IWatchPlanService
     /// <summary>不能盯盘的事件告警：每个事件 24 小时内只告警一次（重要，Redis 键 collect:watch:unready:{eventId}）</summary>
     Task AlertUnreadyAsync(IEnumerable<WatchProblem> problems, CancellationToken ct = default);
 
+    /// <summary>正在盯盘的各路（运行中的盯盘运行记录），按排期时间排列</summary>
+    Task<IReadOnlyList<WatchRunItem>> GetActiveAsync(CancellationToken ct = default);
+
     /// <summary>结束时间不早于 since 的盯盘（最多 50 路，最近结束的在前），带各事件的入库时延（BR-019）</summary>
-    Task<IReadOnlyList<WatchRecentRun>> GetRecentAsync(DateTime since, CancellationToken ct = default);
+    Task<IReadOnlyList<WatchRunItem>> GetRecentAsync(DateTime since, CancellationToken ct = default);
 }

@@ -1,4 +1,5 @@
 using Suanpan.Core.Calendar.Enums;
+using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Collect.Enums;
 using Suanpan.Core.Collect.Rules;
 using Suanpan.Core.Common.Localization;
@@ -44,12 +45,15 @@ public sealed record WatchProblem(WatchEventItem Event, DateTime ScheduledAt, Wa
 /// <summary>一段时间内的盯盘计划：按开始时间排列的各路盯盘，以及不能盯盘的事件</summary>
 public sealed record WatchPlan(WatchSettings Settings, IReadOnlyList<WatchGroup> Groups, IReadOnlyList<WatchProblem> Problems);
 
-/// <summary>最近结束的一路盯盘（盯盘状态页）</summary>
-public sealed record WatchRecentRun(
-    long RunId, long SourceId, string? SourceName, DateTime ScheduledAt, CollectRunStatus Status, DateTime? EndedAt, int AttemptCount,
-    string? ErrorMessage, IReadOnlyList<WatchRecentEvent> Events);
+/// <summary>
+/// 一路盯盘的运行记录（盯盘状态页的"正在盯盘""最近结束"）：最近一次请求，以及按最近两次请求的开始时间推算的当前间隔
+/// （被限流时会变长，ERR-COL-005；只请求过一次时为空）
+/// </summary>
+public sealed record WatchRunItem(
+    long RunId, long SourceId, string? SourceName, long TaskId, DateTime ScheduledAt, CollectRunStatus Status, DateTime? StartedAt, DateTime? EndedAt,
+    int AttemptCount, CollectAttempt? LastAttempt, TimeSpan? Interval, string? ErrorMessage, IReadOnlyList<WatchRunEvent> Events);
 
-/// <summary>最近结束的盯盘中的一个事件；入库时延 = 检测时间 − 排期时间（BR-019），没拿到值时为空</summary>
-public sealed record WatchRecentEvent(
+/// <summary>一路盯盘中的一个事件；入库时延 = 检测时间 − 排期时间（BR-019），没拿到值时为空</summary>
+public sealed record WatchRunEvent(
     long EventId, string IndicatorCode, BilingualText ShortName, string ReferencePeriod, CalendarEventStatus Status, DateTime? DetectedAt,
     TimeSpan? Latency);

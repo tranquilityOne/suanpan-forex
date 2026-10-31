@@ -1,0 +1,69 @@
+@model IReadOnlyList<Suanpan.Services.Collect.Watch.Models.WatchRunItem>
+@using System.Globalization
+@using Suanpan.Core.Common.Localization
+@*
+    "正在盯盘"区块（采集设计 §8.1）：每 5 秒用 HTMX 取一次本区块替换自己（前端约定 §4.1"盯盘状态"），标签页不可见时暂停；
+    没有在盯的也照常刷新，新的一路开始后就能看到。错误信息按纯文本输出（硬性规则 10）
+*@
+<div id="watch-active" class="card" hx-get="@Url.Action("Index")" hx-trigger="every 5s [!document.hidden]" hx-swap="outerHTML">
+    <div class="card-header">
+        <h3 class="card-title">正在盯盘</h3>
+        <div class="card-actions text-secondary small"><span class="spinner-border spinner-border-sm me-1"></span>每 5 秒自动刷新</div>
+    </div>
+    @if (Model.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("现在没有在盯的事件")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle card-table">
+                <thead>
+                    <tr>
+                        <th>排期时间</th><th>数据源</th><th>事件</th><th class="text-end">已请求</th><th>最近一次请求</th><th class="text-end">当前间隔</th>
+                        <th class="w-1"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var run in Model)
+                    {
+                        <tr>
+                            <td class="text-nowrap"><utc-time value="@run.ScheduledAt" /></td>
+                            <td>@(run.SourceName ?? "（已删除）")</td>
+                            <td>
+                                @foreach (var e in run.Events)
+                                {
+                                    <div class="text-nowrap">@e.ShortName.Get(ContentLanguage.Zh) <code class="small">@e.ReferencePeriod</code> <status-badge value="@e.Status" /></div>
+                                }
+                            </td>
+                            <td class="text-end font-monospace">@run.AttemptCount</td>
+                            <td>
+                                @if (run.LastAttempt is { } last)
+                                {
+                                    <div class="text-nowrap">
+                                        <utc-time value="@last.StartedAt" format="HH:mm:ss" />
+                                        <span class="font-monospace ms-1">@(last.HttpStatus?.ToString() ?? "-")</span>
+                                        @if (last.Changed == true)
+                                        {
+                                            <span class="text-secondary ms-1">有变化</span>
+                                        }
+                                    </div>
+                                    @if (last.Error is not null)
+                                    {
+                                        <div class="text-danger small text-break">@last.Error</div>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="text-secondary">还没有发出请求</span>
+                                }
+                            </td>
+                            <td class="text-end font-monospace text-nowrap">@(run.Interval is { } interval ? interval.TotalSeconds.ToString("0.#", CultureInfo.InvariantCulture) + " 秒" : "-")</td>
+                            <td><a asp-controller="Run" asp-action="Detail" asp-route-id="@run.RunId" asp-permission="collect:run:detail" class="btn btn-sm">运行记录</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

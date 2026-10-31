@@ -1,0 +1,123 @@
+@model WatchStatusViewModel
+@using Suanpan.Core.Common.Localization
+@{
+    ViewData["Title"] = "盯盘状态";
+    var settings = Model.Settings;
+    var defaults = settings.Defaults;
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">盯盘状态</h2>
+    <div class="text-secondary">
+        高重要性@(settings.IncludeMedium ? "和中重要性" : "")的事件在公布前后由 Collector 高频请求数据源，拿到公布值即停止；默认提前 @defaults.LeadSeconds 秒开始、每 @defaults.IntervalSeconds 秒请求一次、窗口到公布后 @defaults.WindowMinutes 分钟。时间按你的时区显示。
+    </div>
+</div>
+
+@if (!settings.Enabled)
+{
+    <div class="alert alert-warning">盯盘总开关已关闭（系统配置 collect:watch_enabled），Collector 不会盯盘，下面的计划仅供参考。</div>
+}
+
+<partial name="_Active" model="Model.Active" />
+
+<div class="card mt-3">
+    <div class="card-header">
+        <h3 class="card-title">接下来 24 小时的盯盘计划</h3>
+    </div>
+    @if (Model.Plan.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("接下来 24 小时没有要盯盘的事件")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle card-table">
+                <thead>
+                    <tr><th>开始时间</th><th>排期时间</th><th>数据源</th><th>事件</th><th class="text-end">间隔</th><th class="text-end">窗口</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.Plan)
+                    {
+                        if (row.Group is { } group)
+                        {
+                            <tr>
+                                <td class="text-nowrap"><utc-time value="@group.Window.Start" format="yyyy-MM-dd HH:mm:ss" /></td>
+                                <td class="text-nowrap"><utc-time value="@group.ScheduledAt" /></td>
+                                <td>
+                                    <div>@group.SourceName</div>
+                                    <div class="text-secondary small">@group.TaskName</div>
+                                </td>
+                                <td>
+                                    @foreach (var e in group.Events)
+                                    {
+                                        <div class="text-nowrap">@e.ShortName.Get(ContentLanguage.Zh) <code class="small">@e.ReferencePeriod</code></div>
+                                    }
+                                </td>
+                                <td class="text-end font-monospace text-nowrap">@group.Timing.Interval.TotalSeconds 秒</td>
+                                <td class="text-end font-monospace text-nowrap">@group.Timing.Window.TotalMinutes 分钟</td>
+                            </tr>
+                        }
+                        else if (row.Problem is { } problem)
+                        {
+                            <tr class="text-danger">
+                                <td class="text-nowrap">不能盯盘</td>
+                                <td class="text-nowrap"><utc-time value="@problem.ScheduledAt" /></td>
+                                <td>-</td>
+                                <td class="text-nowrap">@problem.Event.ShortName.Get(ContentLanguage.Zh) <code class="small">@problem.Event.ReferencePeriod</code></td>
+                                <td colspan="2">@problem.Reason</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<div class="card mt-3">
+    <div class="card-header">
+        <h3 class="card-title">最近 24 小时结束的盯盘</h3>
+    </div>
+    @if (Model.Recent.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("最近 24 小时没有结束的盯盘")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle card-table">
+                <thead>
+                    <tr><th>排期时间</th><th>数据源</th><th>结果</th><th>结束时间</th><th class="text-end">请求次数</th><th>事件与入库时延</th><th class="w-1"></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var run in Model.Recent)
+                    {
+                        <tr>
+                            <td class="text-nowrap"><utc-time value="@run.ScheduledAt" /></td>
+                            <td>@(run.SourceName ?? "（已删除）")</td>
+                            <td>
+                                <status-badge value="@run.Status" />
+                                @if (run.ErrorMessage is not null)
+                                {
+                                    <div class="text-secondary small text-break">@run.ErrorMessage</div>
+                                }
+                            </td>
+                            <td class="text-nowrap"><utc-time value="@run.EndedAt" format="yyyy-MM-dd HH:mm:ss" /></td>
+                            <td class="text-end font-monospace">@run.AttemptCount</td>
+                            <td>
+                                @foreach (var e in run.Events)
+                                {
+                                    <div class="text-nowrap">
+                                        @e.ShortName.Get(ContentLanguage.Zh) <code class="small">@e.ReferencePeriod</code> <status-badge value="@e.Status" />
+                                        <span class="font-monospace ms-1">@(e.Latency is { } latency ? CollectRunDurations.Format(latency) : "-")</span>
+                                    </div>
+                                }
+                            </td>
+                            <td><a asp-controller="Run" asp-action="Detail" asp-route-id="@run.RunId" asp-permission="collect:run:detail" class="btn btn-sm">运行记录</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

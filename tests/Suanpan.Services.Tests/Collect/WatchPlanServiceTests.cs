@@ -132,6 +132,42 @@ public class WatchPlanServiceTests(PostgresFixture postgres)
             recent.Events.Select(e => (e.EventId, e.Latency)).OrderBy(e => e.EventId));
     }
 
+    /// <summary>正在盯盘：只列运行中的盯盘记录，带最近一次请求和按最近两次请求推算的间隔（被限流时变长）</summary>
+    [Fact]
+    public async Task Active_ListsRunningWatchesWithLastAttempt()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var (source, task) = await AddSourceWithTaskAsync(db);
+        var watched = await AddEventAsync(db, Importance.High);
+        var running = WatchRun(task, CollectRunStatus.Running, T.AddDays(-30));
+        running.Attempts =
+        [
+            new CollectAttempt { No = 1, StartedAt = T.AddDays(-30).AddSeconds(-60), HttpStatus = 200, Changed = true },
+            new CollectAttempt { No = 2, StartedAt = T.AddDays(-30).AddSeconds(-58), HttpStatus = 429, Error = "Too Many Requests" },
+            new CollectAttempt { No = 3, StartedAt = T.AddDays(-30).AddSeconds(-54), HttpStatus = 200, Changed = false },
+        ];
+        running.AttemptCount = 3;
+        var ended = WatchRun(task, CollectRunStatus.Succeeded, T.AddDays(-30).AddMinutes(5));
+        db.CollectRuns.AddRange(running, ended);
+        await db.SaveChangesAsync(Ct);
+        var calendar = new CalendarWatchService(db, new FixedAuditActorProvider("collector"), new RecordingAlertService(),
+            new FixedTimeProvider(new DateTimeOffset(T.AddDays(-30).AddMinutes(-1))), NullLogger<CalendarWatchService>.Instance);
+        await calendar.StartAsync([watched.Id], source.Id, running.Id, Ct);
+
+        var active = (await Create(db).GetActiveAsync(Ct)).Where(r => r.SourceId == source.Id).ToList();
+
+        var item = Assert.Single(active);
+        Assert.Equal((running.Id, (short)3, (TimeSpan?)TimeSpan.FromSeconds(4)), (item.RunId, item.LastAttempt!.No, item.Interval));
+        Assert.Equal(watched.Id, Assert.Single(item.Events).EventId);
+    }
+
+    private static CollectRun WatchRun(CollectTask task, CollectRunStatus status, DateTime scheduledFor) => new()
+    {
+        TaskId = task.Id, SourceId = task.SourceId, Trigger = CollectRunTrigger.Watch, ScheduledFor = scheduledFor, Status = status,
+        QueuedAt = scheduledFor.AddMinutes(-1), StartedAt = scheduledFor.AddMinutes(-1),
+        EndedAt = status == CollectRunStatus.Running ? null : scheduledFor.AddMinutes(1),
+    };
+
     private static WatchPlanService Create(
         SuanpanDbContext db, bool includeMedium = false, RecordingAlertService? alerts = null, FakeRedisCache? cache = null)
         => new(db, new StubConfigService(includeMedium), cache ?? new FakeRedisCache(), alerts ?? new RecordingAlertService(),

@@ -5,6 +5,7 @@ using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Reference.Entities;
 using Suanpan.Core.Sys.Entities;
 using Suanpan.Core.Collect.Enums;
+using Suanpan.Core.Collect.Rules;
 using Suanpan.Services.Calendar.Conflicts;
 using Suanpan.Services.Calendar.Conflicts.Models;
 using Suanpan.Services.Calendar.Events;
@@ -19,6 +20,8 @@ using Suanpan.Services.Collect.Snapshots;
 using Suanpan.Services.Collect.Snapshots.Models;
 using Suanpan.Services.Collect.Sources;
 using Suanpan.Services.Collect.Sources.Models;
+using Suanpan.Services.Collect.Watch;
+using Suanpan.Services.Collect.Watch.Models;
 using Suanpan.Services.Reference.Indicators;
 using Suanpan.Services.Reference.Indicators.Models;
 using Suanpan.Services.Sys.Auth;
@@ -250,6 +253,32 @@ public sealed class FakeCollectRunService : ICollectRunService
         Reparsed.Add((selection, parserKey, triggeredBy));
         return Task.FromResult(ReparseResult);
     }
+}
+
+/// <summary>盯盘状态页的数据：返回预设的计划、正在盯盘和最近结束的盯盘；告警只在 Collector 调用</summary>
+public sealed class FakeWatchPlanService : IWatchPlanService
+{
+    public WatchSettings Settings { get; set; } = new(true, false, WatchDefaults.Default, WatchRule.DefaultPlanMinutes, BackfillSettings.Default);
+
+    public List<WatchGroup> Groups { get; } = [];
+
+    public List<WatchProblem> Problems { get; } = [];
+
+    public List<WatchRunItem> Active { get; } = [];
+
+    public List<WatchRunItem> Recent { get; } = [];
+
+    public Task<WatchSettings> GetSettingsAsync(CancellationToken ct = default) => Task.FromResult(Settings);
+
+    public Task<WatchPlan> GetPlanAsync(DateTime begin, DateTime end, CancellationToken ct = default)
+        => Task.FromResult(new WatchPlan(Settings, Groups, Problems));
+
+    public Task AlertUnreadyAsync(IEnumerable<WatchProblem> problems, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<IReadOnlyList<WatchRunItem>> GetActiveAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<WatchRunItem>>(Active);
+
+    public Task<IReadOnlyList<WatchRunItem>> GetRecentAsync(DateTime since, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<WatchRunItem>>(Recent);
 }
 
 /// <summary>快照详情按 id 返回预设的记录；保存、标记等采集用的方法不在后台调用</summary>

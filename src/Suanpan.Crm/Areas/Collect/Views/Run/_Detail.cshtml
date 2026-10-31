@@ -3,14 +3,21 @@
 @*
     运行详情的内容区块（采集设计 §8.1）。排队、运行中时每 2 秒用 HTMX 取一次本区块替换自己，结束后不再刷新
     （前端约定 §4.1"手动触发采集"）；标签页不可见时暂停。错误信息按纯文本输出（硬性规则 10）。
+    一路盯盘的请求记录默认折叠内容未变化的请求，展开后自动刷新也保持展开。
 *@
 @{
     var run = Model.Run;
     var refreshing = !CollectRunStatusRule.IsFinished(run.Status);
+    var watchSession = CollectRunStatusRule.IsWatchSession(run);
+    var all = ViewData[Suanpan.Crm.Areas.Collect.Controllers.RunController.AllAttemptsKey] is true;
+    var attempts = CollectAttemptsView.Visible(run.Attempts, collapse: watchSession && !all);
+    var hidden = run.Attempts.Count - attempts.Count;
+    var columns = watchSession ? 7 : 6;
+    var previousNo = 0;
 }
 @* 值为 null 的属性不输出：结束后的区块没有 hx-* 属性，替换上去就不再刷新 *@
 <div id="run-detail"
-     hx-get="@(refreshing ? Url.Action("Detail", new { id = run.Id }) : null)"
+     hx-get="@(refreshing ? Url.Action("Detail", new { id = run.Id, all = all ? true : (bool?)null }) : null)"
      hx-trigger="@(refreshing ? "every 2s [!document.hidden]" : null)"
      hx-swap="@(refreshing ? "outerHTML" : null)">
     <div class="row g-3">
@@ -99,7 +106,20 @@
                 </div>
             }
             <div class="card">
-                <div class="card-header"><h3 class="card-title">请求记录</h3></div>
+                <div class="card-header">
+                    <h3 class="card-title">请求记录</h3>
+                    @if (watchSession && all)
+                    {
+                        <div class="card-actions"><a href="@Url.Action("Detail", new { id = run.Id })" class="btn btn-sm">只看有变化或失败的</a></div>
+                    }
+                    else if (hidden > 0)
+                    {
+                        <div class="card-actions">
+                            <span class="text-secondary small me-2">已折叠 @hidden 条内容未变化的请求</span>
+                            <a href="@Url.Action("Detail", new { id = run.Id, all = true })" class="btn btn-sm">展开全部</a>
+                        </div>
+                    }
+                </div>
                 @if (run.Trigger == CollectRunTrigger.Reparse)
                 {
                     <div class="card-body text-secondary">重新解析不请求数据源，处理的是已保存的快照</div>
@@ -113,17 +133,34 @@
                     <div class="table-responsive">
                         <table class="table table-sm align-middle card-table">
                             <thead>
-                                <tr><th class="text-end">序号</th><th>开始时间</th><th class="text-end">耗时（毫秒）</th><th class="text-end">HTTP 状态码</th><th class="text-end">延后（秒）</th><th>错误</th></tr>
+                                <tr>
+                                    <th class="text-end">序号</th><th>开始时间</th><th class="text-end">耗时（毫秒）</th><th class="text-end">HTTP 状态码</th>
+                                    <th class="text-end">延后（秒）</th>
+                                    @if (watchSession)
+                                    {
+                                        <th>内容</th>
+                                    }
+                                    <th>错误</th>
+                                </tr>
                             </thead>
                             <tbody>
-                                @foreach (var attempt in run.Attempts.OrderBy(a => a.No))
+                                @foreach (var attempt in attempts)
                                 {
+                                    if (attempt.No - previousNo > 1)
+                                    {
+                                        <tr><td colspan="@columns" class="text-center text-secondary small">… 折叠了 @(attempt.No - previousNo - 1) 条 …</td></tr>
+                                    }
+                                    previousNo = attempt.No;
                                     <tr>
                                         <td class="text-end font-monospace">@attempt.No</td>
                                         <td class="text-nowrap"><utc-time value="@attempt.StartedAt" format="yyyy-MM-dd HH:mm:ss" /></td>
                                         <td class="text-end font-monospace">@attempt.DurationMs</td>
                                         <td class="text-end font-monospace">@(attempt.HttpStatus?.ToString() ?? "-")</td>
                                         <td class="text-end font-monospace">@(attempt.DeferredMs > 0 ? (attempt.DeferredMs / 1000.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) : "-")</td>
+                                        @if (watchSession)
+                                        {
+                                            <td>@(attempt.Changed == true ? "有变化" : "")</td>
+                                        }
                                         <td class="text-break">@attempt.Error</td>
                                     </tr>
                                 }

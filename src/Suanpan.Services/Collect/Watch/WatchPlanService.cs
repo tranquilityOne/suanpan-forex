@@ -26,7 +26,7 @@ public sealed class WatchPlanService(
 {
     private const string UnreadyKeyPrefix = "collect:watch:unready:";
 
-    private const int RecentLimit = 50;
+    private const int RunLimit = 50;
 
     private static readonly TimeSpan UnreadyAlertExpiry = TimeSpan.FromHours(24);
 
@@ -119,24 +119,34 @@ public sealed class WatchPlanService(
         }
     }
 
-    public async Task<IReadOnlyList<WatchRecentRun>> GetRecentAsync(DateTime since, CancellationToken ct = default)
+    public Task<IReadOnlyList<WatchRunItem>> GetActiveAsync(CancellationToken ct = default)
+        => LoadRunsAsync(
+            db.CollectRuns.AsNoTracking()
+                .Where(r => r.Status == CollectRunStatus.Running && r.Trigger == CollectRunTrigger.Watch && r.ScheduledFor != null)
+                .OrderBy(r => r.ScheduledFor).ThenBy(r => r.Id),
+            ct);
+
+    public Task<IReadOnlyList<WatchRunItem>> GetRecentAsync(DateTime since, CancellationToken ct = default)
+        => LoadRunsAsync(
+            db.CollectRuns.AsNoTracking()
+                .Where(r => r.Trigger == CollectRunTrigger.Watch && r.ScheduledFor != null && r.EndedAt >= since)
+                .OrderByDescending(r => r.EndedAt).ThenByDescending(r => r.Id),
+            ct);
+
+    /// <summary>
+    /// 读出运行记录（最多 50 条）和各自盯的事件：盯盘开始时日历服务把事件改为"盯盘中"，状态历史带运行记录，据此找出每一路盯了哪些事件
+    /// </summary>
+    private async Task<IReadOnlyList<WatchRunItem>> LoadRunsAsync(IQueryable<CollectRun> query, CancellationToken ct)
     {
-        var runs = await (
-                from r in db.CollectRuns.AsNoTracking()
-                where r.Trigger == CollectRunTrigger.Watch && r.ScheduledFor != null && r.EndedAt >= since
-                join s in db.DataSources on r.SourceId equals s.Id into sources
-                from s in sources.DefaultIfEmpty()
-                orderby r.EndedAt descending, r.Id descending
-                select new { Run = r, SourceName = s == null ? null : s.Name })
-            .Take(RecentLimit)
-            .ToListAsync(ct);
+        var runs = await query.Take(RunLimit).ToListAsync(ct);
         if (runs.Count == 0)
         {
             return [];
         }
 
-        // 盯盘开始时日历服务把事件改为"盯盘中"，状态历史带运行记录：据此找出每一路盯了哪些事件
-        var runIds = runs.Select(x => (long?)x.Run.Id).ToList();
+        var sourceIds = runs.Select(r => r.SourceId).Distinct().ToList();
+        var sourceNames = await db.DataSources.AsNoTracking().Where(s => sourceIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+        var runIds = runs.Select(r => (long?)r.Id).ToList();
         var watching = EventChanges.Status(CalendarEventStatus.Watching);
         var links = (await db.CalendarEventChanges.AsNoTracking()
                 .Where(c => runIds.Contains(c.RunId) && c.Kind == EventChangeKind.Status)
@@ -155,17 +165,19 @@ public sealed class WatchPlanService(
             .ToDictionaryAsync(e => e.Id, ct);
 
         return runs
-            .Select(x =>
+            .Select(run =>
             {
-                var scheduledAt = x.Run.ScheduledFor!.Value;
-                var items = links.Where(l => l.RunId == x.Run.Id && events.ContainsKey(l.EventId))
+                var scheduledAt = run.ScheduledFor!.Value;
+                var items = links.Where(l => l.RunId == run.Id && events.ContainsKey(l.EventId))
                     .Select(l => events[l.EventId])
                     .OrderBy(e => e.IndicatorCode, StringComparer.Ordinal)
-                    .Select(e => new WatchRecentEvent(e.Id, e.IndicatorCode, e.ShortName, e.ReferencePeriod, e.Status, e.DetectedAt,
+                    .Select(e => new WatchRunEvent(e.Id, e.IndicatorCode, e.ShortName, e.ReferencePeriod, e.Status, e.DetectedAt,
                         e.DetectedAt is { } detected ? detected - scheduledAt : null))
                     .ToList();
-                return new WatchRecentRun(x.Run.Id, x.Run.SourceId, x.SourceName, scheduledAt, x.Run.Status, x.Run.EndedAt, x.Run.AttemptCount,
-                    x.Run.ErrorMessage, items);
+                var attempts = run.Attempts.OrderBy(a => a.No).ToList();
+                TimeSpan? interval = attempts.Count >= 2 ? attempts[^1].StartedAt - attempts[^2].StartedAt : null;
+                return new WatchRunItem(run.Id, run.SourceId, sourceNames.GetValueOrDefault(run.SourceId), run.TaskId, scheduledAt, run.Status, run.StartedAt,
+                    run.EndedAt, run.AttemptCount, attempts.LastOrDefault(), interval, run.ErrorMessage, items);
             })
             .ToList();
     }

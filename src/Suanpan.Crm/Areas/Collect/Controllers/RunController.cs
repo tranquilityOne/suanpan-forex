@@ -22,6 +22,9 @@ public sealed class RunController(
     IDataSourceService sources,
     IOperatorTimeZone operatorTimeZone) : Controller
 {
+    /// <summary>运行详情是否列出全部请求记录，放在 ViewData 中给详情区块用</summary>
+    public const string AllAttemptsKey = "AllAttempts";
+
     [HttpGet]
     public async Task<IActionResult> Index(CollectRunFilter filter, int page = 1, CancellationToken ct = default)
         => View(new CollectRunListViewModel
@@ -34,15 +37,16 @@ public sealed class RunController(
             TriggerOptions = CollectEnumOptions.Of<CollectRunTrigger>(),
         });
 
-    /// <summary>HTMX 请求（自动刷新）只返回详情区块</summary>
+    /// <summary>HTMX 请求（自动刷新）只返回详情区块；一路盯盘的请求记录默认折叠，all 为是时列出全部（§8.1）</summary>
     [HttpGet]
-    public async Task<IActionResult> Detail(long id, CancellationToken ct)
+    public async Task<IActionResult> Detail(long id, bool all = false, CancellationToken ct = default)
     {
         if (await runs.GetAsync(id, ct) is not { } detail)
         {
             return NotFound();
         }
 
+        ViewData[AllAttemptsKey] = all;
         return Request.IsHtmx() ? PartialView("_Detail", detail) : View(detail);
     }
 }

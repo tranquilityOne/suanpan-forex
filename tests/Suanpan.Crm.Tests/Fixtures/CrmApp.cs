@@ -16,6 +16,7 @@ using Suanpan.Services.Calendar.Unmatched;
 using Suanpan.Services.Collect.Runs;
 using Suanpan.Services.Collect.Snapshots;
 using Suanpan.Services.Collect.Sources;
+using Suanpan.Services.Collect.Watch;
 using Suanpan.Services.Reference.Indicators;
 using Suanpan.Services.Sys.Auth;
 using Suanpan.Services.Sys.Configs;
@@ -55,6 +56,8 @@ public sealed class CrmApp(string environment = "Testing") : WebApplicationFacto
     public FakeCollectRunService CollectRuns { get; } = new();
 
     public FakeSnapshotService Snapshots { get; } = new();
+
+    public FakeWatchPlanService Watch { get; } = new();
 
     public FakeCalendarEventService CalendarEvents { get; } = new();
 
@@ -115,6 +118,7 @@ public sealed class CrmApp(string environment = "Testing") : WebApplicationFacto
             services.AddSingleton<IDataSourceService>(DataSources);
             services.AddSingleton<ICollectRunService>(CollectRuns);
             services.AddSingleton<ISnapshotService>(Snapshots);
+            services.AddSingleton<IWatchPlanService>(Watch);
             services.AddSingleton<ICalendarEventService>(CalendarEvents);
             services.AddSingleton<IForecastService>(Forecasts);
             services.AddSingleton<ILockConflictService>(Conflicts);

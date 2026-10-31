@@ -24,13 +24,14 @@ public static class PresetRoleGrants
             [
                 "reference:*:index", "reference:*:detail", "reference:economy:*", "reference:currency:*", "reference:indicator:*",
                 "collect:source:index", "collect:source:detail", "collect:task:index", "collect:task:trigger", "collect:run:index", "collect:run:detail",
+                "collect:watch:index",
                 "calendar:*:index", "calendar:*:detail", "calendar:unconfirmed:*", "calendar:unmatched:*", "calendar:event:*", "calendar:review:*",
                 "calendar:forecast:save", "calendar:conflict:*",
             ],
             [RoleCodes.Viewer] =
             [
                 "reference:*:index", "reference:*:detail",
-                "collect:source:index", "collect:source:detail", "collect:task:index", "collect:run:index", "collect:run:detail",
+                "collect:source:index", "collect:source:detail", "collect:task:index", "collect:run:index", "collect:run:detail", "collect:watch:index",
                 "calendar:*:index", "calendar:*:detail",
             ],
         };
