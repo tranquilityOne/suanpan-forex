@@ -8,4 +8,7 @@ public enum LockConflictResolution : short
 
     /// <summary>解锁并采用采集值</summary>
     AdoptCollected = 2,
+
+    /// <summary>在事件详情中单独解锁：下一次采集照常更新（日历设计 §3.9）</summary>
+    Unlocked = 3,
 }

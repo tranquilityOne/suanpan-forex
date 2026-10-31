@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Suanpan.Core.Calendar.Entities;
 using Suanpan.Core.Calendar.Enums;
 using Suanpan.Core.Collect.Entities;
@@ -167,7 +168,8 @@ public class CalendarEventServiceTests(PostgresFixture postgres)
     };
 
     private static CalendarEventService Create(SuanpanDbContext db)
-        => new(db, new FixedAuditActorProvider("editor"), new FixedTimeProvider(new DateTimeOffset(Now)));
+        => new(db, new FixedAuditActorProvider("editor"), new RecordingEventBus(), new FixedTimeProvider(new DateTimeOffset(Now)),
+            NullLogger<CalendarEventService>.Instance);
 
     /// <summary>新指标的一个待确认事件：由新数据源的 empsit 维护，一小时前从官方日程中消失</summary>
     private static async Task<(string Code, CalendarEvent Event, DataSource Source)> AddUnconfirmedAsync(SuanpanDbContext db)

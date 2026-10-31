@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
+using Suanpan.Core.Calendar.Enums;
 using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Reference.Entities;
 using Suanpan.Core.Sys.Entities;
@@ -290,6 +291,28 @@ public sealed class FakeCalendarEventService : ICalendarEventService
         Cancelled.Add((id, reason, rowVersion));
         return Task.FromResult(Result);
     }
+
+    public List<(long Id, EventValuesInput Input, string? Reason, int RowVersion)> Edited { get; } = [];
+
+    public List<(long Id, long SourceId, int RowVersion)> Confirmed { get; } = [];
+
+    public Task<ManageResult> EditValuesAsync(long id, EventValuesInput input, string? reason, int rowVersion, CancellationToken ct = default)
+    {
+        Edited.Add((id, input, reason, rowVersion));
+        return Task.FromResult(Result);
+    }
+
+    public Task<ManageResult> UnlockAsync(long id, EventField field, int rowVersion, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<PagedResult<ReviewRow>> QueryReviewAsync(int page = 1, int pageSize = 20, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<ManageResult> ConfirmReviewAsync(long id, long sourceId, int rowVersion, CancellationToken ct = default)
+    {
+        Confirmed.Add((id, sourceId, rowVersion));
+        return Task.FromResult(Result);
+    }
+
+    public Task<ManageResult> RejectReviewAsync(long id, string? reason, int rowVersion, CancellationToken ct = default) => throw new NotSupportedException();
 }
 
 /// <summary>未匹配条目返回预设的分组；忽略时记下参数</summary>

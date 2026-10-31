@@ -10,12 +10,14 @@ using Suanpan.Crm.Mvc;
 using Suanpan.Services.Calendar.Events;
 using Suanpan.Services.Reference.Economies;
 using Suanpan.Shared.Auth;
+using Suanpan.Shared.Mvc;
 
 namespace Suanpan.Crm.Areas.Calendar.Controllers;
 
 /// <summary>
 /// 日历事件（日历设计 §9.3，FR-009）：列表和详情，全部角色可以查看（PRD §13.1.2）。列表默认本周，时间按操作者时区显示（BR-048）；
-/// 详情显示各字段的值、来源、锁定信息、各数据源的数值、锁定冲突和变更历史。人工修改、待复核的处理在 FR-009.2 加入
+/// 详情显示各字段的值、来源、锁定信息、各数据源的数值、锁定冲突和变更历史。修改数值、取消、解锁只给管理员、编辑（§3.7），
+/// 都带读取时的 row_version，被他人或采集改过时提示刷新（ERR-EVT-009）
 /// </summary>
 [Area("Calendar")]
 [PermMenu("日历事件", Icon = "calendar-event", Sort = 10)]
@@ -25,6 +27,8 @@ public sealed class EventController(
     IOperatorTimeZone operatorTimeZone,
     TimeProvider timeProvider) : Controller
 {
+    private const string Module = "财经日历";
+
     [HttpGet]
     public async Task<IActionResult> Index(EventFilter filter, int page = 1, CancellationToken ct = default)
     {
@@ -50,4 +54,69 @@ public sealed class EventController(
     [HttpGet]
     public async Task<IActionResult> Detail(long id, CancellationToken ct)
         => await events.GetDetailAsync(id, ct) is { } detail ? View(detail) : NotFound();
+
+    /// <summary>修改数值（日历设计 §3.7）：单独的表单页，原因必填，提交前再确认一次</summary>
+    [HttpGet]
+    public async Task<IActionResult> Edit(long id, CancellationToken ct)
+        => await events.GetDetailAsync(id, ct) is { } detail ? View(EventEditViewModel.From(detail)) : NotFound();
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [OpLog(Module, "修改事件数值")]
+    public async Task<IActionResult> Edit(long id, EventEditViewModel model, CancellationToken ct)
+    {
+        if (ModelState.IsValid)
+        {
+            var result = await events.EditValuesAsync(id, model.ToInput(), model.Reason, model.RowVersion, ct);
+            if (result.Success)
+            {
+                TempData["Message"] = "已保存，改了的字段已锁定，之后的采集不会覆盖";
+                return RedirectToAction(nameof(Detail), new { id });
+            }
+
+            ModelState.AddModelError(result.Field ?? string.Empty, result.Error!);
+        }
+
+        model.Detail = await events.GetDetailAsync(id, ct);
+        return model.Detail is null ? NotFound() : View(model);
+    }
+
+    /// <summary>取消（BR-049）：原因必填，单独的表单页</summary>
+    [HttpGet]
+    public async Task<IActionResult> Cancel(long id, CancellationToken ct)
+        => await events.GetDetailAsync(id, ct) is { } detail
+            ? View(new EventReasonViewModel { RowVersion = detail.Event.RowVersion, Detail = detail })
+            : NotFound();
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [OpLog(Module, "取消事件")]
+    public async Task<IActionResult> Cancel(long id, EventReasonViewModel model, CancellationToken ct)
+    {
+        if (ModelState.IsValid)
+        {
+            var result = await events.CancelAsync(id, model.Reason, model.RowVersion, ct);
+            if (result.Success)
+            {
+                TempData["Message"] = "事件已取消";
+                return RedirectToAction(nameof(Detail), new { id });
+            }
+
+            ModelState.AddModelError(result.Field ?? string.Empty, result.Error!);
+        }
+
+        model.Detail = await events.GetDetailAsync(id, ct);
+        return model.Detail is null ? NotFound() : View(model);
+    }
+
+    /// <summary>解锁一个字段（BR-063）：下一次采集照常更新</summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [OpLog(Module, "解锁事件字段")]
+    public async Task<IActionResult> Unlock(long id, EventField field, int rowVersion, CancellationToken ct)
+    {
+        var result = await events.UnlockAsync(id, field, rowVersion, ct);
+        TempData[result.Success ? "Message" : "Error"] = result.Success ? $"{CalendarDisplayNames.Get(field)}已解锁，下一次采集会照常更新" : result.Error;
+        return RedirectToAction(nameof(Detail), new { id });
+    }
 }

@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.12 |
+| 版本 | v0.13 |
 | 日期 | 2026-10-31 |
 | 状态 | 已评审：FR-007、FR-008（2026-10-29，vivo.li：§12 第 1 ~ 9 项均按建议执行）；FR-009 ~ FR-011（2026-10-31，vivo.li：§12 第 10 ~ 23 项均按建议执行） |
 | 覆盖 | FR-007 日历排期采集、FR-008 公布值与前值采集、FR-009 日历事件管理、FR-010 预期值人工录入、FR-011 字段锁定与人工优先 |
@@ -564,7 +564,7 @@ stateDiagram-v2
 | `EventValueEditedEvent` | —（BR-052） | 人工改了"已公布"事件的公布值、前值、前值修正，或解锁并采用采集值 | Job（快讯 FR-016：提示处理相关快讯） | `EventId`、`Fields`（改了的字段）、`ChangedBy` |
 
 - 预期值已录入（EV-006）的消费方是前台发布：由 FR-023 的 `PublicDataChangedEvent` 一并覆盖，本文不单独发消息。
-- `EventValueEditedEvent` 是新增的消息，实施时登记到后端约定 §8.2；FR-016 实现前没有接收方（§12 第 16 项）。
+- `EventValueEditedEvent` 是新增的消息，已登记到后端约定 §8.2（v1.37）；FR-016 实现前没有接收方（§12 第 16 项）。
 
 ---
 
@@ -625,7 +625,7 @@ Suanpan.Crm/
 | `ICalendarEventService` | `QueryUnconfirmedAsync(query)`、`GetUnconfirmedAsync(id)`、`KeepAsync(id, rowVersion)`、`CancelAsync(id, reason, rowVersion)` | 待确认事件的保留（与数据源脱钩，§4.4）、取消（原因必填）；列表可按指标编码筛选，`GetUnconfirmedAsync` 给取消页显示事件 |
 | `IUnmatchedEntryService` | `QueryAsync(query)`、`QueryIgnoredAsync(query)`、`IgnoreAsync(sourceId, releaseKey)`、`RestoreAsync(id)`、`RematchAsync()` | §4.5；`QueryAsync` 按发布分组分页，最近要发布的组在前；`RematchAsync` 返回匹配上启用指标的条数 |
 | `IReleaseValidator` | `ValidateAsync(candidate)` | §5.6 |
-| `ICalendarEventService`（v0.10 扩充） | `QueryAsync(EventQuery)`、`GetDetailAsync(id)`（FR-009.1 已实现）、`EditValuesAsync(id, EventValuesInput, reason, rowVersion)`、`UnlockAsync(id, field, rowVersion)`、`QueryReviewAsync(query)`、`ConfirmReviewAsync(id, sourceId, rowVersion)`、`RejectReviewAsync(id, reason, rowVersion)` | §3.7；`EventQuery` 为 BR-048 的筛选，分页；`GetDetailAsync` 带各数据源数值、变更历史、锁定信息、锁定冲突 |
+| `ICalendarEventService`（v0.10 扩充） | `QueryAsync(EventQuery)`、`GetDetailAsync(id)`（FR-009.1）、`EditValuesAsync(id, EventValuesInput, reason, rowVersion)`、`UnlockAsync(id, field, rowVersion)`、`QueryReviewAsync(page, pageSize)`、`ConfirmReviewAsync(id, sourceId, rowVersion)`、`RejectReviewAsync(id, reason, rowVersion)` | §3.7；`EventQuery` 为 BR-048 的筛选，分页；`GetDetailAsync` 带各数据源数值、变更历史、锁定信息、锁定冲突 |
 | `IForecastService` | `QueryPendingAsync(ForecastQuery)`、`SaveAsync(id, ForecastInput, rowVersion)`、`CorrectAsync(id, ForecastInput, reason, rowVersion)` | §3.8；`CorrectAsync` 只给管理员的 action 调用 |
 | `ILockConflictService` | `QueryAsync(query)`、`KeepAsync(id, rowVersion)`、`AdoptAsync(id, rowVersion)` | §3.9；`rowVersion` 为事件的 |
 
@@ -693,6 +693,15 @@ Suanpan.Crm/
 - 列表：起止都没填时为操作者时区的本周（`EventFilter.DefaultToWeekOf`），"本周"按钮清空筛选；数值按指标小数位四舍五入（远离零），百分比带 %、指数不带单位、其他带中文单位名（`EventValueFormat`），锁定的值旁带锁图标；菜单图标 `calendar-event`。
 - 详情：变更历史中改期的旧值、新值显示操作者时区的时间和当地时间，状态显示中文名，数值按指标小数位；公布值的原始字符串和变更原因转义输出；来源快照、运行记录分别按 `collect:snapshot:detail`、`collect:run:detail` 显示链接。
 - 性能：在本地库的事务中给 50 个指标生成 10 万条事件（2018 ~ 2031 年），本周加经济体、重要性、状态、缺少预期值的查询和计数各约 5 毫秒，一整年不加条件取最后一页约 15 毫秒，都走 `ix_cal_event_scheduled_at`，不需要新增索引（FR-009 验收第 1 条）。
+
+实现说明（FR-009.2）：
+
+- 修改数值（`EditValuesAsync`，`EventValuesInput`）：为空的字段不改，与当前值相同的不改不锁；待复核的事件填了公布值即为"改为人工值"，与原公布值相同也写入并锁定（保留原值）。录入公布值后事件改为已公布的，与入库相同把公布值填为下一个未公布事件的前值（下一期的前值被锁定时不改），变更原因写"按 {参考期} 的公布值填入"；人工录入的公布值来源数据源、来源快照、原始字符串为空，检测时间为保存时间。
+- 确认采集值（`ConfirmReviewAsync`）同样填下一期的前值；状态变更的原因写"编辑确认采集值"。
+- 并发：与待确认事件的保留、取消相同，读取时比对 `row_version`，保存时靠并发令牌（`row_version` 是 IsConcurrencyToken）兜底，与入库的行锁互斥；`locked_fields` 修改后赋一个新的列表，jsonb 列的改动才会被检测到。
+- 解锁（`UnlockAsync`）在本单实现，连同 `LockConflictResolution.Unlocked = 3`（原拆给 FR-011.1）；解锁的变更历史旧值记字段名（`EventChanges.Field`）。
+- 页面：修改数值、取消、驳回都是单独的表单页，原因在 `<form>` 上二次确认（前端约定 §5.3），表单上方共用 `Shared/_EventSummary`；修改数值页的输入框按指标小数位设 `step`，区间型显示上限、没有前值修正，旁边显示单位。待复核页每个事件一张卡片：原因、原公布值（官方更正时）、各数据源的候选值和"采用"按钮；官方更正的事件按钮为"采用新值""保留原值"，不显示"驳回"。菜单图标 `alert-triangle`。
+- 事件详情：按状态和权限显示"修改数值"（待复核时为"改为人工值"）、"去待复核处理"、"取消事件"；锁定信息旁有"解锁"。
 
 ### 9.4 预期值录入（FR-010）
 
@@ -840,7 +849,7 @@ v0.10 补充的 FR-009 ~ FR-011 评审通过，拆成以下子任务：
 | FR-009.1 事件列表与详情 | JAN-94 | JAN-23 | `ICalendarEventService` 的查询和详情；事件列表、详情页面；菜单调整；10 万条的性能验证；集成测试、管道测试。完成后验收 FR-007、FR-008 父工单 | — |
 | FR-009.2 人工修改与待复核 | JAN-95 | JAN-23 | `EventEditRule`、`EventValueRule` 及单元测试；修改数值、取消、解锁；待复核页面和三种处理；`EventValueEditedEvent`；预置角色规则；集成测试、管道测试 | FR-009.1 |
 | FR-010.1 预期值录入 | JAN-96 | JAN-24 | `ForecastRule`；`IForecastService`；清单（HTMX 行内）、保存、管理员更正；系统配置；提醒任务；集成测试、管道测试 | FR-009.2（共用 `EventValueRule`） |
-| FR-011.1 锁定冲突 | JAN-97 | JAN-25 | `ILockConflictService`；冲突页面、保持锁定、解锁并采用；入库不再重复产生已处理的冲突；`LockConflictResolution.Unlocked`；集成测试、管道测试 | FR-009.2 |
+| FR-011.1 锁定冲突 | JAN-97 | JAN-25 | `ILockConflictService`；冲突页面、保持锁定、解锁并采用；入库不再重复产生已处理的冲突；集成测试、管道测试（`LockConflictResolution.Unlocked` 已随 FR-009.2 实现） | FR-009.2 |
 
 FR-010.1 与 FR-011.1 可以并行。
 
@@ -861,6 +870,7 @@ FR-007.4 与 FR-008.1 可以并行。ENG-009.1 的前置条件已满足：BLS �
 | v0.7 | 2026-10-29 | vivo.li / Claude | FR-007.4（JAN-91）实施：§4.4、§4.5 保留、取消、重新匹配的实现说明；§8.1 目录；§8.2 增加 `GetUnconfirmedAsync`、列表筛选；§9.1 实现说明（取消用表单页、已忽略用页签、"新增映射"链接的权限） |
 | v0.8 | 2026-10-29 | vivo.li / Claude | §14 ENG-009.1 的前置条件：User-Agent 的联系邮箱已提供，API Key 填在后台 BLS 数据源的凭据中；变更记录按版本排序 |
 | v0.10 | 2026-10-31 | vivo.li / Claude | 补充 FR-009 ~ FR-011 的人工部分：§1 范围；新增 §3.7 人工修改、§3.8 预期值、§3.9 锁定冲突的处理；§6.1 人工操作的事务；§6.3 新增 `EventValueEditedEvent`；§8 目录和接口；新增 §9.3 ~ §9.5 页面，§9.1 菜单排序，§9.2 预置角色；§10 错误码；§11 配置；§12 第 10 ~ 23 项待评审；§13 测试要点；§14 拟拆分的子任务 |
+| v0.13 | 2026-10-31 | vivo.li / Claude | FR-009.2（JAN-95）实施：§6.3 `EventValueEditedEvent` 已登记；§8.2 `QueryReviewAsync` 的参数；§9.3 实现说明（修改数值的取舍、人工录入和确认采集值都填下一期的前值、并发、解锁和 `LockConflictResolution.Unlocked` 在本单实现、页面） |
 | v0.12 | 2026-10-31 | vivo.li / Claude | FR-009.1（JAN-94）实施：§8.1 目录（`Shared/_EventSchedule`）；§8.2 查询和详情已实现；§9.3 实现说明（`EventRow`、`EventDetail`、默认本周、数值格式、性能验证结果） |
 | v0.11 | 2026-10-31 | vivo.li / Claude | 评审通过：§12 第 10 ~ 23 项均按建议执行，改为评审结论，第 10、11、14、15、16 项已补进 PRD v1.0.0.25；§14 回填 Linear 工单号（JAN-94 ~ JAN-97） |
 | v0.9 | 2026-10-29 | vivo.li / Claude | ENG-009.1（JAN-93）实施：BLS 拆成"BLS 发布日程"（官网）和"BLS API"两个数据源，各一个适配器（`us.blsweb`、`us.blsapi`），解析器标识改为 `us.blsweb.schedule`、`us.blsapi.release`；§4.1、§5.1 补充请求方式、任务参数、日期写法、缺值月份、单位的判断和首批 9 个指标的映射；§14 前置条件已满足 |

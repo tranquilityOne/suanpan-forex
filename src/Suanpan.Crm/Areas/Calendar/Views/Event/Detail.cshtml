@@ -30,7 +30,23 @@
             <div class="text-secondary">@indicator.Name.Get(ContentLanguage.Zh) · @indicator.EconomyCode · 重要性@(Suanpan.Core.Reference.Rules.ReferenceDisplayNames.Get(indicator.Importance).Get(ContentLanguage.Zh))</div>
         </div>
         <div class="col-auto">
-            <a asp-action="Index" class="btn">返回列表</a>
+            <div class="btn-list">
+                @if (e.Status != CalendarEventStatus.Cancelled)
+                {
+                    <a asp-action="Edit" asp-route-id="@e.Id" asp-permission="calendar:event:edit" class="btn btn-primary">
+                        @(e.Status == CalendarEventStatus.PendingReview ? "改为人工值" : "修改数值")
+                    </a>
+                }
+                @if (e.Status == CalendarEventStatus.PendingReview)
+                {
+                    <a asp-controller="Review" asp-action="Index" asp-permission="calendar:review:index" class="btn">去待复核处理</a>
+                }
+                @if (CalendarEventStatusRule.CanTransition(e.Status, CalendarEventStatus.Cancelled))
+                {
+                    <a asp-action="Cancel" asp-route-id="@e.Id" asp-permission="calendar:event:cancel" class="btn btn-outline-danger">取消事件</a>
+                }
+                <a asp-action="Index" class="btn">返回列表</a>
+            </div>
         </div>
     </div>
 </div>
@@ -94,7 +110,15 @@
                                     }
                                     @if (fieldLock is not null)
                                     {
-                                        <div class="small"><i class="ti ti-lock"></i> @fieldLock.LockedBy 锁定于 <utc-time value="@fieldLock.LockedAt" format="yyyy-MM-dd HH:mm" />：@fieldLock.Reason</div>
+                                        <div class="small">
+                                            <i class="ti ti-lock"></i> @fieldLock.LockedBy 锁定于 <utc-time value="@fieldLock.LockedAt" format="yyyy-MM-dd HH:mm" />：@fieldLock.Reason
+                                            <form asp-action="Unlock" asp-route-id="@e.Id" method="post" class="d-inline" asp-permission="calendar:event:unlock"
+                                                  data-confirm="@($"解锁{label}？下一次采集会照常更新这个字段，这个字段待处理的锁定冲突一并关闭。")" data-confirm-button="解锁">
+                                                <input type="hidden" name="field" value="@fieldLock.Field" />
+                                                <input type="hidden" name="rowVersion" value="@e.RowVersion" />
+                                                <button type="submit" class="btn btn-link btn-sm p-0 ms-1 align-baseline">解锁</button>
+                                            </form>
+                                        </div>
                                     }
                                 </td>
                             </tr>

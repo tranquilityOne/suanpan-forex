@@ -68,7 +68,8 @@ public partial class AreaCatalogTests
             "collect:task:index", "collect:task:create", "collect:task:edit", "collect:task:set_status", "collect:task:delete",
             "collect:task:trigger", "collect:task:trigger_any", "collect:run:index", "collect:run:detail",
             "collect:snapshot:index", "collect:snapshot:detail", "collect:snapshot:download", "collect:snapshot:reparse",
-            "calendar:event:index", "calendar:event:detail",
+            "calendar:event:index", "calendar:event:detail", "calendar:event:edit", "calendar:event:cancel", "calendar:event:unlock",
+            "calendar:review:index", "calendar:review:confirm", "calendar:review:reject",
             "calendar:unconfirmed:index", "calendar:unconfirmed:keep", "calendar:unconfirmed:cancel",
             "calendar:unmatched:index", "calendar:unmatched:ignore", "calendar:unmatched:restore", "calendar:unmatched:rematch",
         ];

@@ -1,3 +1,4 @@
+using Suanpan.Core.Calendar.Enums;
 using Suanpan.Services.Calendar.Events.Models;
 using Suanpan.Shared.Mvc;
 using Suanpan.Shared.Paging;
@@ -33,4 +34,22 @@ public interface ICalendarEventService
 
     /// <summary>取消：原因必填（ERR-EVT-008，失败时 Field 为 Reason），写进变更历史；状态须允许改为"取消"（ERR-EVT-010）</summary>
     Task<ManageResult> CancelAsync(long id, string? reason, int rowVersion, CancellationToken ct = default);
+
+    /// <summary>
+    /// 人工修改公布值、前值、前值修正（日历设计 §3.7，BR-050）：原因必填；只改与当前值不同的字段，改了的字段自动锁定；
+    /// 录入公布值后未公布、待复核的事件改为"已公布"并把公布值填为下一期的前值。格式不对时 Field 为对应的字段名（ERR-FC-001 同样的规则）
+    /// </summary>
+    Task<ManageResult> EditValuesAsync(long id, EventValuesInput input, string? reason, int rowVersion, CancellationToken ct = default);
+
+    /// <summary>解锁一个字段（BR-063）：下一次采集照常更新；这个字段待处理的锁定冲突一并关闭（处理方式"已解锁"）</summary>
+    Task<ManageResult> UnlockAsync(long id, EventField field, int rowVersion, CancellationToken ct = default);
+
+    /// <summary>待复核的事件，按排期时间排序，带进入待复核的原因和各数据源的候选值</summary>
+    Task<PagedResult<ReviewRow>> QueryReviewAsync(int page = 1, int pageSize = 20, CancellationToken ct = default);
+
+    /// <summary>待复核：确认采集值（采用新值，BR-051）——把所选数据源的候选值写入公布值并改为"已公布"，不锁定</summary>
+    Task<ManageResult> ConfirmReviewAsync(long id, long sourceId, int rowVersion, CancellationToken ct = default);
+
+    /// <summary>待复核：驳回（BR-051）——改为"延迟"继续补采；原因必填，只适用于从未公布过的事件</summary>
+    Task<ManageResult> RejectReviewAsync(long id, string? reason, int rowVersion, CancellationToken ct = default);
 }

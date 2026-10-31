@@ -1,0 +1,105 @@
+@model EventEditViewModel
+@using Suanpan.Core.Reference.Enums
+@*
+    修改数值（日历设计 §3.7）：只保存改了的字段，改了的字段自动锁定，之后的采集不覆盖；原因必填。
+    待复核的事件在这里"改为人工值"，原公布值不改也会锁定（保留原值，BR-051）
+*@
+@{
+    var detail = Model.Detail!;
+    var e = detail.Event;
+    var indicator = detail.Indicator;
+    var isRange = indicator.ValueType == IndicatorValueType.Range;
+    var unit = indicator.Unit == IndicatorUnit.Index ? "" : Suanpan.Core.Reference.Rules.ReferenceDisplayNames.Get(indicator.Unit).Get(ContentLanguage.Zh);
+    var step = indicator.Decimals == 0 ? "1" : "0." + new string('0', indicator.Decimals - 1) + "1";
+    var review = e.Status == CalendarEventStatus.PendingReview;
+    ViewData["Title"] = review ? "改为人工值" : "修改数值";
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">@ViewData["Title"]</h2>
+    <div class="text-secondary">
+        @if (review)
+        {
+            @(e.Actual is null ? "填写人工值后，事件改为已公布，公布值被锁定。" : "这是官方更正进入的待复核：保留原值就直接保存（公布值被锁定，同一个采集值以后只记为锁定冲突），也可以改成别的值。")
+        }
+        else
+        {
+            @:改了的字段会被锁定，之后的采集和重新解析都不会覆盖；需要恢复自动更新时在详情页解锁。
+        }
+    </div>
+</div>
+
+<div class="card" style="max-width: 44rem">
+    <div class="card-body border-bottom">
+        <partial name="_EventSummary" model="detail" />
+    </div>
+    <form asp-action="Edit" asp-route-id="@e.Id" method="post" class="card-body"
+          data-confirm="@($"保存 {e.IndicatorCode} {e.ReferencePeriod} 的修改？改了的字段会被锁定。")" data-confirm-button="保存">
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        <input type="hidden" asp-for="RowVersion" />
+        <div class="row g-3 mb-3">
+            <div class="col-sm-6">
+                <label asp-for="Actual" class="form-label"></label>
+                <div class="input-group">
+                    <input asp-for="Actual" type="number" step="@step" class="form-control" />
+                    @if (isRange)
+                    {
+                        <span class="input-group-text">~</span>
+                        <input asp-for="ActualUpper" type="number" step="@step" class="form-control" aria-label="公布值上限" />
+                    }
+                    @if (unit.Length > 0)
+                    {
+                        <span class="input-group-text">@unit</span>
+                    }
+                </div>
+                <span asp-validation-for="Actual"></span>
+            </div>
+            <div class="col-sm-6">
+                <label asp-for="Previous" class="form-label"></label>
+                <div class="input-group">
+                    <input asp-for="Previous" type="number" step="@step" class="form-control" />
+                    @if (isRange)
+                    {
+                        <span class="input-group-text">~</span>
+                        <input asp-for="PreviousUpper" type="number" step="@step" class="form-control" aria-label="前值上限" />
+                    }
+                    @if (unit.Length > 0)
+                    {
+                        <span class="input-group-text">@unit</span>
+                    }
+                </div>
+                <span asp-validation-for="Previous"></span>
+            </div>
+            @if (!isRange)
+            {
+                <div class="col-sm-6">
+                    <label asp-for="PreviousRevised" class="form-label"></label>
+                    <div class="input-group">
+                        <input asp-for="PreviousRevised" type="number" step="@step" class="form-control" />
+                        @if (unit.Length > 0)
+                        {
+                            <span class="input-group-text">@unit</span>
+                        }
+                    </div>
+                    <div class="form-text">本次发布对上一期的修正值</div>
+                    <span asp-validation-for="PreviousRevised"></span>
+                </div>
+            }
+        </div>
+        <div class="form-text mb-3">留空表示不改，已有的值不能清空；最多 @indicator.Decimals 位小数</div>
+        <div class="mb-3">
+            <label asp-for="Reason" class="form-label required"></label>
+            <textarea asp-for="Reason" class="form-control" rows="3" placeholder="如：官方 API 故障，按官网新闻稿录入"></textarea>
+            <div class="form-text">写进变更历史、锁定信息和操作日志</div>
+            <span asp-validation-for="Reason"></span>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">保存</button>
+            <a asp-action="Detail" asp-route-id="@e.Id" class="btn">返回</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

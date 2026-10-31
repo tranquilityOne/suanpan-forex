@@ -1,0 +1,35 @@
+@model EventReasonViewModel
+@{
+    ViewData["Title"] = "驳回待复核";
+    var e = Model.Detail!.Event;
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">驳回待复核</h2>
+    <div class="text-secondary">不采用这次的采集值，事件改为"延迟"，由补采、盯盘继续取值（BR-051）。</div>
+</div>
+
+<div class="card" style="max-width: 40rem">
+    <div class="card-body border-bottom">
+        <partial name="_EventSummary" model="Model.Detail" />
+    </div>
+    <form asp-action="Reject" asp-route-id="@e.Id" method="post" class="card-body"
+          data-confirm="@($"驳回 {e.IndicatorCode} {e.ReferencePeriod} 的采集值？事件改为延迟，继续补采。")" data-confirm-button="驳回">
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        <input type="hidden" asp-for="RowVersion" />
+        <div class="mb-3">
+            <label asp-for="Reason" class="form-label required">驳回原因</label>
+            <textarea asp-for="Reason" class="form-control" rows="3" placeholder="如：解析器把季调值和非季调值弄反了，修好后重新解析"></textarea>
+            <div class="form-text">写进事件的变更历史和操作日志</div>
+            <span asp-validation-for="Reason"></span>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-danger">驳回</button>
+            <a asp-action="Index" class="btn">返回</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

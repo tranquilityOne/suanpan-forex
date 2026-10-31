@@ -1,0 +1,21 @@
+@model Suanpan.Services.Calendar.Events.Models.EventDetail
+@* 表单页上方的事件信息：指标、参考期、状态、排期、当前的公布值和前值（修改数值、取消、驳回共用） *@
+@{
+    var e = Model.Event;
+    var indicator = Model.Indicator;
+}
+<dl class="row mb-0">
+    <dt class="col-sm-3">指标</dt>
+    <dd class="col-sm-9"><code>@e.IndicatorCode</code> @indicator.ShortName.Get(ContentLanguage.Zh)</dd>
+    <dt class="col-sm-3">参考期</dt>
+    <dd class="col-sm-9"><code>@e.ReferencePeriod</code></dd>
+    <dt class="col-sm-3">状态</dt>
+    <dd class="col-sm-9"><status-badge value="@e.Status" /></dd>
+    <dt class="col-sm-3">排期</dt>
+    <dd class="col-sm-9"><partial name="_EventSchedule" model="new EventScheduleView(e.ScheduledAt, e.ScheduledLocal, e.TimeZone, e.TimePrecision)" /></dd>
+    <dt class="col-sm-3">公布值 / 前值</dt>
+    <dd class="col-sm-9 mb-0 font-monospace">
+        @(EventValueFormat.Format(e.Actual, e.ActualUpper, indicator.Unit, indicator.Decimals) ?? "-") /
+        @(EventValueFormat.Format(e.Previous, e.PreviousUpper, indicator.Unit, indicator.Decimals) ?? "-")
+    </dd>
+</dl>

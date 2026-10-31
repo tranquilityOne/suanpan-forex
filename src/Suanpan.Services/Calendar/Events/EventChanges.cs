@@ -39,6 +39,9 @@ public static class EventChanges
 
     public static string Status(CalendarEventStatus status) => JsonSerializer.Serialize((short)status);
 
+    /// <summary>锁定、解锁的是哪个字段：字段名字符串，如 "Actual"</summary>
+    public static string Field(EventField field) => JsonSerializer.Serialize(field.ToString());
+
     /// <summary>数值写成字符串，不经过浮点数，保留原有的小数位</summary>
     public static string? Number(decimal? value) => value is { } number ? JsonSerializer.Serialize(number.ToString(CultureInfo.InvariantCulture)) : null;
 }

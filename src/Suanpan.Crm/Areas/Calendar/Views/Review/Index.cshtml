@@ -1,0 +1,89 @@
+@model PagedResult<Suanpan.Services.Calendar.Events.Models.ReviewRow>
+@*
+    待复核（日历设计 §9.3，BR-051）：每个事件列出进入待复核的原因和各数据源的候选值。从未公布过的：采用某个候选值、改为人工值、驳回；
+    官方更正（原公布值还在）：采用新值，或保留原值（改为人工值，预填原公布值）
+*@
+@{
+    ViewData["Title"] = "待复核";
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">待复核</h2>
+    <div class="text-secondary">质量校验没通过、或官方更正了已公布值的事件，在这里决定采用哪个值；时间按你的时区显示。</div>
+</div>
+
+@if (Model.Items.Count == 0)
+{
+    <div class="card"><partial name="_EmptyState" model='new EmptyStateModel("没有待复核的事件")' /></div>
+}
+else
+{
+    @foreach (var item in Model.Items)
+    {
+        var e = item.Row.Event;
+        var corrected = e.Actual is not null;
+        string? Format(decimal? value, decimal? upper) => EventValueFormat.Format(value, upper, item.Row.Unit, item.Row.Decimals);
+        <div class="card mb-3">
+            <div class="card-header">
+                <div class="row w-100 g-2 align-items-center">
+                    <div class="col">
+                        <h3 class="card-title">
+                            <a asp-controller="Event" asp-action="Detail" asp-route-id="@e.Id">@item.Row.ShortName.Get(ContentLanguage.Zh)</a>
+                            <code class="ms-1">@e.IndicatorCode</code> <code>@e.ReferencePeriod</code>
+                        </h3>
+                        <div class="text-secondary small"><partial name="_EventSchedule" model="new EventScheduleView(e.ScheduledAt, e.ScheduledLocal, e.TimeZone, e.TimePrecision)" /></div>
+                    </div>
+                    <div class="col-auto">
+                        <div class="btn-list">
+                            <a asp-controller="Event" asp-action="Edit" asp-route-id="@e.Id" asp-permission="calendar:event:edit" class="btn btn-sm">
+                                @(corrected ? "保留原值" : "改为人工值")
+                            </a>
+                            @if (!corrected)
+                            {
+                                <a asp-action="Reject" asp-route-id="@e.Id" asp-permission="calendar:review:reject" class="btn btn-sm btn-outline-danger">驳回</a>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="mb-2"><span class="text-secondary">原因：</span>@(item.Reason ?? "—")</div>
+                @if (corrected)
+                {
+                    <div class="mb-2"><span class="text-secondary">原公布值：</span><span class="font-monospace">@Format(e.Actual, e.ActualUpper)</span></div>
+                }
+                @if (item.Candidates.Count == 0)
+                {
+                    <div class="text-secondary">没有候选值</div>
+                }
+                else
+                {
+                    <table class="table table-sm align-middle mb-0">
+                        <thead><tr><th>数据源</th><th class="text-end">候选值</th><th>原始字符串</th><th>首次得到</th><th class="w-1"></th></tr></thead>
+                        <tbody>
+                            @foreach (var candidate in item.Candidates)
+                            {
+                                <tr>
+                                    <td>@item.SourceNames.GetValueOrDefault(candidate.SourceId, $"#{candidate.SourceId}（已删除）")</td>
+                                    <td class="text-end font-monospace text-nowrap">@Format(candidate.Value, candidate.ValueUpper)</td>
+                                    <td class="small text-break">@candidate.Raw</td>
+                                    <td class="text-nowrap"><utc-time value="@candidate.DetectedAt" format="yyyy-MM-dd HH:mm:ss" /></td>
+                                    <td>
+                                        <form asp-action="Confirm" asp-route-id="@e.Id" method="post" asp-permission="calendar:review:confirm"
+                                              data-confirm="@($"采用 {Format(candidate.Value, candidate.ValueUpper)} 作为 {e.IndicatorCode} {e.ReferencePeriod} 的公布值？事件改为已公布。")"
+                                              data-confirm-button="采用">
+                                            <input type="hidden" name="sourceId" value="@candidate.SourceId" />
+                                            <input type="hidden" name="rowVersion" value="@e.RowVersion" />
+                                            <button type="submit" class="btn btn-sm btn-primary text-nowrap">@(corrected ? "采用新值" : "采用")</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    }
+    <partial name="_Pager" model="Model" />
+}

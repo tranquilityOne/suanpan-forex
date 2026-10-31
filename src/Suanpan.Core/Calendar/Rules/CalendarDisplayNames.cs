@@ -53,6 +53,7 @@ public static class CalendarDisplayNames
 
         [LockConflictResolution.KeepLocked] = "保持锁定",
         [LockConflictResolution.AdoptCollected] = "解锁并采用采集值",
+        [LockConflictResolution.Unlocked] = "已解锁",
 
         [ForecastType.Manual] = "人工录入",
     };
