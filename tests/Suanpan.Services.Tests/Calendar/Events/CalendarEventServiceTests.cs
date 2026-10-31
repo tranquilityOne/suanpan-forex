@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Suanpan.Core.Calendar.Entities;
 using Suanpan.Core.Calendar.Enums;
 using Suanpan.Core.Collect.Entities;
+using Suanpan.Core.Reference.Enums;
 using Suanpan.Data;
 using Suanpan.Data.Interceptors;
 using Suanpan.Services.Calendar.Events;
@@ -87,6 +88,83 @@ public class CalendarEventServiceTests(PostgresFixture postgres)
         var unchanged = await db.CalendarEvents.AsNoTracking().SingleAsync(e => e.Id == calendarEvent.Id, Ct);
         Assert.Equal((CalendarEventStatus.Unconfirmed, calendarEvent.RowVersion), (unchanged.Status, unchanged.RowVersion));
     }
+
+    /// <summary>
+    /// BR-048、FR-009 验收第 1 条：日期范围、经济体、重要性、状态、缺少预期值可以组合；按排期时间升序。
+    /// 用一段没有别的数据的日期，断言只看本测试建的指标
+    /// </summary>
+    [Fact]
+    public async Task Query_CombinesFilters()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var service = Create(db);
+        var (usHigh, usMedium, eaHigh) = (TestData.IndicatorCode(), TestData.IndicatorCode(), TestData.IndicatorCode("EA"));
+        var indicators = new IndicatorService(db);
+        await indicators.CreateAsync(TestData.Indicator(usHigh) with { Importance = Importance.High }, Ct);
+        await indicators.CreateAsync(TestData.Indicator(usMedium), Ct);
+        await indicators.CreateAsync(TestData.Indicator(eaHigh, "EA", "EUR") with { Importance = Importance.High }, Ct);
+        var week = new DateTime(2031, 3, 3, 0, 0, 0, DateTimeKind.Utc);
+        var later = At(TestData.Event(usHigh, "2031-02"), week.AddDays(2));
+        var earlier = At(TestData.Event(usHigh, "2031-01"), week.AddDays(1));
+        earlier.Forecast = 0.3m;
+        var released = At(TestData.Event(usHigh, "2030-12"), week.AddDays(3));
+        released.Status = CalendarEventStatus.Released;
+        db.CalendarEvents.AddRange(
+            later, earlier, released, At(TestData.Event(usMedium), week.AddDays(1)), At(TestData.Event(eaHigh), week.AddDays(1)),
+            At(TestData.Event(usHigh, "2031-03"), week.AddDays(8)));
+        await db.SaveChangesAsync(Ct);
+        string[] mine = [usHigh, usMedium, eaHigh];
+
+        async Task<List<long>> QueryAsync(EventQuery query)
+            => (await service.QueryAsync(query, Ct)).Items.Where(r => mine.Contains(r.Event.IndicatorCode)).Select(r => r.Event.Id).ToList();
+
+        var usHighThisWeek = await QueryAsync(new EventQuery(week, week.AddDays(7), "US", Importance.High));
+        var scheduledWithoutForecast = await QueryAsync(new EventQuery(week, week.AddDays(7), "US", Importance.High, CalendarEventStatus.Scheduled, MissingForecast: true));
+
+        Assert.Equal([earlier.Id, later.Id, released.Id], usHighThisWeek);
+        Assert.Equal([later.Id], scheduledWithoutForecast);
+    }
+
+    /// <summary>
+    /// FR-009 主流程第 2 步：详情带各数据源的数值、锁定冲突（待处理的在前）、变更历史（时间倒序）和其中数据源的名称
+    /// </summary>
+    [Fact]
+    public async Task GetDetail_IncludesValuesConflictsAndChanges()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var service = Create(db);
+        var (code, calendarEvent, source) = await AddUnconfirmedAsync(db);
+        db.CalendarEventValues.Add(new CalendarEventValue
+        {
+            EventId = calendarEvent.Id, SourceId = source.Id, Value = 0.3m, Raw = "0.3", RunId = 1, DetectedAt = Now,
+        });
+        db.LockConflicts.AddRange(
+            Conflict(calendarEvent.Id, source.Id, LockConflictStatus.Resolved, Now),
+            Conflict(calendarEvent.Id, source.Id, LockConflictStatus.Pending, Now.AddHours(-2)));
+        db.CalendarEventChanges.Add(EventChanges.Create(calendarEvent.Id, EventChangeKind.Actual, null, EventChanges.Number(0.3m),
+            new EventChangeActor(ChangeActorKind.User, "editor", Now), "官方补发"));
+        await db.SaveChangesAsync(Ct);
+
+        var detail = await service.GetDetailAsync(calendarEvent.Id, Ct);
+
+        Assert.Equal(code, detail!.Indicator.Code);
+        Assert.Equal(0.3m, Assert.Single(detail.Values).Value);
+        Assert.Equal([LockConflictStatus.Pending, LockConflictStatus.Resolved], detail.Conflicts.Select(c => c.Status));
+        Assert.Equal([EventChangeKind.Actual, EventChangeKind.Status], detail.Changes.Select(c => c.Kind));
+        Assert.Equal(source.Name, detail.SourceNames[source.Id]);
+    }
+
+    private static CalendarEvent At(CalendarEvent calendarEvent, DateTime scheduledAt)
+    {
+        calendarEvent.ScheduledAt = scheduledAt;
+        return calendarEvent;
+    }
+
+    private static LockConflict Conflict(long eventId, long sourceId, LockConflictStatus status, DateTime lastDetectedAt) => new()
+    {
+        EventId = eventId, Field = EventField.Actual, LockedValue = EventChanges.Number(0.4m)!, CollectedValue = EventChanges.Number(0.3m)!,
+        SourceId = sourceId, RunId = 1, FirstDetectedAt = lastDetectedAt, LastDetectedAt = lastDetectedAt, Status = status,
+    };
 
     private static CalendarEventService Create(SuanpanDbContext db)
         => new(db, new FixedAuditActorProvider("editor"), new FixedTimeProvider(new DateTimeOffset(Now)));

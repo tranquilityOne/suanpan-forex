@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.11 |
+| 版本 | v0.12 |
 | 日期 | 2026-10-31 |
 | 状态 | 已评审：FR-007、FR-008（2026-10-29，vivo.li：§12 第 1 ~ 9 项均按建议执行）；FR-009 ~ FR-011（2026-10-31，vivo.li：§12 第 10 ~ 23 项均按建议执行） |
 | 覆盖 | FR-007 日历排期采集、FR-008 公布值与前值采集、FR-009 日历事件管理、FR-010 预期值人工录入、FR-011 字段锁定与人工优先 |
@@ -611,7 +611,8 @@ Suanpan.Services/Calendar/
 
 Suanpan.Crm/
 ├─ Areas/Calendar/    Controllers/（Event、Review、Forecast、Conflict、Unconfirmed、Unmatched）、Views/（Unconfirmed：Index、Cancel、_Schedule；
-│                     Unmatched：Index、Ignored、_Tabs、_SourceFilter；FR-009 ~ FR-011 的视图随实施补充）
+│                     Unmatched：Index、Ignored、_Tabs、_SourceFilter；Event：Index、Detail；Shared/_EventSchedule 为排期的显示，
+│                     事件和待确认事件共用；FR-009.2 起的视图随实施补充）
 └─ Models/Calendar/
 ```
 
@@ -624,7 +625,7 @@ Suanpan.Crm/
 | `ICalendarEventService` | `QueryUnconfirmedAsync(query)`、`GetUnconfirmedAsync(id)`、`KeepAsync(id, rowVersion)`、`CancelAsync(id, reason, rowVersion)` | 待确认事件的保留（与数据源脱钩，§4.4）、取消（原因必填）；列表可按指标编码筛选，`GetUnconfirmedAsync` 给取消页显示事件 |
 | `IUnmatchedEntryService` | `QueryAsync(query)`、`QueryIgnoredAsync(query)`、`IgnoreAsync(sourceId, releaseKey)`、`RestoreAsync(id)`、`RematchAsync()` | §4.5；`QueryAsync` 按发布分组分页，最近要发布的组在前；`RematchAsync` 返回匹配上启用指标的条数 |
 | `IReleaseValidator` | `ValidateAsync(candidate)` | §5.6 |
-| `ICalendarEventService`（v0.10 扩充） | `QueryAsync(EventQuery)`、`GetDetailAsync(id)`、`EditValuesAsync(id, EventValuesInput, reason, rowVersion)`、`UnlockAsync(id, field, rowVersion)`、`QueryReviewAsync(query)`、`ConfirmReviewAsync(id, sourceId, rowVersion)`、`RejectReviewAsync(id, reason, rowVersion)` | §3.7；`EventQuery` 为 BR-048 的筛选，分页；`GetDetailAsync` 带各数据源数值、变更历史、锁定信息、锁定冲突 |
+| `ICalendarEventService`（v0.10 扩充） | `QueryAsync(EventQuery)`、`GetDetailAsync(id)`（FR-009.1 已实现）、`EditValuesAsync(id, EventValuesInput, reason, rowVersion)`、`UnlockAsync(id, field, rowVersion)`、`QueryReviewAsync(query)`、`ConfirmReviewAsync(id, sourceId, rowVersion)`、`RejectReviewAsync(id, reason, rowVersion)` | §3.7；`EventQuery` 为 BR-048 的筛选，分页；`GetDetailAsync` 带各数据源数值、变更历史、锁定信息、锁定冲突 |
 | `IForecastService` | `QueryPendingAsync(ForecastQuery)`、`SaveAsync(id, ForecastInput, rowVersion)`、`CorrectAsync(id, ForecastInput, reason, rowVersion)` | §3.8；`CorrectAsync` 只给管理员的 action 调用 |
 | `ILockConflictService` | `QueryAsync(query)`、`KeepAsync(id, rowVersion)`、`AdoptAsync(id, rowVersion)` | §3.9；`rowVersion` 为事件的 |
 
@@ -684,6 +685,14 @@ Suanpan.Crm/
 
 - 列表的性能（FR-009 验收第 1 条）：经济体、重要性先在指标表中查出指标编码，再按 `indicator_code IN (...)` 和 `scheduled_at` 范围查事件（`ix_cal_event_scheduled_at`）；实施时在本地生成 10 万条事件，用 `EXPLAIN ANALYZE` 验证 1 秒内返回。
 - 事件详情是 FR-007 验收第 3 条（改期历史）和 FR-008 验收第 3 条（来源快照和检测时间）的落点，FR-009.1 完成后这两个父工单才能验收。
+
+实现说明（FR-009.1）：
+
+- `QueryAsync` 返回 `EventRow`（事件，加上显示数值用的指标简称、经济体、重要性、值类型、单位、小数位）；经济体、重要性的条件加在指标表上再与事件连接，按 `scheduled_at`、`id` 升序。
+- `GetDetailAsync` 返回 `EventDetail`：事件、指标、各数据源的数值（按数据源）、锁定冲突（待处理在前，同状态按最近检测时间倒序）、变更历史（时间倒序），以及其中出现的数据源 id → 名称（已删除的数据源显示"#id（已删除）"）。
+- 列表：起止都没填时为操作者时区的本周（`EventFilter.DefaultToWeekOf`），"本周"按钮清空筛选；数值按指标小数位四舍五入（远离零），百分比带 %、指数不带单位、其他带中文单位名（`EventValueFormat`），锁定的值旁带锁图标；菜单图标 `calendar-event`。
+- 详情：变更历史中改期的旧值、新值显示操作者时区的时间和当地时间，状态显示中文名，数值按指标小数位；公布值的原始字符串和变更原因转义输出；来源快照、运行记录分别按 `collect:snapshot:detail`、`collect:run:detail` 显示链接。
+- 性能：在本地库的事务中给 50 个指标生成 10 万条事件（2018 ~ 2031 年），本周加经济体、重要性、状态、缺少预期值的查询和计数各约 5 毫秒，一整年不加条件取最后一页约 15 毫秒，都走 `ix_cal_event_scheduled_at`，不需要新增索引（FR-009 验收第 1 条）。
 
 ### 9.4 预期值录入（FR-010）
 
@@ -852,5 +861,6 @@ FR-007.4 与 FR-008.1 可以并行。ENG-009.1 的前置条件已满足：BLS �
 | v0.7 | 2026-10-29 | vivo.li / Claude | FR-007.4（JAN-91）实施：§4.4、§4.5 保留、取消、重新匹配的实现说明；§8.1 目录；§8.2 增加 `GetUnconfirmedAsync`、列表筛选；§9.1 实现说明（取消用表单页、已忽略用页签、"新增映射"链接的权限） |
 | v0.8 | 2026-10-29 | vivo.li / Claude | §14 ENG-009.1 的前置条件：User-Agent 的联系邮箱已提供，API Key 填在后台 BLS 数据源的凭据中；变更记录按版本排序 |
 | v0.10 | 2026-10-31 | vivo.li / Claude | 补充 FR-009 ~ FR-011 的人工部分：§1 范围；新增 §3.7 人工修改、§3.8 预期值、§3.9 锁定冲突的处理；§6.1 人工操作的事务；§6.3 新增 `EventValueEditedEvent`；§8 目录和接口；新增 §9.3 ~ §9.5 页面，§9.1 菜单排序，§9.2 预置角色；§10 错误码；§11 配置；§12 第 10 ~ 23 项待评审；§13 测试要点；§14 拟拆分的子任务 |
+| v0.12 | 2026-10-31 | vivo.li / Claude | FR-009.1（JAN-94）实施：§8.1 目录（`Shared/_EventSchedule`）；§8.2 查询和详情已实现；§9.3 实现说明（`EventRow`、`EventDetail`、默认本周、数值格式、性能验证结果） |
 | v0.11 | 2026-10-31 | vivo.li / Claude | 评审通过：§12 第 10 ~ 23 项均按建议执行，改为评审结论，第 10、11、14、15、16 项已补进 PRD v1.0.0.25；§14 回填 Linear 工单号（JAN-94 ~ JAN-97） |
 | v0.9 | 2026-10-29 | vivo.li / Claude | ENG-009.1（JAN-93）实施：BLS 拆成"BLS 发布日程"（官网）和"BLS API"两个数据源，各一个适配器（`us.blsweb`、`us.blsapi`），解析器标识改为 `us.blsweb.schedule`、`us.blsapi.release`；§4.1、§5.1 补充请求方式、任务参数、日期写法、缺值月份、单位的判断和首批 9 个指标的映射；§14 前置条件已满足 |

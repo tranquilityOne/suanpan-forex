@@ -41,7 +41,7 @@
                                 @row.IndicatorShortName.Get(ContentLanguage.Zh)
                             </td>
                             <td><code class="small">@row.ReferencePeriod</code></td>
-                            <td><partial name="_Schedule" model="row" /></td>
+                            <td><partial name="_EventSchedule" model="new EventScheduleView(row.ScheduledAt, row.ScheduledLocal, row.TimeZone, row.TimePrecision)" /></td>
                             <td>
                                 @if (row.ScheduleSourceName is not null)
                                 {

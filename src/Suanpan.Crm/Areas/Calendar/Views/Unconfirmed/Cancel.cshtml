@@ -16,7 +16,7 @@
             <dt class="col-sm-4">参考期</dt>
             <dd class="col-sm-8"><code>@row.ReferencePeriod</code></dd>
             <dt class="col-sm-4">原排期</dt>
-            <dd class="col-sm-8"><partial name="_Schedule" model="row" /></dd>
+            <dd class="col-sm-8"><partial name="_EventSchedule" model="new EventScheduleView(row.ScheduledAt, row.ScheduledLocal, row.TimeZone, row.TimePrecision)" /></dd>
             <dt class="col-sm-4">维护排期的数据源</dt>
             <dd class="col-sm-8 mb-0">@(row.ScheduleSourceName ?? "—")</dd>
         </dl>

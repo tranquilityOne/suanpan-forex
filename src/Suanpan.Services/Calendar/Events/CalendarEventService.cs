@@ -16,6 +16,79 @@ public sealed class CalendarEventService(SuanpanDbContext db, IAuditActorProvide
 {
     private const string StaleError = "事件已被修改，请刷新页面后重试";
 
+    public Task<PagedResult<EventRow>> QueryAsync(EventQuery query, CancellationToken ct = default)
+    {
+        var events = db.CalendarEvents.AsNoTracking();
+        if (query.Begin is { } begin)
+        {
+            events = events.Where(e => e.ScheduledAt >= begin);
+        }
+
+        if (query.End is { } end)
+        {
+            events = events.Where(e => e.ScheduledAt < end);
+        }
+
+        if (query.Status is { } status)
+        {
+            events = events.Where(e => e.Status == status);
+        }
+
+        if (query.MissingForecast)
+        {
+            events = events.Where(e => e.Forecast == null);
+        }
+
+        var indicators = db.Indicators.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(query.EconomyCode))
+        {
+            var economyCode = ReferenceCodeRule.Normalize(query.EconomyCode);
+            indicators = indicators.Where(i => i.EconomyCode == economyCode);
+        }
+
+        if (query.Importance is { } importance)
+        {
+            indicators = indicators.Where(i => i.Importance == importance);
+        }
+
+        return (from e in events
+                join i in indicators on e.IndicatorCode equals i.Code
+                orderby e.ScheduledAt, e.Id
+                select new EventRow(e, i.ShortName, i.EconomyCode, i.Importance, i.ValueType, i.Unit, i.Decimals))
+            .ToPagedResultAsync(query.Page, query.PageSize, ct);
+    }
+
+    public async Task<EventDetail?> GetDetailAsync(long id, CancellationToken ct = default)
+    {
+        if (await db.CalendarEvents.AsNoTracking().FirstOrDefaultAsync(e => e.Id == id, ct) is not { } calendarEvent
+            || await db.Indicators.AsNoTracking().FirstOrDefaultAsync(i => i.Code == calendarEvent.IndicatorCode, ct) is not { } indicator)
+        {
+            return null;
+        }
+
+        var values = await db.CalendarEventValues.AsNoTracking().Where(v => v.EventId == id).OrderBy(v => v.SourceId).ToListAsync(ct);
+        var conflicts = await db.LockConflicts.AsNoTracking()
+            .Where(c => c.EventId == id)
+            .OrderBy(c => c.Status).ThenByDescending(c => c.LastDetectedAt)
+            .ToListAsync(ct);
+        var changes = await db.CalendarEventChanges.AsNoTracking()
+            .Where(c => c.EventId == id)
+            .OrderByDescending(c => c.ChangedAt).ThenByDescending(c => c.Id)
+            .ToListAsync(ct);
+
+        long?[] referenced = [calendarEvent.ScheduleSourceId, calendarEvent.ActualSourceId];
+        var sourceIds = referenced.OfType<long>()
+            .Concat(values.Select(v => v.SourceId))
+            .Concat(conflicts.Select(c => c.SourceId))
+            .Concat(changes.Select(c => c.SourceId).OfType<long>())
+            .Distinct()
+            .ToList();
+        var sourceNames = await db.DataSources.AsNoTracking()
+            .Where(s => sourceIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+        return new EventDetail(calendarEvent, indicator, values, conflicts, changes, sourceNames);
+    }
+
     public Task<PagedResult<UnconfirmedEventRow>> QueryUnconfirmedAsync(UnconfirmedEventQuery query, CancellationToken ct = default)
     {
         var events = db.CalendarEvents.AsNoTracking().Where(e => e.Status == CalendarEventStatus.Unconfirmed);

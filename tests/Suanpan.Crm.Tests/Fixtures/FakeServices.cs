@@ -272,6 +272,12 @@ public sealed class FakeCalendarEventService : ICalendarEventService
 
     public ManageResult Result { get; set; } = ManageResult.Ok;
 
+    public Dictionary<long, EventDetail> Details { get; } = [];
+
+    public Task<PagedResult<EventRow>> QueryAsync(EventQuery query, CancellationToken ct = default) => throw new NotSupportedException();
+
+    public Task<EventDetail?> GetDetailAsync(long id, CancellationToken ct = default) => Task.FromResult(Details.GetValueOrDefault(id));
+
     public Task<PagedResult<UnconfirmedEventRow>> QueryUnconfirmedAsync(UnconfirmedEventQuery query, CancellationToken ct = default)
         => Task.FromResult(new PagedResult<UnconfirmedEventRow>(Unconfirmed.Values.ToList(), Unconfirmed.Count, query.Page, query.PageSize));
 

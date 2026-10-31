@@ -1,0 +1,213 @@
+@model Suanpan.Services.Calendar.Events.Models.EventDetail
+@using System.Globalization
+@using Suanpan.Core.Calendar.Entities
+@*
+    事件详情（日历设计 §9.3，FR-009 主流程第 2 步）：排期只读；各数值带来源、检测时间、来源快照和锁定信息（FR-009 验收第 2 条）；
+    各数据源的数值、锁定冲突、变更历史（含改期，FR-007 验收第 3 条）。外部来的原始字符串一律转义输出（硬性规则 10）
+*@
+@{
+    var e = Model.Event;
+    var indicator = Model.Indicator;
+    ViewData["Title"] = $"{indicator.ShortName.Get(ContentLanguage.Zh)} {e.ReferencePeriod}";
+    string SourceName(long? id) => id is { } sourceId ? Model.SourceNames.GetValueOrDefault(sourceId, $"#{sourceId}（已删除）") : "—";
+    string? Format(decimal? value, decimal? upper) => EventValueFormat.Format(value, upper, indicator.Unit, indicator.Decimals);
+    EventFieldLock? LockOf(EventField field) => e.LockedFields.FirstOrDefault(l => l.Field == field);
+}
+
+<div class="page-header mb-3">
+    <div class="row g-2 align-items-center">
+        <div class="col">
+            <h2 class="page-title">
+                @indicator.ShortName.Get(ContentLanguage.Zh)
+                <code class="ms-2">@e.IndicatorCode</code>
+                <code class="ms-1">@e.ReferencePeriod</code>
+                <span class="ms-2"><status-badge value="@e.Status" /></span>
+                @if (e.Origin == EventOrigin.Supplemented)
+                {
+                    <status-badge tone="Attention" text="补建" />
+                }
+            </h2>
+            <div class="text-secondary">@indicator.Name.Get(ContentLanguage.Zh) · @indicator.EconomyCode · 重要性@(Suanpan.Core.Reference.Rules.ReferenceDisplayNames.Get(indicator.Importance).Get(ContentLanguage.Zh))</div>
+        </div>
+        <div class="col-auto">
+            <a asp-action="Index" class="btn">返回列表</a>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-5">
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title">排期</h3></div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">时间</dt>
+                    <dd class="col-sm-8"><partial name="_EventSchedule" model="new EventScheduleView(e.ScheduledAt, e.ScheduledLocal, e.TimeZone, e.TimePrecision)" /></dd>
+                    @if (e.LocalTimeResolution != LocalTimeResolution.Exact)
+                    {
+                        <dt class="col-sm-4">时间换算</dt>
+                        <dd class="col-sm-8">@CalendarDisplayNames.Get(e.LocalTimeResolution)</dd>
+                    }
+                    <dt class="col-sm-4">维护排期的数据源</dt>
+                    <dd class="col-sm-8">@SourceName(e.ScheduleSourceId) @(e.ScheduleReleaseKey is { } key ? $"（{key}）" : "")</dd>
+                    <dt class="col-sm-4">发布批次</dt>
+                    <dd class="col-sm-8 mb-0"><code class="small">@(e.ReleaseBatchId ?? "—")</code></dd>
+                </dl>
+                <div class="form-text mt-2">排期只来自官方日程，不能人工修改（DEC-024）</div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title">数值</h3></div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle card-table">
+                    <tbody>
+                        @foreach (var (label, field, value) in new (string, EventField?, string?)[]
+                        {
+                            ("公布值", EventField.Actual, Format(e.Actual, e.ActualUpper)),
+                            ("预期值", EventField.Forecast, Format(e.Forecast, e.ForecastUpper)),
+                            ("前值", EventField.Previous, Format(e.Previous, e.PreviousUpper)),
+                            ("前值修正", EventField.PreviousRevised, Format(e.PreviousRevised, null)),
+                            ("修正后数值", null, Format(e.RevisedValue, null)),
+                        })
+                        {
+                            var fieldLock = field is { } f ? LockOf(f) : null;
+                            <tr>
+                                <th class="w-1 text-nowrap">@label</th>
+                                <td class="font-monospace text-nowrap">@(value ?? "-")</td>
+                                <td>
+                                    @if (field == EventField.Actual && e.Actual is not null)
+                                    {
+                                        <div>@(e.ActualSourceId is null ? "人工录入" : SourceName(e.ActualSourceId))，检测于 <utc-time value="@e.DetectedAt" format="yyyy-MM-dd HH:mm:ss" /></div>
+                                        @if (e.SourceSnapshotId is { } snapshotId)
+                                        {
+                                            <div class="small">来源快照 <a asp-area="Collect" asp-controller="Snapshot" asp-action="Detail" asp-route-id="@snapshotId" asp-permission="collect:snapshot:detail">#@snapshotId</a></div>
+                                        }
+                                        @if (e.ActualRaw is { } raw)
+                                        {
+                                            <div class="small text-secondary text-break">原始：@raw</div>
+                                        }
+                                    }
+                                    else if (field == EventField.Forecast && e.Forecast is not null)
+                                    {
+                                        <div class="small">@(e.ForecastType is { } type ? CalendarDisplayNames.Get(type) : "")@(e.ForecastNote is { } note ? $"：{note}" : "")</div>
+                                    }
+                                    @if (fieldLock is not null)
+                                    {
+                                        <div class="small"><i class="ti ti-lock"></i> @fieldLock.LockedBy 锁定于 <utc-time value="@fieldLock.LockedAt" format="yyyy-MM-dd HH:mm" />：@fieldLock.Reason</div>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title">各数据源的数值</h3></div>
+            @if (Model.Values.Count == 0)
+            {
+                <div class="card-body text-secondary">还没有数据源采到这一期的值</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle card-table">
+                        <thead><tr><th>数据源</th><th class="text-end">值</th><th>原始字符串</th><th>首次得到这个值</th><th>来源</th></tr></thead>
+                        <tbody>
+                            @foreach (var value in Model.Values)
+                            {
+                                <tr>
+                                    <td>@SourceName(value.SourceId)</td>
+                                    <td class="text-end font-monospace text-nowrap">@Format(value.Value, value.ValueUpper)</td>
+                                    <td class="small text-break">@value.Raw</td>
+                                    <td class="text-nowrap"><utc-time value="@value.DetectedAt" format="yyyy-MM-dd HH:mm:ss" /></td>
+                                    <td class="small text-nowrap">
+                                        @if (value.SnapshotId is { } snapshotId)
+                                        {
+                                            <a asp-area="Collect" asp-controller="Snapshot" asp-action="Detail" asp-route-id="@snapshotId" asp-permission="collect:snapshot:detail">快照 #@snapshotId</a>
+                                        }
+                                        <a asp-area="Collect" asp-controller="Run" asp-action="Detail" asp-route-id="@value.RunId" asp-permission="collect:run:detail">运行 #@value.RunId</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        @if (Model.Conflicts.Count > 0)
+        {
+            <div class="card mb-3">
+                <div class="card-header"><h3 class="card-title">锁定冲突</h3></div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle card-table">
+                        <thead><tr><th>字段</th><th class="text-end">锁定值</th><th class="text-end">采集值</th><th>数据源</th><th>最近检测</th><th>状态</th></tr></thead>
+                        <tbody>
+                            @foreach (var conflict in Model.Conflicts)
+                            {
+                                var kind = EventValueFormat.KindOf(conflict.Field);
+                                <tr>
+                                    <td>@CalendarDisplayNames.Get(conflict.Field)</td>
+                                    <td class="text-end font-monospace">@EventValueFormat.Change(kind, conflict.LockedValue, indicator.Decimals).Text</td>
+                                    <td class="text-end font-monospace">@EventValueFormat.Change(kind, conflict.CollectedValue, indicator.Decimals).Text</td>
+                                    <td>@SourceName(conflict.SourceId)</td>
+                                    <td class="text-nowrap"><utc-time value="@conflict.LastDetectedAt" format="yyyy-MM-dd HH:mm" /></td>
+                                    <td>
+                                        @CalendarDisplayNames.Get(conflict.Status)
+                                        @if (conflict.Resolution is { } resolution)
+                                        {
+                                            <div class="small text-secondary">@CalendarDisplayNames.Get(resolution)（@conflict.ResolvedBy）</div>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+
+        <div class="card">
+            <div class="card-header"><h3 class="card-title">变更历史</h3></div>
+            @if (Model.Changes.Count == 0)
+            {
+                <div class="card-body text-secondary">没有变更</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle card-table">
+                        <thead><tr><th>时间</th><th>变更</th><th>旧值 → 新值</th><th>操作者</th><th>原因</th></tr></thead>
+                        <tbody>
+                            @foreach (var change in Model.Changes)
+                            {
+                                var (oldAt, oldText) = EventValueFormat.Change(change.Kind, change.OldValue, indicator.Decimals);
+                                var (newAt, newText) = EventValueFormat.Change(change.Kind, change.NewValue, indicator.Decimals);
+                                <tr>
+                                    <td class="text-nowrap"><utc-time value="@change.ChangedAt" format="yyyy-MM-dd HH:mm:ss" /></td>
+                                    <td class="text-nowrap">@CalendarDisplayNames.Get(change.Kind)</td>
+                                    <td>
+                                        @if (oldAt is not null) { <utc-time value="@oldAt" format="yyyy-MM-dd HH:mm" /> }
+                                        @(oldText ?? "空") →
+                                        @if (newAt is not null) { <utc-time value="@newAt" format="yyyy-MM-dd HH:mm" /> }
+                                        @(newText ?? "空")
+                                    </td>
+                                    <td class="text-nowrap">
+                                        @CalendarDisplayNames.Get(change.ActorKind)
+                                        <span class="text-secondary">@(change.SourceId is { } sourceId ? SourceName(sourceId) : change.ChangedBy)</span>
+                                    </td>
+                                    <td class="text-break">@change.Reason</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>

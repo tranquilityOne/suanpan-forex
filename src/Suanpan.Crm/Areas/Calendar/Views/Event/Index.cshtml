@@ -1,0 +1,109 @@
+@model EventListViewModel
+@{
+    ViewData["Title"] = "日历事件";
+    var filter = Model.Filter;
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">日历事件</h2>
+    <div class="text-secondary">排期来自官方日程，公布值、前值来自数据源；时间按你的时区显示，日期按排期时间筛选，默认本周。</div>
+</div>
+
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label class="form-label">日期</label>
+        <div class="d-flex align-items-center gap-1">
+            <input type="date" name="From" value="@filter.From?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
+            <span>至</span>
+            <input type="date" name="To" value="@filter.To?.ToString("yyyy-MM-dd")" class="form-control form-control-sm" />
+        </div>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">经济体</label>
+        <select name="EconomyCode" asp-items="@(new SelectList(Model.EconomyOptions, "Value", "Text", filter.EconomyCode))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">重要性</label>
+        <select name="Importance" asp-items="@(new SelectList(Model.ImportanceOptions, "Value", "Text", filter.Importance?.ToString()))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-label">状态</label>
+        <select name="Status" asp-items="@(new SelectList(Model.StatusOptions, "Value", "Text", filter.Status?.ToString()))" class="form-select form-select-sm">
+            <option value="">全部</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label class="form-check mb-1">
+            <input type="checkbox" name="MissingForecast" value="true" class="form-check-input" checked="@filter.MissingForecast" />
+            <span class="form-check-label">只看缺少预期值的</span>
+        </label>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-primary">查询</button>
+        <a asp-action="Index" class="btn btn-sm">本周</a>
+    </div>
+</form>
+
+<div class="card">
+    @if (Model.Result.Items.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel("这段时间没有符合条件的事件")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle card-table">
+                <thead>
+                    <tr>
+                        <th>时间</th><th>经济体</th><th>指标</th><th>参考期</th><th>重要性</th><th>状态</th>
+                        <th class="text-end">公布值</th><th class="text-end">预期值</th><th class="text-end">前值</th><th class="w-1"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.Result.Items)
+                    {
+                        var e = row.Event;
+                        <tr>
+                            <td class="text-nowrap"><partial name="_EventSchedule" model="new EventScheduleView(e.ScheduledAt, e.ScheduledLocal, e.TimeZone, e.TimePrecision)" /></td>
+                            <td>@row.EconomyCode</td>
+                            <td>
+                                <div>@row.ShortName.Get(ContentLanguage.Zh)</div>
+                                <code class="small">@e.IndicatorCode</code>
+                            </td>
+                            <td><code>@e.ReferencePeriod</code></td>
+                            <td>@Suanpan.Core.Reference.Rules.ReferenceDisplayNames.Get(row.Importance).Get(ContentLanguage.Zh)</td>
+                            <td><status-badge value="@e.Status" /></td>
+                            <td class="text-end text-nowrap font-monospace">
+                                @(EventValueFormat.Format(e.Actual, e.ActualUpper, row.Unit, row.Decimals) ?? "-")
+                                @if (EventLockRule.IsLocked(e.LockedFields, EventField.Actual))
+                                {
+                                    <i class="ti ti-lock text-secondary" title="已锁定"></i>
+                                }
+                            </td>
+                            <td class="text-end text-nowrap font-monospace">
+                                @(EventValueFormat.Format(e.Forecast, e.ForecastUpper, row.Unit, row.Decimals) ?? "-")
+                                @if (EventLockRule.IsLocked(e.LockedFields, EventField.Forecast))
+                                {
+                                    <i class="ti ti-lock text-secondary" title="已锁定"></i>
+                                }
+                            </td>
+                            <td class="text-end text-nowrap font-monospace">
+                                @(EventValueFormat.Format(e.Previous, e.PreviousUpper, row.Unit, row.Decimals) ?? "-")
+                                @if (EventLockRule.IsLocked(e.LockedFields, EventField.Previous))
+                                {
+                                    <i class="ti ti-lock text-secondary" title="已锁定"></i>
+                                }
+                            </td>
+                            <td><a asp-action="Detail" asp-route-id="@e.Id" asp-permission="calendar:event:detail" class="btn btn-sm">详情</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <partial name="_Pager" model="Model.Result" />
+    }
+</div>
