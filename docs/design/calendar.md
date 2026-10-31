@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.16 |
+| 版本 | v0.17 |
 | 日期 | 2026-10-31 |
 | 状态 | 已评审：FR-007、FR-008（2026-10-29，vivo.li：§12 第 1 ~ 9 项均按建议执行）；FR-009 ~ FR-011（2026-10-31，vivo.li：§12 第 10 ~ 23 项均按建议执行） |
 | 覆盖 | FR-007 日历排期采集、FR-008 公布值与前值采集、FR-009 日历事件管理、FR-010 预期值人工录入、FR-011 字段锁定与人工优先 |
@@ -611,6 +611,7 @@ Suanpan.Services/Calendar/
 ├─ Forecasts/     IForecastService、ForecastService、CalendarConfigKeys（FR-010）、Models/（ForecastQuery、ForecastInput）
 ├─ Jobs/          ForecastReminderJob（FR-010 的提醒，后端约定 §8.3：任务类放在 Services/{模块}/Jobs/）
 ├─ Conflicts/     ILockConflictService、LockConflictService（FR-011）、Models/（LockConflictQuery、LockConflictRow）
+├─ Watch/         ICalendarWatchService、CalendarWatchService：盯盘改事件状态（盯盘中、延迟、退回待公布），由采集模块的盯盘调用（采集设计 §5.7，FR-003.2）
 └─ Unmatched/     IUnmatchedEntryService、UnmatchedEntryService、Models/（UnmatchedEntryQuery、UnmatchedReleaseGroup 等）
 
 Suanpan.Crm/
@@ -902,3 +903,4 @@ FR-007.4 与 FR-008.1 可以并行。ENG-009.1 的前置条件已满足：BLS �
 | v0.14 | 2026-10-31 | vivo.li / Claude | FR-010.1（JAN-96）实施：§3.8 提醒任务放在 `Services/Calendar/Jobs/`（后端约定 §8.3）；§8.1 目录；§8.2 `IForecastService` 增加 `GetRowAsync`、`GetNoteOptionsAsync`；§9.4 实现说明（清单范围、保存和更正的取舍、常用来源、HTMX 行内保存和定位下一条、事件详情中的表单、提醒的去重）；变更记录按版本排序 |
 | v0.15 | 2026-10-31 | vivo.li / Claude | FR-011.1（JAN-97）实施：§2.1 `cal_lock_conflict` 加 `locked_upper`、`collected_upper`；§8.1 目录（`LockConflictRule`、`Conflicts/`、`Events/NextEventPrevious`、`Conflict` 视图）；§9.5 实现说明（上限、保持锁定后不再产生冲突的判断、列表、两种处理） |
 | v0.16 | 2026-10-31 | vivo.li / Claude | 同步 PRD v1.0.0.26：§3.2 状态机补"盯盘中 → 待公布：官方改期"（采集设计 v0.18 §5.7 盯盘评审第 27 项）；§3.4 盯盘中的事件改期后由盯盘改回待公布 |
+| v0.17 | 2026-10-31 | vivo.li / Claude | FR-003.2（JAN-99）实施：§8.1 目录加 `Watch/`（`ICalendarWatchService`：盯盘改为盯盘中、延迟、退回待公布，行锁内按状态规则修改，写带运行记录的状态历史，延迟按重要性告警） |

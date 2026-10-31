@@ -8,12 +8,14 @@ using Suanpan.Services.Calendar.Jobs;
 using Suanpan.Services.Calendar.Releases;
 using Suanpan.Services.Calendar.Schedules;
 using Suanpan.Services.Calendar.Unmatched;
+using Suanpan.Services.Calendar.Watch;
 using Suanpan.Services.Collect.Ingest;
 using Suanpan.Services.Collect.Jobs;
 using Suanpan.Services.Collect.Runs;
 using Suanpan.Services.Collect.Snapshots;
 using Suanpan.Services.Collect.Sources;
 using Suanpan.Services.Collect.Tasks;
+using Suanpan.Services.Collect.Watch;
 using Suanpan.Services.Common.Alerts;
 using Suanpan.Services.Reference.Currencies;
 using Suanpan.Services.Reference.Economies;
@@ -92,6 +94,7 @@ public static class ServicesServiceCollectionExtensions
         services.AddScoped<CollectDispatchJob>();
         services.AddScoped<CollectRunCleanupJob>();
         services.AddScoped<CollectSnapshotCleanupJob>();
+        services.AddScoped<IWatchPlanService, WatchPlanService>();
 
         // Calendar：财经日历。入库服务注册为 ICollectIngestor，Collector 按目标数据类型取用（采集设计 §5.3）
         services.AddScoped<ScheduleApplier>();
@@ -101,6 +104,7 @@ public static class ServicesServiceCollectionExtensions
         services.AddScoped<IUnmatchedEntryService, UnmatchedEntryService>();
         services.AddScoped<IForecastService, ForecastService>();
         services.AddScoped<ILockConflictService, LockConflictService>();
+        services.AddScoped<ICalendarWatchService, CalendarWatchService>();
         services.AddScoped<ForecastReminderJob>();
 
         // 公布值的质量校验：FR-026（Ops）完成前全部通过，FR-026 用 Replace 换成真正的实现（日历设计 §5.6）

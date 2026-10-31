@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.19 |
+| 版本 | v0.20 |
 | 日期 | 2026-10-31 |
 | 状态 | FR-001、FR-002 部分已评审（2026-10-23，vivo.li；§11 第 7 项的联系邮箱 2026-10-29 提供）；v0.11 新增的快照与重新解析（FR-004）已评审（2026-10-29，vivo.li：§11 第 14 ~ 20 项均按建议执行）；v0.17 新增的盯盘（FR-003）已评审（2026-10-31，vivo.li：§11 第 21 ~ 33 项，第 22 项不作为设计问题，计划时长和补采间隔改为配置，其余按建议执行） |
 | 覆盖 | FR-001 数据源管理、FR-002 采集任务配置与调度、FR-003 公布时刻高频盯盘（v0.17）、FR-004 原始快照与重新解析 |
@@ -500,6 +500,13 @@ sequenceDiagram
 
 **页面**：盯盘状态，见 §8.1。
 
+**实现**（FR-003.2）：
+- 配置（`GetSettingsAsync`）：读 §10 的 9 项，整数超出范围时按默认值并记警告日志；计划时长还要由调用方按最大提前秒数用 `WatchRule.PlanMinutes` 修正。
+- 计划（`GetPlanAsync(begin, end)`）：取排期时间在 [begin, end] 内、精确到分钟、状态为待公布或盯盘中、指标启用、重要性为高（配置打开时加中）的事件；服务重启后要恢复的盯盘由调用方把 begin 往前放（最长窗口 120 分钟）。不能盯盘的原因分三种（`WatchProblemKind`：没有映射、数据源都停用、没有可用的公布值任务），带一句说明。计划不看总开关，Collector 和页面各自处理。分路按开始时间（T − 提前）、数据源名称排列。
+- 不能盯盘的告警（`AlertUnreadyAsync`）：Collector 计划后调用；`SET NX` 键 `collect:watch:unready:{eventId}`（24 小时）成功才告警（重要，对象为指标编码）；Redis 或告警失败只记日志。
+- 日历状态（`ICalendarWatchService`）：在事务中先 `SELECT ... FOR UPDATE` 锁住事件行，再按状态规则修改，与公布值入库、人工操作互斥；"改为延迟"只改盯盘中的（待复核 → 延迟是编辑驳回，不归盯盘管），"退回待公布"同样只改盯盘中的；已经是目标状态的跳过。状态历史的操作者为采集（`collector`），带数据源和运行记录；延迟的告警在提交后发，对象为指标编码。
+- 最近结束的盯盘（`GetRecentAsync`）：触发方式为盯盘、`scheduled_for` 不为空、结束时间不早于 since 的运行记录，最多 50 条；这一路盯了哪些事件，按状态历史中"改为盯盘中"且带这条运行记录的记录找出（不在事件上另存运行记录）；时延 = 检测时间 − 运行记录的 `scheduled_for`。
+
 **已知风险**（§11 第 22 项）：BLS 官网对 API 的说明中有一条 2013 年的补充，称公布后一天 API 才有数据。若属实，BLS 的事件每次都会在 T+10 分钟变为延迟并告警。11 月 6 日非农公布后实测一次（ENG-009，JAN-14）；需要时把另一个数据源（如 BLS 新闻稿网页）设为主源，盯盘不用改。
 
 **时间与测试**：盯盘的等待一律经 `TimeProvider`（`Task.Delay(间隔, timeProvider)`、`PeriodicTimer`），集成测试换成可推进的假时钟，不真的等待（后端约定 §13.4）。PRD 验收第 6 条的回放测试见 §12。
@@ -542,7 +549,8 @@ Suanpan.Services/Collect/
 ├─ Runs/          ICollectRunService、CollectRunService（含发起重新解析）、CollectConfigKeys（§10 的系统配置）、Models/（含 ReparseSelection）
 ├─ Snapshots/     ISnapshotService、SnapshotService、SnapshotQueries（筛选）、ISnapshotContentStore、PostgresSnapshotContentStore、Models/
 ├─ Jobs/          CollectDispatchJob、CollectRunCleanupJob、CollectSnapshotCleanupJob
-├─ Watch/         IWatchPlanService、WatchPlanService（盯盘计划，Collector 和盯盘状态页共用）、Models/（WatchGroup、WatchEventItem、WatchTiming）（v0.17）
+├─ Watch/         IWatchPlanService、WatchPlanService（盯盘计划，Collector 和盯盘状态页共用）、Models/（WatchSettings、WatchPlan、WatchGroup、WatchEventItem、
+│                 WatchProblem 及 WatchProblemKind、WatchRecentRun、WatchRecentEvent；WatchTiming、WatchWindow 在 Core 的 WatchRule）（v0.20）
 └─ Ingest/        ICollectIngestor（§5.3 的入库接口，各模块实现）
 
 Suanpan.Job/
@@ -569,8 +577,8 @@ Suanpan.Crm/
 | `IDataSourceService` | `GetListAsync`、`GetAsync(id)`、`GetOptionsAsync`、`CreateAsync`、`UpdateAsync(id, input)`、`SetEnabledAsync`、`DeleteAsync`、`TestAsync(id)` | 数据源不多，列表不分页；`TestAsync` 返回状态码、耗时、前 500 个字符的响应片段 |
 | `ICollectTaskService` | `QueryAsync`、`GetAsync(id)`、`GetAllAsync`、`CreateAsync`、`UpdateAsync(id, input)`、`SetEnabledAsync`、`DeleteAsync`、`PreviewSchedule(cron)` | 列表带最近一次运行的状态和下次执行时间；`GetAllAsync` 供运行记录的筛选下拉框；`PreviewSchedule` 返回下 3 次执行时间（UTC，页面用 `<utc-time>` 按操作者时区显示） |
 | `ISnapshotService` | `SaveAsync(SnapshotBatch, skipUnchanged)`、`MarkInvalidAsync(ids, 原因)`、`MarkReferencedAsync(ids)`、`QueryAsync(SnapshotQuery)`、`GetAsync(id)` | §5.5；`SnapshotQuery` 按数据源、任务、运行记录、时间、运行状态、是否有效筛选，分页；`GetAsync` 返回快照、原始内容（已清理时为空）和所属运行记录（已清理时为空）。发起重新解析在 `ICollectRunService`（FR-004.2 实施时调整） |
-| `IWatchPlanService` | `GetPlanAsync(从, 到)`、`GetRecentAsync(从)` | §5.7；计划按"数据源 + 任务 + 排期时间"分路，带时间参数和不能盯盘的原因；`GetRecentAsync` 给盯盘状态页列出最近结束的盯盘和各事件的时延（v0.17） |
-| `ICalendarWatchService`（日历模块） | `StartAsync(事件 id, 运行记录 id)`、`DelayAsync(事件 id, 运行记录 id)`、`ReturnToScheduledAsync(事件 id, 运行记录 id)`、`GetProgressAsync(事件 id)` | §5.7；状态按 `CalendarEventStatusRule` 检查，写状态历史；`DelayAsync` 按重要性告警（v0.17） |
+| `IWatchPlanService` | `GetSettingsAsync()`、`GetPlanAsync(begin, end)`、`AlertUnreadyAsync(不能盯盘的事件)`、`GetRecentAsync(since)` | §5.7；计划按"数据源 + 任务 + 排期时间"分路，带时间参数和不能盯盘的原因；`GetRecentAsync` 给盯盘状态页列出最近结束的盯盘和各事件的时延（v0.20 按实现调整） |
+| `ICalendarWatchService`（日历模块） | `StartAsync(事件 id, 数据源 id, 运行记录 id)`、`DelayAsync(…)`、`ReturnToScheduledAsync(事件 id, 数据源 id, 运行记录 id)`、`GetEventsAsync(事件 id)` | §5.7；状态按 `CalendarEventStatusRule` 检查，写状态历史；`DelayAsync` 按重要性告警（v0.20 按实现调整：带数据源 id，查进度直接返回事件） |
 | `ICollectRunService` | `QueryAsync(CollectRunQuery)`、`GetAsync(id)`、`EnqueueAsync(taskId, trigger, scheduledFor, triggeredBy)`、`TriggerAsync(taskId, triggeredBy, anyTargetType)` | `EnqueueAsync` 创建运行记录并发布消息，Job 和 Crm 共用，返回 `EnqueueResult`（运行记录 id；`Published` 为 false 表示已创建但发布失败）；`TriggerAsync` 是后台的"立即执行"，`anyTargetType` 为 false 时只能触发日历排期、公布值类任务（§8.2）；`TryPublishAsync(runId)` 发布第 1 次请求的指令，调度分发重新下发时也用；`CollectRunQuery` 按任务、数据源、状态、触发方式、时间筛选，分页。`GetAsync` 带这次运行的快照（运行详情列出）。`TryPublishAsync(runId, 触发方式)` 按触发方式发 `CollectRunCommand` 或 `ReparseCommand`；`CountForReparseAsync(ReparseSelection)`、`ReparseAsync(ReparseSelection, parserKey, triggeredBy)` 见 §5.6 |
 
 ### 7.3 消息
@@ -863,5 +871,6 @@ FR-003.3 与 FR-003.4 可以并行。第 22 项的实测在 11 月 6 日，不�
 | v0.16 | 2026-10-29 | vivo.li / Claude | FR-004.2（JAN-90）实施：§2.1 `reparse` 列的键名；§4.2 重新下发按触发方式发指令；§4.3 `CollectRunWriter`、回收比对心跳；§5.6 实现说明（发起放在 `ICollectRunService`、`ReparseRule`、范围与列表共用筛选、执行的细节、表单页）；§7.1、§7.2 目录和接口按实现调整（`ISnapshotService` 不再有 `GetContentAsync`、`ReparseAsync`）；§8.1 快照页面和运行详情的实现说明；§10 表格整理 |
 | v0.18 | 2026-10-31 | vivo.li / Claude | 评审通过：§11 第 21 ~ 33 项改为评审结论（第 22 项不作为设计问题，记为 §5.7 的已知风险；计划时长、补采间隔做成配置，新增第 33 项）；同步 PRD v1.0.0.26（BR-003 每日上限、BR-017 分段补采、FR-003 主流程第 1 步、§8.1.3 盯盘中 → 待公布）；§3.5 计划时长和补采间隔的规则；§4.3 每日上限的计数；§9 新增 ERR-COL-010；§10 新增 4 个配置；§12 补充测试；§13 回填工单号 |
 | v0.19 | 2026-10-31 | vivo.li / Claude | FR-003.1（JAN-98）实施：§2.2 旧的唯一索引先保留（上一版程序的调度分发按它写 `ON CONFLICT`），FR-003.3 删除；§4.3 每日上限的实现（`IDataSourceDailyQuota`、`DailyLimitExceededException`、告警的时机、连通性测试也计入）；§7.1 目录；§13 两个子任务的内容同步 |
+| v0.20 | 2026-10-31 | vivo.li / Claude | FR-003.2（JAN-99）实施：§5.7 补充实现说明（配置读取、计划的范围和不能盯盘的原因、不能盯盘的告警、日历状态的行锁和限制、最近结束的盯盘怎么找事件）；§7.1、§7.2 接口和模型按实现调整 |
 | v0.17 | 2026-10-31 | vivo.li / Claude | 补充盯盘（FR-003）：§1 范围；§2.1 `col_source` 加盯盘间隔、每日上限，`ref_indicator_source` 加盯盘参数，`col_run` 的 `scheduled_for`、`attempts` 用于盯盘；§2.2 唯一索引带上触发方式；新增 §3.5 `WatchRule`、§5.7 盯盘；§4.3 回收不处理盯盘的运行记录；§6 ~ §10 关系、目录、接口、盯盘状态页面、权限、错误码、配置；§11 第 21 ~ 32 项待评审；§12、§13 测试和拟拆分的子任务。依据改为 PRD v1.0.0.25 |
 | v0.15 | 2026-10-29 | vivo.li / Claude | ENG-009.1（JAN-93）实施：§5.1 同一机构的多个数据源各一个适配器，适配器抛出 `FetchParametersException` 表示任务参数不正确；§5.2 解析器标识的中间一段为数据源（BLS 为 `us.blsweb`、`us.blsapi`），目录加入 BLS 的两个解析器；§7.1 `Sources/US/Bls/` 的内容 |
