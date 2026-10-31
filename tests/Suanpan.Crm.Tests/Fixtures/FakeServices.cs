@@ -5,6 +5,8 @@ using Suanpan.Core.Collect.Entities;
 using Suanpan.Core.Reference.Entities;
 using Suanpan.Core.Sys.Entities;
 using Suanpan.Core.Collect.Enums;
+using Suanpan.Services.Calendar.Conflicts;
+using Suanpan.Services.Calendar.Conflicts.Models;
 using Suanpan.Services.Calendar.Events;
 using Suanpan.Services.Calendar.Events.Models;
 using Suanpan.Services.Calendar.Forecasts;
@@ -346,6 +348,33 @@ public sealed class FakeForecastService : IForecastService
     public Task<ManageResult> CorrectAsync(long id, ForecastInput input, string? reason, int rowVersion, CancellationToken ct = default)
     {
         Corrected.Add((id, input, reason, rowVersion));
+        return Task.FromResult(Result);
+    }
+}
+
+/// <summary>锁定冲突：列表返回预设的行，保持锁定、解锁并采用时记下参数并返回预设的结果</summary>
+public sealed class FakeLockConflictService : ILockConflictService
+{
+    public List<LockConflictRow> Rows { get; } = [];
+
+    public ManageResult Result { get; set; } = ManageResult.Ok;
+
+    public List<(long Id, int RowVersion)> Kept { get; } = [];
+
+    public List<(long Id, int RowVersion)> Adopted { get; } = [];
+
+    public Task<PagedResult<LockConflictRow>> QueryAsync(LockConflictQuery query, CancellationToken ct = default)
+        => Task.FromResult(new PagedResult<LockConflictRow>(Rows, Rows.Count, query.Page, query.PageSize));
+
+    public Task<ManageResult> KeepAsync(long id, int rowVersion, CancellationToken ct = default)
+    {
+        Kept.Add((id, rowVersion));
+        return Task.FromResult(Result);
+    }
+
+    public Task<ManageResult> AdoptAsync(long id, int rowVersion, CancellationToken ct = default)
+    {
+        Adopted.Add((id, rowVersion));
         return Task.FromResult(Result);
     }
 }

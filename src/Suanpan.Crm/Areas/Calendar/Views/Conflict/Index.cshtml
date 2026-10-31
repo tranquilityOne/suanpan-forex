@@ -1,0 +1,108 @@
+@model ConflictListViewModel
+@*
+    锁定冲突（日历设计 §9.5，FR-011）：锁定值带锁定人、时间、原因，采集值带数据源、来源快照、最近检测时间；
+    待处理的可以保持锁定或解锁并采用（二次确认），已处理的显示处理人、时间和处理方式
+*@
+@{
+    ViewData["Title"] = "锁定冲突";
+}
+
+<div class="page-header mb-3">
+    <h2 class="page-title">锁定冲突</h2>
+    <div class="text-secondary">人工锁定的字段不会被采集覆盖；采集到的值与锁定值不同时记在这里。保持锁定后同一个采集值不再提示，解锁并采用后之后的采集会照常更新这个字段。</div>
+</div>
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <a asp-action="Index" class="nav-link @(Model.Resolved ? null : "active")">待处理</a>
+    </li>
+    <li class="nav-item">
+        <a asp-action="Index" asp-route-resolved="true" class="nav-link @(Model.Resolved ? "active" : null)">已处理</a>
+    </li>
+</ul>
+
+<div class="card">
+    @if (Model.Result.Items.Count == 0)
+    {
+        <partial name="_EmptyState" model='new EmptyStateModel(Model.Resolved ? "还没有处理过的冲突" : "没有待处理的锁定冲突")' />
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle card-table">
+                <thead>
+                    <tr>
+                        <th>指标</th><th>参考期</th><th>字段</th><th>锁定值</th><th>采集值</th><th>首次检测</th>
+                        <th>@(Model.Resolved ? "处理" : "")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.Result.Items)
+                    {
+                        var c = row.Conflict;
+                        var e = row.Event;
+                        var fieldName = CalendarDisplayNames.Get(c.Field);
+                        var locked = EventValueFormat.ConflictValue(c.LockedValue, c.LockedUpper, row.Unit, row.Decimals);
+                        var collected = EventValueFormat.ConflictValue(c.CollectedValue, c.CollectedUpper, row.Unit, row.Decimals);
+                        var fieldLock = e.LockedFields.FirstOrDefault(l => l.Field == c.Field);
+                        <tr>
+                            <td>
+                                <div><a asp-controller="Event" asp-action="Detail" asp-route-id="@e.Id">@row.ShortName.Get(ContentLanguage.Zh)</a></div>
+                                <code class="small">@e.IndicatorCode</code>
+                            </td>
+                            <td><code>@e.ReferencePeriod</code></td>
+                            <td class="text-nowrap">@fieldName</td>
+                            <td>
+                                <div class="font-monospace text-nowrap">@locked</div>
+                                @if (fieldLock is not null)
+                                {
+                                    <div class="small text-secondary">@fieldLock.LockedBy · <utc-time value="@fieldLock.LockedAt" format="yyyy-MM-dd HH:mm" /></div>
+                                    <div class="small text-secondary text-break">@fieldLock.Reason</div>
+                                }
+                            </td>
+                            <td>
+                                <div class="font-monospace text-nowrap">@collected</div>
+                                <div class="small text-secondary">
+                                    @(row.SourceName ?? $"#{c.SourceId}（已删除）")
+                                    @if (c.SnapshotId is { } snapshotId)
+                                    {
+                                        @:·
+                                        <a asp-area="Collect" asp-controller="Snapshot" asp-action="Detail" asp-route-id="@snapshotId" asp-permission="collect:snapshot:detail">快照 #@snapshotId</a>
+                                    }
+                                </div>
+                                <div class="small text-secondary">最近检测 <utc-time value="@c.LastDetectedAt" format="yyyy-MM-dd HH:mm" /></div>
+                            </td>
+                            <td class="text-nowrap"><utc-time value="@c.FirstDetectedAt" format="yyyy-MM-dd HH:mm" /></td>
+                            <td>
+                                @if (Model.Resolved)
+                                {
+                                    <div>@(c.Resolution is { } resolution ? CalendarDisplayNames.Get(resolution) : "")</div>
+                                    <div class="small text-secondary text-nowrap">@c.ResolvedBy · <utc-time value="@c.ResolvedAt" format="yyyy-MM-dd HH:mm" /></div>
+                                }
+                                else
+                                {
+                                    <div class="btn-list flex-nowrap">
+                                        <confirm-form asp-action="Keep" asp-route-id="@c.Id" asp-permission="calendar:conflict:keep"
+                                                      button-text="保持锁定" button-class="btn btn-sm"
+                                                      message="@($"保持 {e.IndicatorCode} {e.ReferencePeriod} 的{fieldName}为 {locked}？之后再采集到 {collected} 不再提示。")">
+                                            <input type="hidden" name="rowVersion" value="@e.RowVersion" />
+                                        </confirm-form>
+                                        @if (LockConflictRule.CanAdopt(c.Field))
+                                        {
+                                            <confirm-form asp-action="Adopt" asp-route-id="@c.Id" asp-permission="calendar:conflict:adopt"
+                                                          button-text="解锁并采用" button-class="btn btn-sm btn-outline-primary"
+                                                          message="@($"把 {e.IndicatorCode} {e.ReferencePeriod} 的{fieldName}改为采集值 {collected} 并解锁？之后的采集会照常更新这个字段。")">
+                                                <input type="hidden" name="rowVersion" value="@e.RowVersion" />
+                                            </confirm-form>
+                                        }
+                                    </div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <partial name="_Pager" model="Model.Result" />
+    }
+</div>

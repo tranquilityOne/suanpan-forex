@@ -152,6 +152,32 @@ public class CalendarReleaseIngestorTests(PostgresFixture postgres)
         Assert.Contains("27", conflicts[0].CollectedValue);
     }
 
+    /// <summary>日历设计 §3.9、§12 第 21 项：保持锁定后，这把锁下再采集到同一个值不再产生冲突；采集值变了才产生新的冲突</summary>
+    [Fact]
+    public async Task Ingest_KeptValueDoesNotConflictAgain()
+    {
+        await using var db = await postgres.CreateAppContextAsync();
+        var (ingestor, _, _, source) = await CreateAsync(db);
+        var code = await AddIndicatorAsync(db, source.Id);
+        var september = Event(code, "2026-09", CalendarEventStatus.Released, 25.5m);
+        EventLockRule.Lock(september.LockedFields, EventField.Actual, "editor", Now.AddHours(-1), "人工修正");
+        db.CalendarEvents.Add(september);
+        await db.SaveChangesAsync(Ct);
+
+        await ingestor.IngestAsync(Request(source.Id, [Record("2026-09", 26.0m)]), Ct);
+        var kept = await db.LockConflicts.SingleAsync(c => c.EventId == september.Id, Ct);
+        (kept.Status, kept.Resolution, kept.ResolvedAt) = (LockConflictStatus.Resolved, LockConflictResolution.KeepLocked, Now);
+        await db.SaveChangesAsync(Ct);
+        var same = await ingestor.IngestAsync(Request(source.Id, [Record("2026-09", 26.0m)]), Ct);
+        var pendingAfterSame = await db.LockConflicts.CountAsync(c => c.EventId == september.Id && c.Status == LockConflictStatus.Pending, Ct);
+        await ingestor.IngestAsync(Request(source.Id, [Record("2026-09", 27.0m)]), Ct);
+
+        Assert.Equal((1, 0), (same.Locked, pendingAfterSame));
+        var pending = await db.LockConflicts.AsNoTracking().SingleAsync(c => c.EventId == september.Id && c.Status == LockConflictStatus.Pending, Ct);
+        Assert.Contains("27", pending.CollectedValue);
+        Assert.Equal(25.5m, (await EventsAsync(db, code)).Single().Actual);
+    }
+
     /// <summary>ERR-EVT-002、BR-129：质量校验未通过时进入"待复核"，公布值不写入事件；高重要性事件的告警为"紧急"</summary>
     [Fact]
     public async Task Ingest_FailedValidationHoldsForReview()

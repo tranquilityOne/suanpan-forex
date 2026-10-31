@@ -26,10 +26,6 @@ public sealed class CalendarEventService(
 {
     private const string StaleError = "事件已被修改，请刷新页面后重试";
 
-    /// <summary>未公布的状态：公布值填为下一期的前值时，下一期只取这些状态的事件（与公布值入库相同）</summary>
-    private static readonly CalendarEventStatus[] UnreleasedStatuses =
-        [CalendarEventStatus.Scheduled, CalendarEventStatus.Watching, CalendarEventStatus.Delayed, CalendarEventStatus.Unconfirmed];
-
     public Task<PagedResult<EventRow>> QueryAsync(EventQuery query, CancellationToken ct = default)
     {
         var events = db.CalendarEvents.AsNoTracking();
@@ -221,7 +217,7 @@ public sealed class CalendarEventService(
                 ReleaseManually(calendarEvent, actor, reason!, actor.ChangedAt, messages);
             }
 
-            await FillNextPreviousAsync(calendarEvent, value, upper, actor, ct);
+            await NextEventPrevious.FillAsync(db, calendarEvent, value, upper, actor, ct);
             changed.Add(EventField.Actual);
         }
 
@@ -348,7 +344,7 @@ public sealed class CalendarEventService(
         calendarEvent.SourceSnapshotId = candidate.SnapshotId;
         calendarEvent.DetectedAt = candidate.DetectedAt;
         ReleaseManually(calendarEvent, actor, reason, candidate.DetectedAt, messages);
-        await FillNextPreviousAsync(calendarEvent, candidate.Value, candidate.ValueUpper, actor, ct);
+        await NextEventPrevious.FillAsync(db, calendarEvent, candidate.Value, candidate.ValueUpper, actor, ct);
         if (wasPublished && valueChanged)
         {
             messages.Add(new EventValueEditedEvent(id, calendarEvent.IndicatorCode, calendarEvent.ReferencePeriod, [EventField.Actual], actor.ChangedBy));
@@ -401,28 +397,6 @@ public sealed class CalendarEventService(
         calendarEvent.Status = CalendarEventStatus.Released;
         messages.Add(new EventReleasedEvent(
             calendarEvent.Id, calendarEvent.IndicatorCode, calendarEvent.ReferencePeriod, calendarEvent.ReleaseBatchId, detectedAt));
-    }
-
-    /// <summary>
-    /// 公布值填为下一个未公布事件的前值（BR-044，与公布值入库相同，日历设计 §5.3）；下一期的前值被锁定时不改
-    /// </summary>
-    private async Task FillNextPreviousAsync(CalendarEvent calendarEvent, decimal value, decimal? upper, EventChangeActor actor, CancellationToken ct)
-    {
-        var next = await db.CalendarEvents
-            .Where(e => e.IndicatorCode == calendarEvent.IndicatorCode && string.Compare(e.ReferencePeriod, calendarEvent.ReferencePeriod) > 0
-                && UnreleasedStatuses.Contains(e.Status))
-            .OrderBy(e => e.ReferencePeriod)
-            .FirstOrDefaultAsync(ct);
-        if (next is null || (next.Previous == value && next.PreviousUpper == upper) || EventLockRule.IsLocked(next.LockedFields, EventField.Previous))
-        {
-            return;
-        }
-
-        db.CalendarEventChanges.Add(EventChanges.Create(next.Id, EventChangeKind.Previous,
-            EventChanges.Number(next.Previous), EventChanges.Number(value), actor, $"按 {calendarEvent.ReferencePeriod} 的公布值填入"));
-        next.Previous = value;
-        next.PreviousUpper = upper;
-        next.RowVersion++;
     }
 
     /// <summary>保存人工修改：row_version 加一，并发修改时按 ERR-EVT-009 拒绝；提交后发消息，发布失败只记日志</summary>

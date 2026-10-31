@@ -17,8 +17,14 @@ public class LockConflict
     /// <summary>锁定值（jsonb），写法同 CalendarEventChange 的数值</summary>
     public string LockedValue { get; set; } = string.Empty;
 
+    /// <summary>锁定值的上限：区间型指标的公布值、前值</summary>
+    public decimal? LockedUpper { get; set; }
+
     /// <summary>采集值（jsonb）</summary>
     public string CollectedValue { get; set; } = string.Empty;
+
+    /// <summary>采集值的上限：区间型指标的公布值、前值；解锁并采用时连同上限写入</summary>
+    public decimal? CollectedUpper { get; set; }
 
     public long SourceId { get; set; }
 

@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.14 |
+| 版本 | v0.15 |
 | 日期 | 2026-10-31 |
 | 状态 | 已评审：FR-007、FR-008（2026-10-29，vivo.li：§12 第 1 ~ 9 项均按建议执行）；FR-009 ~ FR-011（2026-10-31，vivo.li：§12 第 10 ~ 23 项均按建议执行） |
 | 覆盖 | FR-007 日历排期采集、FR-008 公布值与前值采集、FR-009 日历事件管理、FR-010 预期值人工录入、FR-011 字段锁定与人工优先 |
@@ -125,6 +125,7 @@
 | `event_id` | `bigint` | 否 | |
 | `field` | `smallint` | 否 | 被锁定的字段（`EventField`，§3.3） |
 | `locked_value`、`collected_value` | `jsonb` | 否 | 锁定值和采集值，写法同 `cal_event_change` |
+| `locked_upper`、`collected_upper` | `numeric(18,6)` | 是 | 区间型指标的公布值、前值的上限（v0.15，FR-011.1 加：解锁并采用时要连同上限写入） |
 | `source_id` | `bigint` | 否 | |
 | `snapshot_id` | `bigint` | 是 | |
 | `run_id` | `bigint` | 否 | 最近一次产生冲突的运行记录 |
@@ -591,7 +592,7 @@ Suanpan.Core/Calendar/
 │                 LockConflictResolution、ForecastType、LocalTimeResolution（已有）
 ├─ Records/       ScheduleEntryRecord、ReleaseValueRecord（解析器的输出，§4.1、§5.1）
 └─ Rules/         LocalTimeRule（已有）、ReferencePeriodRule、CalendarEventStatusRule、EventLockRule、ScheduleRule（含 ScheduleDecision）、
-                  CalendarDisplayNames、ReleaseValueRule（含 ReleasePlan）、EventEditRule、EventValueRule、ForecastRule（v0.10）；入库的错误码只出现在日志、告警和待复核原因中，
+                  CalendarDisplayNames、ReleaseValueRule（含 ReleasePlan）、EventEditRule、EventValueRule、ForecastRule、LockConflictRule（v0.10）；入库的错误码只出现在日志、告警和待复核原因中，
                   不建 CalendarErrorCodes，后台页面需要时再加
 
 Suanpan.Shared/Messages/Calendar/   EventRescheduledEvent、EventReleasedEvent、EventHeldForReviewEvent
@@ -603,17 +604,17 @@ Suanpan.Data/
 Suanpan.Services/Calendar/
 ├─ Schedules/     CalendarScheduleIngestor、ScheduleApplier、Models/（ScheduleTarget、ScheduleIndicator、ScheduleApplyResult）
 ├─ Releases/      CalendarReleaseIngestor、IReleaseValidator（含 ReleaseCandidate、ReleaseValidation、PassThroughReleaseValidator）
-├─ Events/        EventChanges（变更历史的写法，FR-007.3）；ICalendarEventService、CalendarEventService（待确认事件的保留、取消；
-│                 FR-009 的查询、详情、人工修改、待复核、解锁）、Models/
+├─ Events/        EventChanges（变更历史的写法，FR-007.3）；NextEventPrevious（公布值填为下一期的前值，人工操作共用）；
+│                 ICalendarEventService、CalendarEventService（待确认事件的保留、取消；FR-009 的查询、详情、人工修改、待复核、解锁）、Models/
 ├─ Forecasts/     IForecastService、ForecastService、CalendarConfigKeys（FR-010）、Models/（ForecastQuery、ForecastInput）
 ├─ Jobs/          ForecastReminderJob（FR-010 的提醒，后端约定 §8.3：任务类放在 Services/{模块}/Jobs/）
-├─ Conflicts/     ILockConflictService、LockConflictService（FR-011）、Models/
+├─ Conflicts/     ILockConflictService、LockConflictService（FR-011）、Models/（LockConflictQuery、LockConflictRow）
 └─ Unmatched/     IUnmatchedEntryService、UnmatchedEntryService、Models/（UnmatchedEntryQuery、UnmatchedReleaseGroup 等）
 
 Suanpan.Crm/
 ├─ Areas/Calendar/    Controllers/（Event、Review、Forecast、Conflict、Unconfirmed、Unmatched）、Views/（Unconfirmed：Index、Cancel、_Schedule；
 │                     Unmatched：Index、Ignored、_Tabs、_SourceFilter；Event：Index、Detail、Edit、Cancel；Review：Index、Reject；
-│                     Forecast：Index、_Row、Correct；Shared/_EventSchedule 为排期的显示，事件和待确认事件共用，
+│                     Forecast：Index、_Row、Correct；Conflict：Index；Shared/_EventSchedule 为排期的显示，事件和待确认事件共用，
 │                     Shared/_EventSummary 为表单页上方的事件信息，Shared/_ForecastInputs、_ForecastNoteOptions 为预期值的输入框，
 │                     清单和事件详情共用）
 └─ Models/Calendar/   预期值的 ViewModel 放在 Forecasts/ 子文件夹
@@ -730,6 +731,15 @@ Suanpan.Crm/
 |---|---|---|---|
 | 锁定冲突 | `/Calendar/Conflict` | `calendar:conflict:index` | 待处理 / 已处理两个页签；列：指标、参考期、字段、锁定值（锁定人、时间、原因）、采集值（数据源、来源快照、最近检测时间）、首次检测时间；已处理的显示处理人、时间、处理方式 |
 | 保持锁定 / 解锁并采用 | POST | `calendar:conflict:keep` / `adopt` | 二次确认（§3.9） |
+
+实现说明（FR-011.1）：
+
+- 冲突表加 `locked_upper`、`collected_upper`（迁移 `AddLockConflictUpper`）：原来只记下限，区间型指标（如 `US.RATE`）解锁并采用前值时上限会丢，只有上限不同的冲突也看不出差别。入库写冲突时连同上限。
+- 保持锁定后不再产生冲突（§12 第 21 项）：入库遇到锁定字段、这个字段没有待处理的冲突时，用 `LockConflictRule.WasKept` 判断——当前这把锁加上之后（处理时间不早于锁定时间）有处理方式为保持锁定、采集值和上限都相同的冲突，就不再新建冲突，仍计入"因锁定跳过"。重新锁定之后以前的处理不再算数；已有待处理的冲突时照常更新它。
+- 列表（`QueryAsync`）：待处理的按最近检测时间倒序，已处理的按处理时间倒序，每页 20 条；锁定值、采集值按指标格式显示（区间型带上限），锁定信息取事件当前的 `locked_fields`（已处理的冲突字段可能已解锁，就不显示）；指标链接到事件详情，快照按 `collect:snapshot:detail` 显示链接。菜单图标 `lock-exclamation`。
+- 保持锁定（`KeepAsync`）：只改冲突，不改事件，也不写变更历史；比对事件的 `row_version`，冲突已处理时提示刷新。
+- 解锁并采用（`AdoptAsync`）：只适用于公布值、前值、前值修正（`LockConflictRule.CanAdopt`）。公布值：这个数据源当前的数值（`cal_event_value`）与采集值相同时取它的原始字符串、快照和检测时间，否则取冲突记下的快照和最近检测时间，来源数据源为冲突的数据源；与人工录入相同把公布值填为下一期的前值（`Events/NextEventPrevious`，人工修改、确认采集值共用）。前值连同上限写入。变更历史的原因记"解锁并采用采集值"；事件 `row_version` 加一，并发时按 ERR-EVT-009 拒绝；公布过的事件发出 `EventValueEditedEvent`。
+- 事件详情的锁定冲突卡片：锁定值、采集值带上限；有待处理的冲突时显示"去处理"（`calendar:conflict:index`）。
 
 ---
 
@@ -888,3 +898,4 @@ FR-007.4 与 FR-008.1 可以并行。ENG-009.1 的前置条件已满足：BLS �
 | v0.12 | 2026-10-31 | vivo.li / Claude | FR-009.1（JAN-94）实施：§8.1 目录（`Shared/_EventSchedule`）；§8.2 查询和详情已实现；§9.3 实现说明（`EventRow`、`EventDetail`、默认本周、数值格式、性能验证结果） |
 | v0.13 | 2026-10-31 | vivo.li / Claude | FR-009.2（JAN-95）实施：§6.3 `EventValueEditedEvent` 已登记；§8.2 `QueryReviewAsync` 的参数；§9.3 实现说明（修改数值的取舍、人工录入和确认采集值都填下一期的前值、并发、解锁和 `LockConflictResolution.Unlocked` 在本单实现、页面） |
 | v0.14 | 2026-10-31 | vivo.li / Claude | FR-010.1（JAN-96）实施：§3.8 提醒任务放在 `Services/Calendar/Jobs/`（后端约定 §8.3）；§8.1 目录；§8.2 `IForecastService` 增加 `GetRowAsync`、`GetNoteOptionsAsync`；§9.4 实现说明（清单范围、保存和更正的取舍、常用来源、HTMX 行内保存和定位下一条、事件详情中的表单、提醒的去重）；变更记录按版本排序 |
+| v0.15 | 2026-10-31 | vivo.li / Claude | FR-011.1（JAN-97）实施：§2.1 `cal_lock_conflict` 加 `locked_upper`、`collected_upper`；§8.1 目录（`LockConflictRule`、`Conflicts/`、`Events/NextEventPrevious`、`Conflict` 视图）；§9.5 实现说明（上限、保持锁定后不再产生冲突的判断、列表、两种处理） |

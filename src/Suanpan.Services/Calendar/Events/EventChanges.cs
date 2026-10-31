@@ -44,4 +44,26 @@ public static class EventChanges
 
     /// <summary>数值写成字符串，不经过浮点数，保留原有的小数位</summary>
     public static string? Number(decimal? value) => value is { } number ? JsonSerializer.Serialize(number.ToString(CultureInfo.InvariantCulture)) : null;
+
+    /// <summary>读回 <see cref="Number"/> 写的数值；为 null（JSON 的 null）或认不出时为空</summary>
+    public static decimal? ParseNumber(string? json)
+    {
+        if (json is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.ValueKind == JsonValueKind.String
+                && decimal.TryParse(document.RootElement.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var number)
+                    ? number
+                    : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }

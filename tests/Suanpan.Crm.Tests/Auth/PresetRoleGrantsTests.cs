@@ -68,18 +68,22 @@ public class PresetRoleGrantsTests
     /// <summary>
     /// 日历设计 §9.2、FR-007 的权限行：编辑处理待确认事件和未匹配条目；采集工程师、只读只能查看（JAN-91 验收第 3 条）。
     /// 日历事件的列表和详情、待复核全部角色都能看；修改数值、取消、解锁、处理待复核只给编辑（FR-009，日历设计 §9.2）。
-    /// 预期值的待录入清单全部角色都能看，编辑能在公布前录入，公布后的更正只给管理员（FR-010，BR-057）
+    /// 预期值的待录入清单全部角色都能看，编辑能在公布前录入，公布后的更正只给管理员（FR-010，BR-057）；
+    /// 锁定冲突全部角色都能看，只有编辑能处理（FR-011，ERR-AUTH-002）
     /// </summary>
     [Theory]
     [InlineData(RoleCodes.Editor,
         "calendar:event:index calendar:event:detail calendar:event:edit calendar:event:cancel calendar:event:unlock "
         + "calendar:review:index calendar:review:confirm calendar:review:reject calendar:forecast:index calendar:forecast:save "
+        + "calendar:conflict:index calendar:conflict:keep calendar:conflict:adopt "
         + "calendar:unconfirmed:index calendar:unconfirmed:keep calendar:unconfirmed:cancel "
         + "calendar:unmatched:index calendar:unmatched:ignore calendar:unmatched:restore calendar:unmatched:rematch")]
     [InlineData(RoleCodes.Engineer,
-        "calendar:event:index calendar:event:detail calendar:review:index calendar:forecast:index calendar:unconfirmed:index calendar:unmatched:index")]
+        "calendar:event:index calendar:event:detail calendar:review:index calendar:forecast:index calendar:conflict:index "
+        + "calendar:unconfirmed:index calendar:unmatched:index")]
     [InlineData(RoleCodes.Viewer,
-        "calendar:event:index calendar:event:detail calendar:review:index calendar:forecast:index calendar:unconfirmed:index calendar:unmatched:index")]
+        "calendar:event:index calendar:event:detail calendar:review:index calendar:forecast:index calendar:conflict:index "
+        + "calendar:unconfirmed:index calendar:unmatched:index")]
     public async Task CalendarGrantsMatchDesign(string roleCode, string expected)
     {
         await using var app = new CrmApp();

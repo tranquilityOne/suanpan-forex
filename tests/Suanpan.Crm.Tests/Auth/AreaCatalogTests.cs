@@ -71,6 +71,7 @@ public partial class AreaCatalogTests
             "calendar:event:index", "calendar:event:detail", "calendar:event:edit", "calendar:event:cancel", "calendar:event:unlock",
             "calendar:review:index", "calendar:review:confirm", "calendar:review:reject",
             "calendar:forecast:index", "calendar:forecast:save", "calendar:forecast:correct",
+            "calendar:conflict:index", "calendar:conflict:keep", "calendar:conflict:adopt",
             "calendar:unconfirmed:index", "calendar:unconfirmed:keep", "calendar:unconfirmed:cancel",
             "calendar:unmatched:index", "calendar:unmatched:ignore", "calendar:unmatched:restore", "calendar:unmatched:rematch",
         ];

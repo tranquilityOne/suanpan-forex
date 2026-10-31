@@ -196,7 +196,8 @@ public sealed class CalendarReleaseIngestor(
                 await UpsertValueAsync(latestEvent!, context, outbox, ct);
                 if (plan.ActualLockConflict)
                 {
-                    await RecordConflictAsync(latestEvent!, EventField.Actual, latestEvent!.Actual, plan.Latest.Value, context, ct);
+                    await RecordConflictAsync(
+                        latestEvent!, EventField.Actual, (latestEvent!.Actual, latestEvent.ActualUpper), (plan.Latest.Value, plan.Latest.Upper), context, ct);
                     counts.Locked++;
                 }
                 else
@@ -343,7 +344,7 @@ public sealed class CalendarReleaseIngestor(
 
         if (EventLockRule.IsLocked(calendarEvent.LockedFields, EventField.Previous))
         {
-            await RecordConflictAsync(calendarEvent, EventField.Previous, calendarEvent.Previous, value, context, ct);
+            await RecordConflictAsync(calendarEvent, EventField.Previous, (calendarEvent.Previous, calendarEvent.PreviousUpper), (value, upper), context, ct);
             return;
         }
 
@@ -364,7 +365,7 @@ public sealed class CalendarReleaseIngestor(
 
         if (EventLockRule.IsLocked(calendarEvent.LockedFields, EventField.PreviousRevised))
         {
-            await RecordConflictAsync(calendarEvent, EventField.PreviousRevised, calendarEvent.PreviousRevised, value, context, ct);
+            await RecordConflictAsync(calendarEvent, EventField.PreviousRevised, (calendarEvent.PreviousRevised, null), (value, null), context, ct);
             return;
         }
 
@@ -374,20 +375,33 @@ public sealed class CalendarReleaseIngestor(
         calendarEvent.RowVersion++;
     }
 
-    /// <summary>锁定冲突（BR-062）：同一事件同一字段只有一条待处理的冲突，再次冲突时更新采集值和最近时间</summary>
+    /// <summary>
+    /// 锁定冲突（BR-062）：同一事件同一字段只有一条待处理的冲突，再次冲突时更新采集值和最近时间；
+    /// 没有待处理的冲突、而这个采集值在当前这把锁下已被保持锁定过时，不再产生冲突（日历设计 §3.9）
+    /// </summary>
     private async Task RecordConflictAsync(
-        CalendarEvent calendarEvent, EventField field, decimal? lockedValue, decimal? collectedValue, LatestContext context, CancellationToken ct)
+        CalendarEvent calendarEvent, EventField field, (decimal? Value, decimal? Upper) locked, (decimal? Value, decimal? Upper) collected,
+        LatestContext context, CancellationToken ct)
     {
-        var conflict = await db.LockConflicts.FirstOrDefaultAsync(
-            c => c.EventId == calendarEvent.Id && c.Field == field && c.Status == LockConflictStatus.Pending, ct);
+        var collectedValue = EventChanges.Number(collected.Value) ?? "null";
+        var conflicts = await db.LockConflicts.Where(c => c.EventId == calendarEvent.Id && c.Field == field).ToListAsync(ct);
+        var conflict = conflicts.FirstOrDefault(c => c.Status == LockConflictStatus.Pending);
         if (conflict is null)
         {
+            var fieldLock = calendarEvent.LockedFields.First(l => l.Field == field);
+            if (LockConflictRule.WasKept(conflicts, fieldLock, collectedValue, collected.Upper))
+            {
+                return;
+            }
+
             conflict = new LockConflict { EventId = calendarEvent.Id, Field = field, FirstDetectedAt = context.Now };
             db.LockConflicts.Add(conflict);
         }
 
-        conflict.LockedValue = EventChanges.Number(lockedValue) ?? "null";
-        conflict.CollectedValue = EventChanges.Number(collectedValue) ?? "null";
+        conflict.LockedValue = EventChanges.Number(locked.Value) ?? "null";
+        conflict.LockedUpper = locked.Upper;
+        conflict.CollectedValue = collectedValue;
+        conflict.CollectedUpper = collected.Upper;
         conflict.SourceId = context.Request.SourceId;
         conflict.SnapshotId = context.SnapshotId;
         conflict.RunId = context.Request.RunId;

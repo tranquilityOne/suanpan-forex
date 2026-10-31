@@ -17,7 +17,9 @@ public class LockConflictConfiguration : IEntityTypeConfiguration<LockConflict>
         builder.Property(x => x.EventId).HasColumnName("event_id");
         builder.Property(x => x.Field).HasColumnName("field").HasConversion<short>();
         builder.Property(x => x.LockedValue).HasColumnName("locked_value").HasColumnType("jsonb");
+        builder.Property(x => x.LockedUpper).HasColumnName("locked_upper").HasPrecision(18, 6);
         builder.Property(x => x.CollectedValue).HasColumnName("collected_value").HasColumnType("jsonb");
+        builder.Property(x => x.CollectedUpper).HasColumnName("collected_upper").HasPrecision(18, 6);
         builder.Property(x => x.SourceId).HasColumnName("source_id");
         builder.Property(x => x.SnapshotId).HasColumnName("snapshot_id");
         builder.Property(x => x.RunId).HasColumnName("run_id");

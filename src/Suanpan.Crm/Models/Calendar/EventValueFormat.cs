@@ -5,6 +5,7 @@ using Suanpan.Core.Calendar.Rules;
 using Suanpan.Core.Common.Localization;
 using Suanpan.Core.Reference.Enums;
 using Suanpan.Core.Reference.Rules;
+using Suanpan.Services.Calendar.Events;
 
 namespace Suanpan.Crm.Models.Calendar;
 
@@ -30,18 +31,12 @@ public static class EventValueFormat
         };
     }
 
-    /// <summary>锁定冲突中的值与变更历史写法相同：按字段对应的变更种类解读</summary>
-    public static EventChangeKind KindOf(EventField field) => field switch
-    {
-        EventField.Actual => EventChangeKind.Actual,
-        EventField.Forecast => EventChangeKind.Forecast,
-        EventField.Previous => EventChangeKind.Previous,
-        EventField.PreviousRevised => EventChangeKind.PreviousRevised,
-        _ => EventChangeKind.Status,
-    };
-
     public static string Number(decimal value, short decimals)
         => Math.Round(value, decimals, MidpointRounding.AwayFromZero).ToString("F" + decimals, CultureInfo.InvariantCulture);
+
+    /// <summary>锁定冲突中的锁定值、采集值（写法同变更历史的数值，区间型另有上限）：按指标格式显示，为空时显示"空"</summary>
+    public static string ConflictValue(string json, decimal? upper, IndicatorUnit unit, short decimals)
+        => Format(EventChanges.ParseNumber(json), upper, unit, decimals) ?? "空";
 
     /// <summary>表单预填当前值时按指标小数位取整（库里是 numeric(18,6)，不然会显示成 29.000000）</summary>
     public static decimal? Round(decimal? value, short decimals)

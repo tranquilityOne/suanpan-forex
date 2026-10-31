@@ -396,6 +396,11 @@ namespace Suanpan.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<decimal?>("CollectedUpper")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("collected_upper");
+
                     b.Property<string>("CollectedValue")
                         .IsRequired()
                         .HasColumnType("jsonb")
@@ -416,6 +421,11 @@ namespace Suanpan.Data.Migrations
                     b.Property<DateTime>("LastDetectedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_detected_at");
+
+                    b.Property<decimal?>("LockedUpper")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)")
+                        .HasColumnName("locked_upper");
 
                     b.Property<string>("LockedValue")
                         .IsRequired()
