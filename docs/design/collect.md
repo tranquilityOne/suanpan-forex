@@ -2,11 +2,11 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.16 |
-| 日期 | 2026-10-29 |
-| 状态 | FR-001、FR-002 部分已评审（2026-10-23，vivo.li；§11 第 7 项的联系邮箱 2026-10-29 提供）；v0.11 新增的快照与重新解析（FR-004）已评审（2026-10-29，vivo.li：§11 第 14 ~ 20 项均按建议执行） |
-| 覆盖 | FR-001 数据源管理、FR-002 采集任务配置与调度、FR-004 原始快照与重新解析；盯盘（FR-003）只定接入位置 |
-| 依据 | data-hub PRD v1.0.0.22（FR-001、FR-002、FR-004、BR-001 ~ BR-012、BR-020 ~ BR-025、DEC-023、§8.1.2、§10.8、§13.1.2、DEC-012、DEC-016、DEC-017、DEC-020）；后端约定 v1.27（§1.2、§7、§8、§9、§12）；前端约定 v1.9；数据库变更约定；sys 设计（§6 权限、§7 操作日志）；基础数据设计（§2.1 指标与数据源的映射） |
+| 版本 | v0.18 |
+| 日期 | 2026-10-31 |
+| 状态 | FR-001、FR-002 部分已评审（2026-10-23，vivo.li；§11 第 7 项的联系邮箱 2026-10-29 提供）；v0.11 新增的快照与重新解析（FR-004）已评审（2026-10-29，vivo.li：§11 第 14 ~ 20 项均按建议执行）；v0.17 新增的盯盘（FR-003）已评审（2026-10-31，vivo.li：§11 第 21 ~ 33 项，第 22 项不作为设计问题，计划时长和补采间隔改为配置，其余按建议执行） |
+| 覆盖 | FR-001 数据源管理、FR-002 采集任务配置与调度、FR-003 公布时刻高频盯盘（v0.17）、FR-004 原始快照与重新解析 |
+| 依据 | data-hub PRD v1.0.0.26（FR-001 ~ FR-004、BR-001 ~ BR-025、BR-035、BR-129、NFR-001、NFR-004、DEC-023、§8.1.2、§10.8、§13.1.2、DEC-012、DEC-016、DEC-017、DEC-020）；后端约定 v1.27（§1.2、§7、§8、§9、§12）；前端约定 v1.9；数据库变更约定；sys 设计（§6 权限、§7 操作日志）；基础数据设计（§2.1 指标与数据源的映射） |
 
 > 本文只写"怎么实现"。需求、业务规则和验收标准以 PRD 为准，这里引用编号，不复述。
 > 实现偏离本文时，在同一个 PR 里更新本文。
@@ -22,11 +22,13 @@
 - 执行框架：Collector 接收指令后执行，包括并发控制、频率限制、超时、重试、User-Agent，以及适配器、解析器、入库三段的接口。
 - 运行记录：生成、查询、保留 90 天。
 - 快照与重新解析（FR-004）：响应先存快照再解析，按内容哈希去重，后台查看和下载，按任务重新解析，保留 180 天（§5.5、§5.6）。
+- 盯盘（FR-003，v0.17）：Collector 中的常驻服务，按日历事件在公布时刻前后高频请求，复用本文的适配器、频率限制、快照和入库；事件的"盯盘中""延迟"状态经日历服务修改；延迟后的补采；盯盘状态页面（§3.5、§5.7、§8.1）。
 
 **不包含**：
 - 具体数据源的适配器和解析器：ENG-009（M2 先接 BLS）。M1 只交付框架，用测试中的假适配器验证（§11 第 6 项）。
 - 各目标数据类型的入库：日历排期、公布值由日历模块（FR-007、FR-008，[日历设计](calendar.md)）实现，央行利率、参考汇率由市场数据模块实现，新闻由新闻模块实现。本文只定入库接口。
-- 盯盘（FR-003，M2）：盯盘是 Collector 中的常驻服务，复用本文的执行框架和频率限制，运行记录的触发方式记为"盯盘"。
+- 盯盘时效报表（G-002）：随运营看板 FR-027；本文只保证检测时间可用（BR-019）。
+- 盯盘总开关的正式形态（二次确认、原因、5 秒内生效，BR-126）：随发布控制 FR-024（M4），M2 先用系统配置（§11 第 26 项）。
 - 数据源的"异常"状态和告警（FR-025，M2）：本文只发出运行失败的日志，告警规则由 FR-025 实现。
 - 新闻源专有的字段（BR-099：源类别、语言、是否免审）：随新闻模块（M5）加列。
 - 指标与数据源的映射（JAN-79）：表结构已在基础数据设计 §2.1 定好，数据源表建好后由 JAN-79 实现。
@@ -36,6 +38,7 @@
 | FR-001 数据源管理（BR-001 ~ BR-006） | §2.1、§3.1、§5.1、§8 |
 | FR-002 采集任务配置与调度（BR-007 ~ BR-012） | §2.1、§3.2 ~ §3.4、§4、§5、§8 |
 | FR-004 原始快照与重新解析（BR-020 ~ BR-025） | §2.1、§4.3、§4.6、§5.5、§5.6、§8 |
+| FR-003 公布时刻高频盯盘（BR-013 ~ BR-019） | §2.1、§2.2、§3.5、§5.7、§8、§9、§10 |
 
 ---
 
@@ -65,6 +68,8 @@
 | `robots_result` | `smallint` | 否 | 允许 / 不涉及（API）/ 不允许（BR-002） |
 | `remark` | `varchar(500)` | 是 | 备注 |
 | `is_enabled` | `boolean` | 否 | 新建时为否（FR-001 验收第 1 条）；"异常"状态另由 FR-025 加列（§11 第 2 项） |
+| `watch_interval_seconds` | `smallint` | 是 | 盯盘的请求间隔，1 ~ 60；为空时用系统配置的默认值（BR-014，§5.7）；v0.17 新增 |
+| `daily_limit` | `integer` | 是 | 每日请求上限，按 UTC 自然日计，盯盘和普通采集共用；为空表示不限（BR-003，§4.3、§11 第 21 项）；v0.17 新增 |
 
 **`col_task`（采集任务）** —— 带审计四件套
 
@@ -89,14 +94,14 @@
 | `task_id` | `bigint` | 否 | |
 | `source_id` | `bigint` | 否 | 冗余，用于按数据源筛选（FR-002 验收第 5 条） |
 | `trigger` | `smallint` | 否 | 定时 / 盯盘 / 手动 / 重新解析（PRD §8.1.2） |
-| `scheduled_for` | `timestamptz` | 是 | 定时触发对应的 cron 时间点；其他触发方式为空 |
+| `scheduled_for` | `timestamptz` | 是 | 定时触发对应的 cron 时间点；盯盘为这一路事件的排期时间（v0.17，§5.7）；其他为空 |
 | `triggered_by` | `varchar(64)` | 是 | 手动触发的操作人登录名（FR-002 主流程第 5 步） |
 | `status` | `smallint` | 否 | 排队 / 运行中 / 成功 / 部分成功 / 失败 / 跳过（§3.3） |
 | `queued_at` | `timestamptz` | 否 | 创建时间 |
 | `started_at`、`ended_at` | `timestamptz` | 是 | |
 | `attempt_count` | `smallint` | 否 | 已发起的请求次数（含重试） |
 | `next_attempt_at` | `timestamptz` | 是 | 等待重试时的下一次时间 |
-| `attempts` | `jsonb` | 否 | 每次请求的记录：序号、开始时间、耗时、HTTP 状态码、错误、因频率上限等待的毫秒数（FR-002 验收第 3 条）；键名与 `CollectAttempt` 的属性名相同。新建时由程序写入 `[]`，数据库不设默认值 |
+| `attempts` | `jsonb` | 否 | 每次请求的记录：序号、开始时间、耗时、HTTP 状态码、错误、因频率上限等待的毫秒数（FR-002 验收第 3 条），盯盘另记内容是否变化（`Changed`，v0.17）；键名与 `CollectAttempt` 的属性名相同。新建时由程序写入 `[]`，数据库不设默认值 |
 | `inserted_count`、`updated_count`、`skipped_count` | `integer` | 否 | 入库结果，新建时为 0 |
 | `error_code` | `varchar(32)` | 是 | 失败或跳过的错误码（§9） |
 | `error_message` | `varchar(2000)` | 是 | 面向工程师的原因 |
@@ -105,6 +110,13 @@
 | `parse_output` | `jsonb` | 是 | 解析器输出的记录：`{"total": 总条数, "records": [前 1000 条]}`（记录按 camelCase 序列化，序列化失败时不存），快照详情中"当时的解析结果"用（FR-004 主流程第 2 步）；没有解析到这一步时为空；FR-004.1 加列 |
 | `reparse` | `jsonb` | 是 | 重新解析的参数：`{"ParserKey": 解析器, "SnapshotIds": [快照 id]}`（§5.6），键名与 `CollectRunReparse` 的属性名相同；其他触发方式为空；FR-004.2 加列 |
 | `heartbeat_at` | `timestamptz` | 是 | 重新解析处理中定期写入，执行中断的回收据此判断（§5.6）；FR-004.2 加列 |
+
+**`ref_indicator_source`（指标与数据源的映射，基础数据设计 §2.1）** —— v0.17 为盯盘加两列，只对"公布值"用途有效（§11 第 25 项）：
+
+| 列 | 类型 | 可空 | 说明 |
+|---|---|---|---|
+| `watch_lead_seconds` | `smallint` | 是 | 盯盘提前秒数，10 ~ 600；为空时用系统配置的默认值（BR-013） |
+| `watch_window_minutes` | `smallint` | 是 | 盯盘窗口（排期后多少分钟结束），5 ~ 120；为空时用默认值（BR-013） |
 
 **`col_snapshot`（快照）** —— 不带审计四件套（系统写入），保留 180 天，被入库数据引用的保留 1 年（BR-022，§4.6）；v0.11 新增
 
@@ -143,7 +155,7 @@
 | | `ix_col_source_economy_code` | 删除经济体前检查引用（BR-028，基础数据设计 §3.5） |
 | `col_task` | `ux_col_task_name` | 名称唯一 |
 | | `ix_col_task_source_id` | 删除数据源前检查引用；数据源停用时找到它的任务 |
-| `col_run` | `ux_col_run_task_id_scheduled_for`（条件：`scheduled_for IS NOT NULL`） | 同一任务同一 cron 时间点只创建一次运行，调度分发重复执行时不会重复下发 |
+| `col_run` | `ux_col_run_task_id_trigger_scheduled_for`（条件：`scheduled_for IS NOT NULL`） | 同一任务同一 cron 时间点只创建一次定时运行，调度分发重复执行时不会重复下发；同一任务同一排期时间只有一路盯盘（v0.17 由 `ux_col_run_task_id_scheduled_for` 改为带上触发方式，定时和盯盘的时间点相同时互不冲突） |
 | | `ix_col_run_task_id_queued_at` | 按任务查看运行记录；删除任务前检查 |
 | | `ix_col_run_source_id_queued_at` | 按数据源筛选 |
 | | `ix_col_run_queued_at` | 按时间筛选；清理过期记录 |
@@ -216,6 +228,16 @@ stateDiagram-v2
 - 429 和 403 在盯盘中另有"间隔加倍退避"（ERR-COL-005），由 FR-003 实现。
 - **实现**：`RetryPolicy.ParseDelays(配置值)` 解析间隔，间隔的个数就是最多重试的次数，空值表示不重试，格式不对返回 null（调用方改用默认值 `RetryPolicy.DefaultDelaySeconds`）；`IsRetryable(HTTP 状态码)`，超时和网络错误传 null；`DelayAfter(第几次请求, 间隔)` 返回下一次请求前的等待时间，次数用完返回 null。
 
+### 3.5 盯盘（`WatchRule`，FR-003，v0.17）
+
+- **范围**（BR-018）：`IsEligible(重要性, 是否包括中, 时间精度, 状态)`：高重要性（配置打开时包括中）、精确到分钟、待公布。
+- **时间参数**（BR-013、BR-014）：`Merge(各事件的提前秒数和窗口, 数据源的间隔, 频率上限, 默认值)` 返回 `WatchTiming(提前, 窗口, 间隔)`：提前、窗口取最大；间隔取数据源的配置或默认值，不小于 1 秒，也不小于频率上限换算的最小间隔（每秒 n 次为 1/n 秒，每分 n 次为 60/n 秒）。
+- **时间点**：`Window(排期时间, timing)` 返回开始（T − 提前）、延迟判定（T + 10 分钟，BR-017 固定）、结束（T + 窗口）。
+- **退避**（ERR-COL-005）：`NextInterval(当前间隔, 原间隔, 状态码)`：429、403 加倍，最多 60 秒；成功时恢复原间隔；其他失败不变。
+- **拿到值**：`IsDone(事件)`：已公布、待复核，或公布值不为空。
+- **计划时长**：`PlanMinutes(配置值, 最大提前秒数)`：取配置值，不短于最大提前秒数换算的分钟数加 1，保证到开始时间前已经计划好（§11 第 33 项）。
+- **补采**（BR-017）：`BackfillInterval(延迟的时间, 现在, 配置)`：延迟后的前若干小时用快的间隔，之后用慢的间隔（§10 的三个配置，§11 第 28 项）；`NeedsBackfill(上一次运行的时间, 间隔, 现在)`。
+
 ---
 
 ## 4. 调度与执行
@@ -270,6 +292,7 @@ Collector 的消息处理器 `CollectRunCommandHandler`（`Suanpan.Collector/Han
 3. **前置检查**：数据源必须是启用状态；任务也必须启用，手动触发的除外（§4.4）。不满足时记为"跳过"（数据源或任务已停用）。每次重试前重新检查，满足"停用后 1 分钟内不再发起新请求"（FR-001 验收第 4 条）。
 4. **请求**：
    - 频率限制（BR-003，ERR-COL-003）：每次请求前向 `IRateLimiter` 申请配额，键为 `collect:source:{sourceId}`，窗口为 1 秒或 1 分钟，按数据源的单位换算。拿不到配额就等到下一个窗口再申请，等待的时长记进本次请求的记录，运行记录页面显示"已延后 N 秒"。所有任务和盯盘共用这一个键，合计不超过上限。
+   - 每日上限（BR-003，v0.18）：数据源设了每日上限时，每次请求前另向键 `collect:source:{sourceId}:day:{UTC 日期}` 计数（25 小时过期）。用到 90% 时告警一次（重要，Redis 键防重复）；用完后不发请求，运行记为失败、不重试（ERR-COL-010），盯盘停止请求。计数与频率配额一样放在 `FetchContext` 中，适配器的每次请求都计入。
    - 发请求：用适配器（§5.1）。HttpClient 由 Infrastructure 统一配置 User-Agent（BR-005），超时取数据源的 `timeout_seconds`。
    - 保存快照（FR-004，§5.5）：每个响应（包括非 2xx 的）都先保存为快照，再判断成败、交给解析器（硬性规则 14）。快照写入失败时本次运行记为"失败"并告警（ERR-COL-007），不解析、不重试。
 5. **解析**：调用解析器（纯函数，§5.2），解析器输出的记录存入 `parse_output`。解析失败记为"失败"（ERR-PARSE-001），不入库；内容为空或被判定为拦截页时，这次请求的快照标记为无效，记为"失败"（ERR-PARSE-003）。
@@ -282,7 +305,7 @@ Collector 的消息处理器 `CollectRunCommandHandler`（`Suanpan.Collector/Han
 - 不在等待重试，最近一次请求开始已超过"数据源超时 + 5 分钟"（执行到一半进程退出）。
 - 重新解析（§5.6）：心跳时间（没有时取开始时间）超过 5 分钟没有更新。
 
-盯盘服务重启后的恢复（ERR-COL-006）由 FR-003 处理。
+盯盘服务重启后的恢复（ERR-COL-006）见 §5.7：盯盘的运行记录由持有租约的盯盘服务接着写，执行中断的回收不处理触发方式为"盯盘"且 `scheduled_for` 不为空的记录（延迟后的补采是普通运行记录，照常回收）。
 
 **实现**（`Suanpan.Collector/Execution/CollectExecutor`、`StaleRunRecovery`）：
 - 一条 `CollectRunCommand` 对应一次请求（含适配器的多页请求）。第 n 次的指令要求运行记录"运行中"且已请求 n-1 次（第 1 次要求"排队"），否则是重复投递，直接忽略。
@@ -418,6 +441,67 @@ sequenceDiagram
 - 执行（`ReparseExecutor`）的细节：一组里有非 2xx 的响应时不解析（正常采集也不解析），计为失败的组；内容已被清理的组同样计为失败；解析器判定为拦截页时把这组快照标记为无效，计入无效；入库失败时清空 DbContext 的跟踪再改运行记录。缺失项、入库失败的条数与正常采集一样记为部分成功。`parse_output` 汇总各组的输出（最多 1000 条）。选中的快照都已被清理时记为失败。
 - 后台：快照列表选定任务后，每行有勾选框，表头上方有"重新解析勾选的快照"和"重新解析全部筛选结果（共 N 个）"，都以 GET 打开表单页 `/Collect/Snapshot/Reparse`（范围放在查询串中，勾选的最多一页）；表单页显示任务、快照数，选择解析器（只列同一适配器、目标数据类型相同的），二次确认提示快照数，POST 到同一地址。GET 和 POST 是同一个 action，只有一个权限码 `collect:snapshot:reparse`。
 
+### 5.7 盯盘（FR-003，v0.17 新增）
+
+```mermaid
+sequenceDiagram
+    participant W as Collector 盯盘服务（持有租约的实例）
+    participant DB as PostgreSQL
+    participant S as 官方数据源
+    participant MQ as RabbitMQ
+    loop 每分钟
+        W->>DB: 盯盘计划：未来 N 分钟内要盯的事件，按数据源、任务、排期时间合并
+    end
+    W->>DB: T − 提前秒数：创建运行记录（触发方式"盯盘"），事件改为"盯盘中"
+    loop 每个间隔，直到全部拿到值或窗口结束
+        W->>S: 请求（频率限制、超时、User-Agent 与普通采集相同）
+        W->>DB: 记请求；内容有变化时存快照
+        W->>W: 内容有变化 → 解析 → 公布值入库（校验、锁定、快讯消息与 FR-008 相同）
+        W->>DB: 拿到值的事件退出本路
+    end
+    W->>DB: T+10 分钟仍无值的改为"延迟"并告警；窗口结束时运行记录结束
+    loop 延迟的事件，先每 5 分钟、24 小时后每 60 分钟（可配置）
+        W->>MQ: 补采（普通运行记录，触发方式"盯盘"，按 §4.3 执行）
+    end
+```
+
+**范围**（PRD FR-003 需求描述、BR-018）：
+- 指标启用，重要性为"高"（系统配置 `collect:watch_include_medium` 为是时也包括"中"，§11 第 32 项）；
+- 事件状态为"待公布"（服务重启后还包括仍在窗口内的"盯盘中"），时间精度为"精确到分钟"（仅日期、待定的不盯，按普通任务补采，BR-018）；
+- 指标有"公布值"用途的映射，取优先级最高（数字最小）、已启用的数据源（§11 第 24 项）；
+- 这个数据源有已启用的"公布值"采集任务，解析器与映射相同，cron 可以为空（§11 第 23 项）。
+
+**盯盘计划**（`IWatchPlanService.GetPlanAsync(从, 到)`，`Services/Collect/Watch/`；Collector 和后台的盯盘状态页共用）：
+- 符合范围的事件按"数据源 + 采集任务 + 排期时间"合并为一路（BR-014：同一份报告的非农、失业率、平均时薪只发一路请求，PRD 验收第 2 条）。
+- 每一路的时间参数由 `WatchRule.Merge` 算出（§3.5）：提前秒数、窗口分钟取各事件中最大的；请求间隔取数据源的配置，没有时用全局默认，不小于 1 秒，也不小于数据源频率上限换算出的最小间隔（BR-014，如上限 1 次/分时为 60 秒，PRD 验收第 5 条）。
+- 不满足条件（没有公布值映射、数据源停用、没有可用的公布值任务）的高重要性事件也列出来，带"不能盯盘"的原因：Collector 计划时告警一次（重要，Redis 键 `collect:watch:unready:{eventId}`，24 小时过期），盯盘状态页提前显示，不要到公布时刻才发现配置缺失。
+- 盯盘总开关 `collect:watch_enabled`（§11 第 26 项）关闭时不新建盯盘，进行中的停止请求。
+
+**单实例**（DEC-017、RISK-003）：
+- Collector 的 `WatchService`（BackgroundService）先取得 Redis 租约 `collect:watch`（15 秒过期，每 5 秒续期），只有持有租约的实例盯盘；续期失败时停止全部盯盘，重新等待租约。分布式锁目前不能续期，Infrastructure 增加续期（Lua 比对持有者后 `PEXPIRE`）。
+- 取得租约后立即计划一次，之后每分钟一次，每次看未来 N 分钟（系统配置 `collect:watch_plan_minutes`，默认 10，不短于最大提前秒数加 1 分钟，PRD FR-003 主流程第 1 步）。服务重启（ERR-COL-006）：旧进程的租约最多 15 秒后过期，新进程取得后立即计划，仍在窗口内的盯盘继续进行（§11 第 31 项）；窗口已经结束的盯盘运行记录按第 9 步收尾（还在"盯盘中"的事件改为延迟），错误信息注明"盯盘服务中断"。
+
+**一路盯盘的执行**（`WatchSession`，`Suanpan.Collector/Watch/`）：
+1. **开始**：在 T − 提前秒数（PRD 验收第 1 条，±5 秒）创建运行记录：任务为公布值任务，触发方式"盯盘"，直接为"运行中"，`scheduled_for` 记排期时间（同一任务同一排期时间只有一条，§2.2）；各事件经日历服务改为"盯盘中"，写状态历史。这一路已有运行记录（服务重启）时接着写，请求记录中加一条"盯盘服务重启后恢复"。
+2. **请求**：每个间隔一次，用公布值任务的参数经适配器发出，与普通采集一样经过频率限制（键 `collect:source:{id}`，盯盘和普通采集共用配额，BR-003）、超时和 User-Agent。每次请求追加到运行记录的请求记录（序号、开始时间、耗时、状态码、错误、延后、内容是否变化），同时写心跳（§11 第 29 项）。
+3. **只处理有变化的内容**（BR-015、BR-016）：快照用 `skipUnchanged` 保存；这次请求的响应都没变化时不解析。有变化时解析整次请求的响应，没变化的响应在入库请求中用上一个相同内容的快照 id：`SaveAsync` 在 `skipUnchanged` 时返回上一个快照的 id，不再返回空。
+4. **入库**：与普通采集相同，交给公布值入库服务（质量校验 FR-026、字段锁定 FR-011、`EventReleasedEvent` 触发快讯 FR-014）；条数累加到运行记录。
+5. **拿到值**：入库后查这一路的事件，状态为已公布、待复核或公布值不为空的退出本路（PRD 验收第 3 条）；同一份报告中还没拿到的继续（ERR-PARSE-002）。盯盘期间编辑人工录入、取消的事件同样退出。
+6. **延迟**（BR-017，ERR-EVT-001）：T+10 分钟仍"盯盘中"的事件改为"延迟"并告警：高重要性为"紧急"，中为"重要"（BR-129，PRD 验收第 4 条）；本路继续请求到窗口结束。窗口短于 10 分钟时，窗口结束时改为延迟。
+7. **被限流**（ERR-COL-005）：429、403 时间隔加倍，最多 60 秒；本路第一次被限流时告警（重要，对象为数据源）；之后成功一次恢复原间隔。其他失败（超时、5xx、解析失败、快照无效）只记在请求记录中，按原间隔继续，不重试、不退避。
+8. **改期**：排期入库把"盯盘中"事件的排期改到别的时间时（盯盘中的事件只改排期，日历设计 §3.4），本路在下一次请求前发现，事件退出本路并改回"待公布"，原因"官方改期"（§11 第 27 项，需补 PRD 状态机）。
+9. **结束**：全部拿到值、窗口结束、总开关关闭或数据源停用时结束运行记录：全部拿到值为"成功"；部分拿到为"部分成功"，错误信息列出没拿到的事件；一个都没有为"失败"，错误码为 ERR-EVT-001（官方延迟）或最后一次请求的错误。
+
+**延迟后的补采**（BR-017）：盯盘服务每分钟找"延迟"、精确到分钟的事件，按公布值任务合并；这个任务距上一次运行超过补采间隔、且没有排队或运行中的记录时，创建一条普通运行记录（触发方式"盯盘"，`scheduled_for` 为空），经 `CollectRunCommand` 按 §4.3 执行（有重试）。补采间隔分两段：延迟后 `collect:watch_backfill_hours`（默认 24）小时内为 `collect:watch_backfill_minutes`（默认 5）分钟，之后为 `collect:watch_backfill_slow_minutes`（默认 60）分钟；转为慢间隔时告警一次（重要，BR-129）。同一任务下有多个延迟事件时取最快的间隔。拿到值后事件改为已公布或待复核，补采自然停止；编辑取消事件也会停止。配置修改后下一分钟生效。
+
+**时延**（BR-019）：入库服务写的检测时间减去排期时间即入库时延；盯盘状态页显示最近结束的盯盘中各事件的时延；"盯盘时效报表"（G-002）随运营看板 FR-027。
+
+**页面**：盯盘状态，见 §8.1。
+
+**已知风险**（§11 第 22 项）：BLS 官网对 API 的说明中有一条 2013 年的补充，称公布后一天 API 才有数据。若属实，BLS 的事件每次都会在 T+10 分钟变为延迟并告警。11 月 6 日非农公布后实测一次（ENG-009，JAN-14）；需要时把另一个数据源（如 BLS 新闻稿网页）设为主源，盯盘不用改。
+
+**时间与测试**：盯盘的等待一律经 `TimeProvider`（`Task.Delay(间隔, timeProvider)`、`PeriodicTimer`），集成测试换成可推进的假时钟，不真的等待（后端约定 §13.4）。PRD 验收第 6 条的回放测试见 §12。
+
 ---
 
 ## 6. 与其他模块的关系
@@ -425,7 +509,9 @@ sequenceDiagram
 | 模块 | 关系 |
 |---|---|
 | 基础数据（Reference） | 数据源可选所属经济体；指标与数据源的映射（`ref_indicator_source`）引用数据源（JAN-79），删除数据源时要检查这一引用 |
-| 日历、市场数据、新闻 | 实现各自目标数据类型的入库服务（§5.3），入库时记下来源快照并标记为被引用（§5.5）；盯盘（FR-003）按日历事件发起"公布值"类采集；日历的设计见 [calendar.md](calendar.md) |
+| 日历、市场数据、新闻 | 实现各自目标数据类型的入库服务（§5.3），入库时记下来源快照并标记为被引用（§5.5）；日历的设计见 [calendar.md](calendar.md) |
+| 日历（盯盘） | 盯盘读日历事件做计划；事件改为"盯盘中""延迟"、改期后退回"待公布"经日历模块的 `ICalendarWatchService`（`Services/Calendar/Watch/`），写状态历史（操作者为采集、带运行记录），延迟的告警也在那里发；实施时同步日历设计 §3.2 |
+| 基础数据（盯盘） | 盯盘参数放在"公布值"映射上（§2.1），指标数据源页面加两个输入框；实施时同步基础数据设计 |
 | 运维（Ops） | 运行失败、数据源异常的告警和看板（FR-025、FR-027）读取运行记录；数据源的"异常"状态由 FR-025 判定 |
 | 系统（Sys） | 凭据加密用 `ISecretProtector`；系统配置用 `IConfigService`；操作日志自动记录写操作 |
 
@@ -440,7 +526,7 @@ Suanpan.Core/Collect/
 ├─ Entities/      DataSource、CollectTask、CollectRun、Snapshot、SnapshotContent
 ├─ Enums/         DataSourceType、RateLimitUnit、ComplianceClass、RobotsResult、CollectTargetType、CollectRunTrigger、CollectRunStatus
 ├─ Parsers/       ParserCatalog、ParserDescriptor
-└─ Rules/         DataSourceRule、CollectTaskRule、CollectRunStatusRule、RetryPolicy、ReparseRule、CollectDisplayNames（枚举的中文显示名）、CollectErrorCodes
+└─ Rules/         DataSourceRule、CollectTaskRule、CollectRunStatusRule、RetryPolicy、ReparseRule、WatchRule（v0.17）、CollectDisplayNames（枚举的中文显示名）、CollectErrorCodes
 
 Suanpan.Shared/Messages/Collect/   CollectRunCommand、ReparseCommand
 
@@ -454,6 +540,7 @@ Suanpan.Services/Collect/
 ├─ Runs/          ICollectRunService、CollectRunService（含发起重新解析）、CollectConfigKeys（§10 的系统配置）、Models/（含 ReparseSelection）
 ├─ Snapshots/     ISnapshotService、SnapshotService、SnapshotQueries（筛选）、ISnapshotContentStore、PostgresSnapshotContentStore、Models/
 ├─ Jobs/          CollectDispatchJob、CollectRunCleanupJob、CollectSnapshotCleanupJob
+├─ Watch/         IWatchPlanService、WatchPlanService（盯盘计划，Collector 和盯盘状态页共用）、Models/（WatchGroup、WatchEventItem、WatchTiming）（v0.17）
 └─ Ingest/        ICollectIngestor（§5.3 的入库接口，各模块实现）
 
 Suanpan.Job/
@@ -463,10 +550,11 @@ Suanpan.Collector/
 ├─ Execution/     CollectExecutor（§4.3 的步骤）、ReparseExecutor（§5.6）、CollectRunWriter（改运行记录的公共写法）、ICollectAdapter、FetchContext、FetchResult、IParser、
 │                 InvalidSnapshotException、StaleRunRecovery、CollectorServiceCollectionExtensions（AddSuanpanCollectors）
 ├─ Handlers/      CollectRunCommandHandler、ReparseCommandHandler
+├─ Watch/         WatchService（租约、每分钟计划、延迟后的补采）、WatchSession（一路盯盘）（v0.17）
 └─ Sources/       各数据源的适配器和解析器，如 US/Bls/：BlsWebAdapter、BlsScheduleParser（官网日程），BlsApiAdapter、BlsReleaseParser（API），BlsParameters（任务参数）、BlsSeriesSpec（外部标识）
 
 Suanpan.Crm/
-├─ Areas/Collect/     Controllers/（Source、Task、Run、Snapshot）、Views/（Shared/_TriggerButton 为"立即执行"按钮，任务列表和运行详情共用）
+├─ Areas/Collect/     Controllers/（Source、Task、Run、Snapshot、Watch）、Views/（Shared/_TriggerButton 为"立即执行"按钮，任务列表和运行详情共用）
 └─ Models/Collect/
 ```
 
@@ -479,6 +567,8 @@ Suanpan.Crm/
 | `IDataSourceService` | `GetListAsync`、`GetAsync(id)`、`GetOptionsAsync`、`CreateAsync`、`UpdateAsync(id, input)`、`SetEnabledAsync`、`DeleteAsync`、`TestAsync(id)` | 数据源不多，列表不分页；`TestAsync` 返回状态码、耗时、前 500 个字符的响应片段 |
 | `ICollectTaskService` | `QueryAsync`、`GetAsync(id)`、`GetAllAsync`、`CreateAsync`、`UpdateAsync(id, input)`、`SetEnabledAsync`、`DeleteAsync`、`PreviewSchedule(cron)` | 列表带最近一次运行的状态和下次执行时间；`GetAllAsync` 供运行记录的筛选下拉框；`PreviewSchedule` 返回下 3 次执行时间（UTC，页面用 `<utc-time>` 按操作者时区显示） |
 | `ISnapshotService` | `SaveAsync(SnapshotBatch, skipUnchanged)`、`MarkInvalidAsync(ids, 原因)`、`MarkReferencedAsync(ids)`、`QueryAsync(SnapshotQuery)`、`GetAsync(id)` | §5.5；`SnapshotQuery` 按数据源、任务、运行记录、时间、运行状态、是否有效筛选，分页；`GetAsync` 返回快照、原始内容（已清理时为空）和所属运行记录（已清理时为空）。发起重新解析在 `ICollectRunService`（FR-004.2 实施时调整） |
+| `IWatchPlanService` | `GetPlanAsync(从, 到)`、`GetRecentAsync(从)` | §5.7；计划按"数据源 + 任务 + 排期时间"分路，带时间参数和不能盯盘的原因；`GetRecentAsync` 给盯盘状态页列出最近结束的盯盘和各事件的时延（v0.17） |
+| `ICalendarWatchService`（日历模块） | `StartAsync(事件 id, 运行记录 id)`、`DelayAsync(事件 id, 运行记录 id)`、`ReturnToScheduledAsync(事件 id, 运行记录 id)`、`GetProgressAsync(事件 id)` | §5.7；状态按 `CalendarEventStatusRule` 检查，写状态历史；`DelayAsync` 按重要性告警（v0.17） |
 | `ICollectRunService` | `QueryAsync(CollectRunQuery)`、`GetAsync(id)`、`EnqueueAsync(taskId, trigger, scheduledFor, triggeredBy)`、`TriggerAsync(taskId, triggeredBy, anyTargetType)` | `EnqueueAsync` 创建运行记录并发布消息，Job 和 Crm 共用，返回 `EnqueueResult`（运行记录 id；`Published` 为 false 表示已创建但发布失败）；`TriggerAsync` 是后台的"立即执行"，`anyTargetType` 为 false 时只能触发日历排期、公布值类任务（§8.2）；`TryPublishAsync(runId)` 发布第 1 次请求的指令，调度分发重新下发时也用；`CollectRunQuery` 按任务、数据源、状态、触发方式、时间筛选，分页。`GetAsync` 带这次运行的快照（运行详情列出）。`TryPublishAsync(runId, 触发方式)` 按触发方式发 `CollectRunCommand` 或 `ReparseCommand`；`CountForReparseAsync(ReparseSelection)`、`ReparseAsync(ReparseSelection, parserKey, triggeredBy)` 见 §5.6 |
 
 ### 7.3 消息
@@ -516,7 +606,11 @@ Suanpan.Crm/
 | 下载快照 | `/Collect/Snapshot/Download/{id}` | `collect:snapshot:download` | 原始内容，按附件下载（§5.5） |
 | 重新解析 | POST | `collect:snapshot:reparse` | 选择解析器，二次确认（提示快照数）；成功后跳到运行详情（§5.6） |
 
-菜单排序：数据源 10、采集任务 20、运行记录 30、快照 40。
+| 盯盘状态 | `/Collect/Watch` | `collect:watch:index` | v0.17：三块。正在盯盘：数据源、排期时间、事件及状态、已请求次数、最近一次请求的时间和状态码、当前间隔、运行记录链接，每 5 秒局部刷新（HTMX，前端约定 §4.1 已登记）；接下来 24 小时的盯盘计划：开始时间（操作者时区）、数据源、事件、间隔，不能盯盘的标红并写原因；最近 24 小时结束的盯盘：结果和各事件的入库时延 |
+
+菜单排序：数据源 10、采集任务 20、运行记录 30、快照 40、盯盘状态 50（图标 `radar`）。
+
+盯盘参数的输入（v0.17）：数据源表单的"访问方式"中加"盯盘请求间隔（秒）"；指标数据源表单在用途为"公布值"时显示"盯盘提前秒数""盯盘窗口（分钟）"，留空表示用默认值。运行详情对触发方式为盯盘的运行默认只列内容有变化或失败的请求和首末各 5 条，可展开全部（§11 第 29 项）。
 
 快照页面的实现（FR-004.2）：
 - 列表的"运行记录"列：运行记录已清理时显示"已清理"；有运行详情权限时链接到运行详情。
@@ -542,8 +636,8 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 | 角色 | 通配规则 |
 |---|---|
 | 采集工程师 `engineer` | `collect:*:*` |
-| 编辑 `editor` | `collect:source:index`、`collect:source:detail`、`collect:task:index`、`collect:task:trigger`、`collect:run:index`、`collect:run:detail` |
-| 只读 `viewer` | `collect:source:index`、`collect:source:detail`、`collect:task:index`、`collect:run:index`、`collect:run:detail` |
+| 编辑 `editor` | `collect:source:index`、`collect:source:detail`、`collect:task:index`、`collect:task:trigger`、`collect:run:index`、`collect:run:detail`；v0.17 加 `collect:watch:index` |
+| 只读 `viewer` | `collect:source:index`、`collect:source:detail`、`collect:task:index`、`collect:run:index`、`collect:run:detail`；v0.17 加 `collect:watch:index`（PRD：查看盯盘状态，全部角色） |
 
 ---
 
@@ -559,8 +653,9 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 | ERR-COL-002 | 请求失败 | 按 §3.4 重试；用完记为失败，每次请求的原因见运行详情 |
 | ERR-COL-003 | 超过频率上限 | 等到下一个窗口，运行详情显示延后时长 |
 | ERR-COL-004 | 同一任务并发 | 本条记为跳过 |
-| ERR-COL-005 | 被限流（429、403） | 定时和手动的采集：429 按可重试处理，403 不重试（多为凭据或权限问题，运行详情显示状态码）；盯盘的间隔加倍退避由 FR-003 实现 |
-| ERR-COL-006 | 盯盘中服务重启 | FR-003 |
+| ERR-COL-005 | 被限流（429、403） | 定时和手动的采集：429 按可重试处理，403 不重试（多为凭据或权限问题，运行详情显示状态码）；盯盘：间隔加倍（最多 60 秒），本路第一次被限流时告警（§5.7） |
+| ERR-COL-006 | 盯盘中服务重启 | 租约过期后由新进程接管，立即计划并接着写原来的运行记录（§5.7） |
+| ERR-EVT-001 | 官方延迟（T+10 分钟无值） | 事件改为"延迟"并告警（高重要性紧急），之后按配置的间隔补采（§5.7） |
 | ERR-COL-007 | 快照写入失败 | 本次运行记为失败并告警（重要），不解析、不重试（§4.3） |
 | ERR-PARSE-001 | 解析失败 | 记为失败，不重试，不入库 |
 | ERR-PARSE-002 | 部分指标缺失 | 记为部分成功 |
@@ -573,6 +668,7 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 |---|---|---|
 | ERR-COL-008 | 运行记录长时间排队，下发失败 | 排队超过 10 分钟仍未开始记为失败（§4.2） |
 | ERR-COL-009 | 执行中断（进程崩溃） | 回收时记为失败（§4.3） |
+| ERR-COL-010 | 每日上限用完（BR-003，v0.18） | 当日不再请求：采集记为失败、不重试，盯盘停止请求；用到 90% 时先告警（§4.3） |
 
 ---
 
@@ -584,6 +680,18 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 | `collect:run_retention_days` | 系统配置 | `90` | 运行记录保留天数（BR-011） |
 | `collect:snapshot_retention_days` | 系统配置 | `180` | 快照保留天数（BR-022）；被引用的快照保留 365 天和它之中较长者（§4.6）；v0.11 新增 |
 | `Collect:ContactEmail` | 部署配置（本地 user-secrets，其他环境 `SUANPAN__Collect__ContactEmail`） | 空 | 采集请求 User-Agent 中的联系邮箱（BR-005），程序拼成 `SuanpanForexBot/1.0 (+mailto:邮箱)`；不涉密，但不写在代码和 appsettings 中，更换时只改部署配置，重启 Crm、Job、Collector；没配置时启动告警；请求头只能用 ASCII 字符 |
+
+| `collect:watch_enabled` | 系统配置 | `true` | 盯盘总开关（PRD §13.1.5 `watch_enabled`，FR-024 实现前的过渡，§11 第 26 项）；v0.17 |
+| `collect:watch_include_medium` | 系统配置 | `false` | 盯盘是否包括中重要性的事件（§11 第 32 项）；v0.17 |
+| `collect:watch_lead_seconds` | 系统配置 | `60` | 盯盘提前秒数的默认值（BR-013）；v0.17 |
+| `collect:watch_window_minutes` | 系统配置 | `15` | 盯盘窗口的默认值（BR-013）；v0.17 |
+| `collect:watch_interval_seconds` | 系统配置 | `2` | 盯盘请求间隔的默认值，最小 1（BR-014）；v0.17 |
+| `collect:watch_plan_minutes` | 系统配置 | `10` | 盯盘计划看未来多少分钟，2 ~ 60，程序保证不短于最大提前秒数加 1 分钟（§11 第 33 项）；v0.18 |
+| `collect:watch_backfill_minutes` | 系统配置 | `5` | 延迟后的补采间隔（分钟），最小 1（BR-017）；v0.18 |
+| `collect:watch_backfill_hours` | 系统配置 | `24` | 按上面的间隔补采多少小时，之后改用慢间隔（BR-017）；v0.18 |
+| `collect:watch_backfill_slow_minutes` | 系统配置 | `60` | 超过上述时长后的补采间隔（分钟），最小 1（BR-017）；v0.18 |
+
+延迟判定（T+10 分钟）和退避上限（60 秒）是 BR-017、BR-129 和 ERR-COL-005 的口径，写成 `WatchRule` 的常量，不做配置：延迟判定同时决定紧急告警和时效统计。配置值格式不对或超出范围时按默认值并记警告日志，与重试间隔相同。
 
 系统配置项登记在 `CollectConfigKeys.Definitions`，由 `ConfigDefinitions.All` 汇总，系统配置页面的"数据采集"分组中可以修改（后端约定 §7）。
 
@@ -623,6 +731,24 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 | 19 | 重新解析中途进程退出怎么发现 | 每 30 秒写心跳，5 分钟没有心跳记为执行中断 | §5.6 |
 | 20 | "被入库数据引用的快照保留 ≥ 1 年"怎么实现 | 入库服务写入引用快照的数据时把快照标记为被引用（不再改回），被引用的保留 365 天和保留天数中较长者 | §4.6 |
 
+**v0.17 新增的盯盘（FR-003）**：2026-10-31 vivo.li 确认。第 22 项不作为设计问题；计划时长和补采间隔改为配置（第 28、33 项）；其余按建议执行。第 21、27、28、33 项已补进 PRD v1.0.0.26：
+
+| # | 问题 | 结论 | 所在章节 |
+|---|---|---|---|
+| 21 | BLS API 注册用户每天最多 500 次查询，盯满一个窗口约 480 次 | 数据源加可选的"每日请求上限"，按 UTC 自然日计，盯盘和普通采集共用；用到 90% 告警，用完当日不再请求（ERR-COL-010）。PRD BR-003 已补充 | §2.1、§4.3、§5.7 |
+| 22 | BLS API 说明中"公布后一天 API 才有数据"的补充 | 不作为设计问题，不加代码标记：属实时事件会按延迟处理并告警，换源只需调整映射的优先级。在 §5.7 记为已知风险，11 月 6 日实测（ENG-009） | §5.7 |
+| 23 | 盯盘请求用什么参数 | 用这个数据源的"公布值"采集任务（解析器与映射相同、已启用，cron 可以为空），按它的参数请求；有多个时取 id 最小的；没有时不能盯盘，计划时告警 | §5.7 |
+| 24 | 主备两个数据源时盯哪个 | 只盯优先级最高的启用数据源；备源由普通任务补采 | §5.7 |
+| 25 | 盯盘参数配在哪里 | 全局默认在系统配置；提前秒数、窗口分钟配在"公布值"映射上；请求间隔配在数据源上 | §2.1、§5.7、§10 |
+| 26 | 盯盘总开关 | M2 先用系统配置 `collect:watch_enabled`，FR-024 实现紧急开关时迁过去 | §5.7、§10 |
+| 27 | 盯盘中的事件被官方改期 | PRD §8.1.3 已补"盯盘中 → 待公布：官方改期"；盯盘发现排期变了就让事件退出并改回待公布 | §5.7；PRD §8.1.3 |
+| 28 | 延迟后的补采持续多久、间隔多少 | 分两段，都做成系统配置：前 24 小时每 5 分钟，之后每 60 分钟，转为慢间隔时再告警一次；改配置下一分钟生效。PRD BR-017 已补充 | §3.5、§5.7、§10 |
+| 29 | 每次轮询都记进请求记录吗 | 都记，增加"内容是否变化"；运行详情默认只显示有变化或失败的请求和首末各 5 条，可展开全部 | §2.1、§5.7、§8.1 |
+| 30 | 盯盘的运行记录怎么建 | 一路一条，`scheduled_for` 记排期时间，唯一索引带上触发方式；重启后接着写；延迟后的补采是普通运行记录 | §2.1、§2.2、§5.7 |
+| 31 | 多实例与重启恢复 | Redis 租约（15 秒过期、每 5 秒续期），新进程取得租约后立即计划，接着写原来的运行记录 | §5.7 |
+| 32 | 扩展到中重要性 | 系统配置 `collect:watch_include_medium`（默认否），下一分钟的计划即生效 | §5.7、§10 |
+| 33 | 盯盘计划看未来多少分钟（PRD 原为 10 分钟） | 系统配置 `collect:watch_plan_minutes`（默认 10，2 ~ 60），程序保证不短于最大提前秒数加 1 分钟；它只影响提前多久发现要盯的事件和配置缺失的告警，开始请求的时间由提前秒数决定。PRD FR-003 主流程第 1 步已改 | §3.5、§5.7、§10 |
+
 ---
 
 ## 12. 测试要点
@@ -658,6 +784,19 @@ PRD §13.1.2 规定编辑只能手动触发"排期采集、公布值补采"类�
 | 重新解析 | Collector 集成测试：多响应的请求按组还原后解析；同一任务正在运行时重新解析照常执行；心跳超过 5 分钟被回收 |
 | BR-022 快照保留 | 集成测试：未被引用的过期快照被删、被引用的保留到 365 天、没有快照引用的内容被删 |
 
+| FR-003 #1 排期前 60 秒（±5 秒）开始 | 单元测试 `WatchRule.Window`；Collector 集成测试（假时钟）：第一次请求的时间为 T−60 秒 |
+| FR-003 #2 同一份报告只发一路请求 | 单元测试分路；Collector 集成测试：同一数据源同一排期的 3 个事件，每个间隔只有一次请求 |
+| FR-003 #3 拿到值后停止 | Collector 集成测试：假数据源在 T 时刻换成新内容，3 个事件都已公布后不再请求；只拿到 2 个时继续请求，第 3 个出现后停止 |
+| FR-003 #4 官方延迟 10 分钟 | Collector 集成测试：内容一直不变，T+10 分钟事件为"延迟"、告警被调用（紧急）；窗口结束后运行记录为失败；之后按 5 分钟建补采的运行记录 |
+| FR-003 #5 不超过频率上限 | 单元测试 `WatchRule.Merge` 的间隔下限；Collector 集成测试：上限 1 次/秒、配置间隔 1 秒时，盯盘与一条普通采集同时请求，同一秒内只有一次 |
+| FR-003 #6 入库时延 P95 ≤ 60 秒（回放） | Collector 集成测试：用 BLS API 的两份真实快照（公布前、公布后）回放，假数据源在 T 时刻切换内容，按假时钟计算的系统时延（检测时间 − 切换时刻）不超过一个间隔加处理时间；多个事件、多个数据源同时回放覆盖 NFR-004 |
+| BR-003 每日上限、ERR-COL-010 | 集成测试：每日上限 3 时第 4 次请求不发出、运行记为失败不重试；用到 90% 时告警一次；跨 UTC 日期后重新计数 |
+| BR-017 分段补采 | 单元测试 `WatchRule.BackfillInterval`、`PlanMinutes`；集成测试：延迟后按快间隔建补采记录，超过配置的小时数后按慢间隔，并告警一次 |
+| ERR-COL-005 被限流 | 单元测试 `WatchRule.NextInterval`；Collector 集成测试：返回 429 后间隔加倍、告警一次，成功后恢复 |
+| ERR-COL-006 服务重启 | Collector 集成测试：盯盘进行中停止并重新启动服务，租约过期后接着写同一条运行记录，30 秒内恢复请求 |
+| 改期、人工录入、取消 | 集成测试：盯盘中的事件被改期后退回待公布、本路不再请求它；人工录入、取消后退出本路 |
+| 不能盯盘的配置 | 集成测试：没有公布值任务、数据源停用的高重要性事件出现在计划中并带原因，告警一次 |
+
 Collector 的集成测试需要 PostgreSQL、Valkey、RabbitMQ 三个容器（标 `Category=Integration`）和一个进程内的假 HTTP 服务，测试中不用 `Task.Delay` 等待（后端约定 §13.4）：重试间隔在测试中配置为 0 秒，状态变化用轮询数据库并设上限的方式等待。
 
 实现（`Suanpan.Collector.Tests`）：`CollectorFixture` 启动三个容器、按生产方式建库并执行迁移，用 WebApplicationFactory 在内存中启动 Collector；采集用 HttpClient 的最底层处理器换成 `StubHttp`（按随机主机名设置应答、记录请求），另注册测试用的适配器、解析器和入库服务。Collector 在后台自己提交事务，测试不能用回滚隔离，改为每个测试用自己的数据源、任务和主机名。"同一条指令投递两次只执行一次"的测试依赖接收端按顺序处理消息（§4.3 实现），以排在后面的另一条运行结束为准。
@@ -688,6 +827,17 @@ v0.11 的快照与重新解析评审通过，拆成两个子任务（父工单 J
 
 FR-004.1 是日历排期入库（日历设计 §14 的 FR-007.3，JAN-89）的前置任务；FR-004.2 可以与日历的子任务并行。
 
+v0.17 的盯盘评审通过（v0.18），拆成 4 个子任务（父工单 JAN-17）：
+
+| 子任务 | 工单 | 内容 | 依赖 |
+|---|---|---|---|
+| FR-003.1 盯盘规则与配置 | JAN-98 | `WatchRule` 及单元测试；系统配置；迁移（`col_source` 加盯盘间隔和每日上限、`ref_indicator_source` 加盯盘参数、`col_run` 的唯一索引带上触发方式）；数据源、指标数据源表单的输入；每日上限的计数和告警（ERR-COL-010）；日历状态规则补"盯盘中 → 待公布" | — |
+| FR-003.2 盯盘计划与日历状态 | JAN-99 | `IWatchPlanService`；日历模块的 `ICalendarWatchService`（盯盘中、延迟、退回待公布，告警）；不能盯盘的告警；集成测试 | FR-003.1 |
+| FR-003.3 盯盘执行 | JAN-100 | 分布式锁续期；Collector 的 `WatchService`、`WatchSession`；`SaveAsync` 在 `skipUnchanged` 时返回上一个快照的 id；退避、改期、恢复、延迟后的补采；回收跳过盯盘的运行记录；Collector 集成测试（含回放） | FR-003.2 |
+| FR-003.4 盯盘状态页面 | JAN-101 | 盯盘状态页（HTMX）；运行详情的请求记录折叠；预置角色规则；管道测试 | FR-003.2 |
+
+FR-003.3 与 FR-003.4 可以并行。第 22 项的实测在 11 月 6 日，不阻塞实施；如果 BLS API 不能及时更新，另开 ENG-009 的子任务接新闻稿网页。
+
 ---
 
 ## 变更记录
@@ -709,4 +859,6 @@ FR-004.1 是日历排期入库（日历设计 §14 的 FR-007.3，JAN-89）的�
 | v0.13 | 2026-10-29 | vivo.li / Claude | FR-004.1（JAN-86）实施：§2.1 `parse_output` 的格式；`col_snapshot_content` 的 `created_at` 改为 `last_used_at`，§4.6 清理内容时留 1 天的余量，避免与正在写入的快照冲突；`col_run` 的 `reparse`、`heartbeat_at` 改由 FR-004.2 加列；§5.5 补充实现（`SnapshotInput`、`FetchedResponse.RequestKey` / `ReceivedAt`、告警的时机）；§13 两个子任务的内容同步 |
 | v0.14 | 2026-10-29 | vivo.li / Claude | §11 第 7 项的联系邮箱已提供：§5.4、§10 配置 `Collect:UserAgent` 改为 `Collect:ContactEmail`（部署配置，代码里不写邮箱），程序拼出 User-Agent，没配置时启动告警；Collector 的 `appsettings.json` 不再配置 |
 | v0.16 | 2026-10-29 | vivo.li / Claude | FR-004.2（JAN-90）实施：§2.1 `reparse` 列的键名；§4.2 重新下发按触发方式发指令；§4.3 `CollectRunWriter`、回收比对心跳；§5.6 实现说明（发起放在 `ICollectRunService`、`ReparseRule`、范围与列表共用筛选、执行的细节、表单页）；§7.1、§7.2 目录和接口按实现调整（`ISnapshotService` 不再有 `GetContentAsync`、`ReparseAsync`）；§8.1 快照页面和运行详情的实现说明；§10 表格整理 |
+| v0.18 | 2026-10-31 | vivo.li / Claude | 评审通过：§11 第 21 ~ 33 项改为评审结论（第 22 项不作为设计问题，记为 §5.7 的已知风险；计划时长、补采间隔做成配置，新增第 33 项）；同步 PRD v1.0.0.26（BR-003 每日上限、BR-017 分段补采、FR-003 主流程第 1 步、§8.1.3 盯盘中 → 待公布）；§3.5 计划时长和补采间隔的规则；§4.3 每日上限的计数；§9 新增 ERR-COL-010；§10 新增 4 个配置；§12 补充测试；§13 回填工单号 |
+| v0.17 | 2026-10-31 | vivo.li / Claude | 补充盯盘（FR-003）：§1 范围；§2.1 `col_source` 加盯盘间隔、每日上限，`ref_indicator_source` 加盯盘参数，`col_run` 的 `scheduled_for`、`attempts` 用于盯盘；§2.2 唯一索引带上触发方式；新增 §3.5 `WatchRule`、§5.7 盯盘；§4.3 回收不处理盯盘的运行记录；§6 ~ §10 关系、目录、接口、盯盘状态页面、权限、错误码、配置；§11 第 21 ~ 32 项待评审；§12、§13 测试和拟拆分的子任务。依据改为 PRD v1.0.0.25 |
 | v0.15 | 2026-10-29 | vivo.li / Claude | ENG-009.1（JAN-93）实施：§5.1 同一机构的多个数据源各一个适配器，适配器抛出 `FetchParametersException` 表示任务参数不正确；§5.2 解析器标识的中间一段为数据源（BLS 为 `us.blsweb`、`us.blsapi`），目录加入 BLS 的两个解析器；§7.1 `Sources/US/Bls/` 的内容 |
