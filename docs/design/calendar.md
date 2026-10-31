@@ -2,11 +2,11 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | v0.9 |
-| 日期 | 2026-10-29 |
-| 状态 | 已评审（2026-10-29，vivo.li：§12 均按建议执行） |
-| 覆盖 | FR-007 日历排期采集、FR-008 公布值与前值采集；事件管理（FR-009）、预期值（FR-010）、字段锁定（FR-011）只定数据结构和自动流程中的处理，页面和人工操作随各自的设计补充 |
-| 依据 | data-hub PRD v1.0.0.24（DEC-024、FR-007、FR-008、BR-034、BR-036 ~ BR-047、BR-050、BR-060 ~ BR-063、BR-076、BR-129、BR-133、BR-156、BR-157、§8.1.2、§8.1.3、§8.2、§13.1.2）；后端约定 v1.32（§1.2、§6、§8.2、§10、§11）；前端约定（§3.3、§4.1）；采集设计 v0.11（§5.3 入库接口、§5.5 快照）；基础数据设计 v0.16（§2.1、§3.8 指标与数据源的映射） |
+| 版本 | v0.11 |
+| 日期 | 2026-10-31 |
+| 状态 | 已评审：FR-007、FR-008（2026-10-29，vivo.li：§12 第 1 ~ 9 项均按建议执行）；FR-009 ~ FR-011（2026-10-31，vivo.li：§12 第 10 ~ 23 项均按建议执行） |
+| 覆盖 | FR-007 日历排期采集、FR-008 公布值与前值采集、FR-009 日历事件管理、FR-010 预期值人工录入、FR-011 字段锁定与人工优先 |
+| 依据 | data-hub PRD v1.0.0.25（DEC-024、FR-007 ~ FR-011、BR-034、BR-036 ~ BR-063、BR-076、BR-079、BR-129、BR-133、BR-134、BR-156、BR-157、§8.1.2、§8.1.3、§8.2、§13.1.2）；后端约定 v1.32（§1.2、§6、§8.2、§10、§11）；前端约定（§3.3、§4.1）；采集设计 v0.11（§5.3 入库接口、§5.5 快照）；基础数据设计 v0.16（§2.1、§3.8 指标与数据源的映射） |
 
 > 本文只写"怎么实现"。需求、业务规则和验收标准以 PRD 为准，这里引用编号，不复述。
 > 实现偏离本文时，在同一个 PR 里更新本文。
@@ -22,10 +22,14 @@
 - 两种入库服务都实现采集模块的 `ICollectIngestor`（采集设计 §5.3），在 Collector 中被调用；盯盘（FR-003）和重新解析（FR-004）复用同一套入库。
 - 事件状态规则（PRD §8.1.3，含 v1.0.0.22 补的三条流转）、字段锁定在自动流程中的处理（BR-062）。
 - 后台：待确认事件、未匹配条目。
+- 事件管理（FR-009，v0.10）：事件列表和详情，人工修改公布值、前值、前值修正，取消，待复核的处理（§3.7、§9.3）。
+- 预期值（FR-010，v0.10）：待录入清单、录入和公布后的更正、公布前 24 小时的提醒（§3.8、§9.4）。
+- 字段锁定的人工部分（FR-011，v0.10）：锁定信息的展示、解锁、锁定冲突的处理（§3.9、§9.5）。
 
 **不包含**：
 - 排期的人工录入和修改：排期只来自数据源，不做人工新增和批量导入（BR-042 已废弃），事件详情中的排期只读，排期字段不可锁定（DEC-024、BR-039、BR-060）。
-- 事件列表、详情、人工修改和待复核的处理（FR-009），预期值录入（FR-010），锁定冲突的查看和解锁（FR-011）：本文定好表结构和规则，页面随各自的设计在本文以后的版本中补充。
+- 快讯的处理提示（BR-052）：本文在人工改动已公布的数值后发出消息（§6.3），提示和"关联快讯"由快讯模块（FR-014、FR-016）实现（§12 第 16 项）。
+- 告警的聚合、渠道和确认（FR-025）：预期值提醒只调用 `IAlertService`（§3.8）。
 - 质量校验规则（FR-026，Ops 模块）：本文只定调用位置和接口（§5.6）。
 - 盯盘（FR-003，采集模块）：盯盘拿到的数据交给本文的公布值入库；状态"盯盘中""延迟"由盯盘服务改。
 - 快讯（FR-014）、对外视图和前台缓存刷新（FR-023）：消费本文发出的消息（§6.3）。
@@ -37,7 +41,10 @@
 | FR-007 日历排期采集（BR-036 ~ BR-041、BR-156） | §2、§3.1 ~ §3.4、§4、§9 |
 | FR-008 公布值与前值采集（BR-043 ~ BR-047、BR-157） | §2、§3.5、§5 |
 | BR-060 ~ BR-063 字段锁定（自动流程部分） | §3.3 |
-| EV-003 ~ EV-005 | §6.3 |
+| FR-009 日历事件管理（BR-048 ~ BR-052） | §3.7、§6.1、§8、§9.3 |
+| FR-010 预期值人工录入（BR-053 ~ BR-059） | §3.8、§9.4 |
+| FR-011 字段锁定与人工优先（BR-060 ~ BR-063） | §3.3、§3.9、§9.5 |
+| EV-003 ~ EV-006 | §6.3 |
 
 ---
 
@@ -287,6 +294,45 @@ stateDiagram-v2
 
 中文显示名放 `CalendarDisplayNames`，登记到 Crm 的 `StatusBadges`（状态徽标）。`LocalTimeResolution` 已有（JAN-61）。
 
+### 3.7 人工修改（`EventEditRule`、`EventValueRule`，FR-009）
+
+编辑在后台对事件做的操作，以及每种操作对状态、锁定的影响。状态一律按 §3.2 检查（ERR-EVT-010）；都带读取时的 `row_version`（ERR-EVT-009）。
+
+| 操作 | 允许的状态 | 结果 | 锁定 | 原因 |
+|---|---|---|---|---|
+| 录入或修改公布值（区间型连同上限） | 待公布、盯盘中、延迟、待确认 → 改为"已公布"；已公布 → 只改值（§12 第 12 项） | 写入公布值；检测时间为保存时间，来源数据源、来源快照、原始字符串为空；变为已公布时发出 `EventReleasedEvent` | 锁定公布值 | 必填（BR-050，ERR-EVT-008） |
+| 修改前值（区间型连同上限）、前值修正 | 除"取消"外 | 只改数值（§12 第 11 项） | 锁定该字段 | 必填 |
+| 取消 | 待公布、待确认 | 改为"取消"（复用 FR-007.4 的取消） | 不锁定状态（§12 第 10 项） | 必填（BR-049） |
+| 待复核：确认采集值 | 待复核 | 选一个数据源，把它在 `cal_event_value` 中的值写入公布值，来源数据源、快照、检测时间、原始字符串取那一行；改为"已公布" | 不锁定（§12 第 13 项） | 选填 |
+| 待复核：改为人工值 | 待复核 | 同"录入公布值"，改为"已公布" | 锁定公布值 | 必填 |
+| 待复核：驳回 | 待复核，且事件从未公布过（公布值为空，§12 第 14 项） | 改为"延迟"，由补采、盯盘继续取值 | 不锁定 | §12 第 15 项 |
+| 解锁 | 任何状态 | 移除该字段的锁定，下一次采集照常更新（BR-063）；该字段待处理的冲突一并关闭（§12 第 22 项） | — | 选填 |
+
+- 排期（时间、精度）只读，不能人工修改（DEC-024）；修正后数值由公布值入库维护，不能人工修改（§12 第 11 项）。取消的事件不能再修改任何字段。
+- 公布过的事件（状态为已公布，或官方更正进入待复核、原公布值还在）改了公布值、前值、前值修正后，发出 `EventValueEditedEvent`（§6.3），由快讯模块提示处理相关快讯（BR-052）。
+- 变更历史：每个改了的字段一条（种类为该字段，记旧值、新值、原因，操作人为"人工"）；加锁不另记一条"锁定"，锁定人、时间、原因在 `locked_fields` 中；解锁记一条"解锁"（§12 第 20 项）。只提交改了的字段：与读取时的值相同的字段不改、不锁。
+- **数值格式**（BR-058，ERR-FC-001，公布值、前值、预期值共用）：`EventValueRule.Validate(值, 上限, 指标)` 检查数值型不填上限、区间型必须填上限且不小于下限、小数位不超过指标的小数位（多出的不四舍五入，直接提示）、绝对值小于 10¹²（`numeric(18,6)`）。单位按指标字典，页面在输入框旁显示单位，不做换算。前值修正只有一个值，区间型指标不能修改前值修正。
+
+### 3.8 预期值（`ForecastRule`，FR-010）
+
+- **待录入清单**（BR-055）：状态为待公布、盯盘中、延迟、待确认，重要性为"高"，预期值为空，排期在"现在"到"现在 + 7 天"之间的事件（按 `scheduled_at`；仅日期的按当地日期 00:00 换算的时间，待定且没有日期的不列出），按排期时间升序。页面可切换为"全部重要性"，供中低重要性的事件选择性录入。
+- **公布前录入、修改**：管理员、编辑。"已公布"指状态为已公布、待复核，或公布值不为空（§12 第 18 项）；已公布的事件拒绝保存，提示"事件已公布"（ERR-FC-002）。取消的事件不能录入。
+- **公布后更正**（BR-057）：只有管理员，单独的 action 和权限码，原因必填。
+- **保存**：写预期值（区间型连同上限）、来源类型"人工录入"、来源说明（选填，≤ 100 字，BR-054）；锁定预期值（BR-061，公布前录入的原因记"录入预期值"，更正记管理员填的原因）；写一条"预期值"变更历史。预期值没有自动来源，锁定只为满足 BR-060、BR-061，不会产生锁定冲突。
+- **常用来源**（BR-054）：系统配置 `calendar:forecast_note_options`（逗号分隔，默认空），输入框用 `<datalist>` 提示，也可以自由填写（§12 第 19 项）。
+- **提醒**（BR-056）：Job 周期任务 `calendar-forecast-reminder` 每 15 分钟执行：高重要性、未公布、预期值为空、精确到分钟且排期在未来 24 小时内的事件，调用 `IAlertService`（级别"重要"，BR-129），每个事件只提醒一次（Redis 键 `calendar:forecast-reminded:{eventId}`，48 小时过期）；聚合、渠道由 FR-025 实现（§12 第 23 项）。
+
+### 3.9 锁定冲突的处理（FR-011）
+
+| 处理 | 结果 |
+|---|---|
+| 保持锁定 | 冲突改为"已处理"（处理方式"保持锁定"），字段不变。之后采集到同一个值不再产生冲突，采集值变了才产生新的冲突（§12 第 21 项） |
+| 解锁并采用采集值 | 移除锁定，把冲突中的采集值写入字段（公布值连同来源数据源、快照、检测时间），写"解锁"和该字段的变更历史；冲突改为"已处理"（处理方式"解锁并采用采集值"）；改的是已公布事件的公布值、前值时发出 `EventValueEditedEvent` |
+| 在事件详情中单独解锁 | 见 §3.7；该字段待处理的冲突改为"已处理"，处理方式新增"已解锁"（`LockConflictResolution.Unlocked = 3`，§12 第 22 项） |
+
+- 状态不会被人工操作锁定（§12 第 10 项），第一阶段的冲突只涉及公布值、前值、前值修正。
+- 处理冲突也比对事件的 `row_version`：读取后事件被改过时提示刷新（ERR-EVT-009）。
+
 ---
 
 ## 4. 排期入库（FR-007）
@@ -484,6 +530,7 @@ stateDiagram-v2
 - 一次入库（一条运行记录的一次请求）在一个事务中完成（`InTransactionAsync`）：要改的事件按 `id` 排序后 `SELECT ... FOR UPDATE`，避免与另一个入库（如盯盘和普通补采同时拿到值）或人工保存交错。新建事件直接插入，由唯一索引兜底：同一指标同一参考期的并发新建只可能来自排期入库（未来的参考期）和补建（已经公布的参考期），两者不会撞上；万一撞上，这次入库失败回滚，运行记录记为失败，下一次同步再建。（v0.5 实施时改：原定 `INSERT ... ON CONFLICT DO NOTHING` 后再读。）
 - 每次修改事件都把 `row_version` 加一：编辑正在修改的事件被采集改动后，编辑保存时提示刷新后重试（ERR-EVT-009）。
 - 入库失败时整个事务回滚，运行记录记为失败（采集设计 §4.3 第 6 步）；同样的数据重新入库结果不变（幂等），运行记录可以安全地重新执行。
+- 人工操作（§3.7 ~ §3.9，v0.10）同样在一个事务中：`SELECT ... FOR UPDATE` 锁住事件，比对读取时的 `row_version`，不同时拒绝（ERR-EVT-009、ERR-FC-003）；修改后 `row_version` 加一，写变更历史，提交后再发消息。与入库互斥，不会出现入库覆盖了人工刚保存的值。
 
 ### 6.2 告警
 
@@ -508,6 +555,16 @@ stateDiagram-v2
 - `EventRescheduledEvent` 是新增的消息，已登记到后端约定 §8.2 的消息清单（v1.33）；接收方在 FR-015、FR-023 实现，之前发出的消息没有队列接收会被丢弃，不影响本模块。
 - `EventReleasedEvent` 发布失败时快讯不会生成。快讯模块（FR-014）实现时补一个兜底：定期找"已公布但没有快讯"的事件。
 - 前台缓存刷新的 `PublicDataChangedEvent` 由 FR-023 定义，届时在本文的改期、公布、修正处接入。
+
+人工操作（v0.10）：
+
+| 消息 | 系统事件 | 发送时机 | 接收方 | 字段 |
+|---|---|---|---|---|
+| `EventReleasedEvent` | EV-004 | 人工录入公布值、待复核确认后事件变为"已公布"（与入库相同） | Job（快讯 FR-014；已有快讯时按 BR-079 不再生成） | 同上 |
+| `EventValueEditedEvent` | —（BR-052） | 人工改了"已公布"事件的公布值、前值、前值修正，或解锁并采用采集值 | Job（快讯 FR-016：提示处理相关快讯） | `EventId`、`Fields`（改了的字段）、`ChangedBy` |
+
+- 预期值已录入（EV-006）的消费方是前台发布：由 FR-023 的 `PublicDataChangedEvent` 一并覆盖，本文不单独发消息。
+- `EventValueEditedEvent` 是新增的消息，实施时登记到后端约定 §8.2；FR-016 实现前没有接收方（§12 第 16 项）。
 
 ---
 
@@ -534,7 +591,7 @@ Suanpan.Core/Calendar/
 │                 LockConflictResolution、ForecastType、LocalTimeResolution（已有）
 ├─ Records/       ScheduleEntryRecord、ReleaseValueRecord（解析器的输出，§4.1、§5.1）
 └─ Rules/         LocalTimeRule（已有）、ReferencePeriodRule、CalendarEventStatusRule、EventLockRule、ScheduleRule（含 ScheduleDecision）、
-                  CalendarDisplayNames、ReleaseValueRule（含 ReleasePlan）；入库的错误码只出现在日志、告警和待复核原因中，
+                  CalendarDisplayNames、ReleaseValueRule（含 ReleasePlan）、EventEditRule、EventValueRule、ForecastRule（v0.10）；入库的错误码只出现在日志、告警和待复核原因中，
                   不建 CalendarErrorCodes，后台页面需要时再加
 
 Suanpan.Shared/Messages/Calendar/   EventRescheduledEvent、EventReleasedEvent、EventHeldForReviewEvent
@@ -546,12 +603,15 @@ Suanpan.Data/
 Suanpan.Services/Calendar/
 ├─ Schedules/     CalendarScheduleIngestor、ScheduleApplier、Models/（ScheduleTarget、ScheduleIndicator、ScheduleApplyResult）
 ├─ Releases/      CalendarReleaseIngestor、IReleaseValidator（含 ReleaseCandidate、ReleaseValidation、PassThroughReleaseValidator）
-├─ Events/        EventChanges（变更历史的写法，FR-007.3）；ICalendarEventService、CalendarEventService（待确认事件的保留、取消；FR-009 起扩充）、
-│                 Models/（UnconfirmedEventQuery、UnconfirmedEventRow）
+├─ Events/        EventChanges（变更历史的写法，FR-007.3）；ICalendarEventService、CalendarEventService（待确认事件的保留、取消；
+│                 FR-009 的查询、详情、人工修改、待复核、解锁）、Models/
+├─ Forecasts/     IForecastService、ForecastService、ForecastReminderJob（FR-010）、Models/
+├─ Conflicts/     ILockConflictService、LockConflictService（FR-011）、Models/
 └─ Unmatched/     IUnmatchedEntryService、UnmatchedEntryService、Models/（UnmatchedEntryQuery、UnmatchedReleaseGroup 等）
 
 Suanpan.Crm/
-├─ Areas/Calendar/    Controllers/（Unconfirmed、Unmatched）、Views/（Unconfirmed：Index、Cancel、_Schedule；Unmatched：Index、Ignored、_Tabs、_SourceFilter）
+├─ Areas/Calendar/    Controllers/（Event、Review、Forecast、Conflict、Unconfirmed、Unmatched）、Views/（Unconfirmed：Index、Cancel、_Schedule；
+│                     Unmatched：Index、Ignored、_Tabs、_SourceFilter；FR-009 ~ FR-011 的视图随实施补充）
 └─ Models/Calendar/
 ```
 
@@ -564,6 +624,9 @@ Suanpan.Crm/
 | `ICalendarEventService` | `QueryUnconfirmedAsync(query)`、`GetUnconfirmedAsync(id)`、`KeepAsync(id, rowVersion)`、`CancelAsync(id, reason, rowVersion)` | 待确认事件的保留（与数据源脱钩，§4.4）、取消（原因必填）；列表可按指标编码筛选，`GetUnconfirmedAsync` 给取消页显示事件 |
 | `IUnmatchedEntryService` | `QueryAsync(query)`、`QueryIgnoredAsync(query)`、`IgnoreAsync(sourceId, releaseKey)`、`RestoreAsync(id)`、`RematchAsync()` | §4.5；`QueryAsync` 按发布分组分页，最近要发布的组在前；`RematchAsync` 返回匹配上启用指标的条数 |
 | `IReleaseValidator` | `ValidateAsync(candidate)` | §5.6 |
+| `ICalendarEventService`（v0.10 扩充） | `QueryAsync(EventQuery)`、`GetDetailAsync(id)`、`EditValuesAsync(id, EventValuesInput, reason, rowVersion)`、`UnlockAsync(id, field, rowVersion)`、`QueryReviewAsync(query)`、`ConfirmReviewAsync(id, sourceId, rowVersion)`、`RejectReviewAsync(id, reason, rowVersion)` | §3.7；`EventQuery` 为 BR-048 的筛选，分页；`GetDetailAsync` 带各数据源数值、变更历史、锁定信息、锁定冲突 |
+| `IForecastService` | `QueryPendingAsync(ForecastQuery)`、`SaveAsync(id, ForecastInput, rowVersion)`、`CorrectAsync(id, ForecastInput, reason, rowVersion)` | §3.8；`CorrectAsync` 只给管理员的 action 调用 |
+| `ILockConflictService` | `QueryAsync(query)`、`KeepAsync(id, rowVersion)`、`AdoptAsync(id, rowVersion)` | §3.9；`rowVersion` 为事件的 |
 
 两个入库服务在 `AddSuanpanServices` 中注册为 `ICollectIngestor`，Collector 按目标数据类型取用（采集设计 §5.3）。
 
@@ -586,7 +649,7 @@ Suanpan.Crm/
 | 未匹配条目 | `/Calendar/Unmatched` | `calendar:unmatched:index` | 筛选：数据源；按发布标识分组显示：数据源、发布名称和标识、各期的参考期和当地日期时间（注明数据源所属经济体的时区）、最近出现时间。每组有"新增映射"链接（跳到指标数据源的新增页，预填数据源、用途"排期"、外部标识）和"忽略此发布"；页面顶部有"重新匹配"。`?view=ignored` 显示已忽略的发布和"恢复" |
 | 忽略 / 恢复 / 重新匹配 | POST | `calendar:unmatched:ignore` / `restore` / `rematch` | 忽略和恢复二次确认；重新匹配后提示匹配上的条数 |
 
-菜单排序：日历事件 10（FR-009）、待确认事件 20、未匹配条目 30。
+菜单排序：日历事件 10、待复核 12、预期值录入 14、待确认事件 20、未匹配条目 30、锁定冲突 40（v0.10 调整）。
 
 实现说明（FR-007.4）：
 
@@ -602,10 +665,40 @@ Suanpan.Crm/
 | 角色 | 通配规则 |
 |---|---|
 | 采集工程师 `engineer` | `calendar:*:index`、`calendar:*:detail` |
-| 编辑 `editor` | `calendar:*:index`、`calendar:*:detail`、`calendar:unconfirmed:*`、`calendar:unmatched:*` |
+| 编辑 `editor` | `calendar:*:index`、`calendar:*:detail`、`calendar:unconfirmed:*`、`calendar:unmatched:*`；v0.10 加 `calendar:event:*`、`calendar:review:*`、`calendar:conflict:*`、`calendar:forecast:save` |
 | 只读 `viewer` | `calendar:*:index`、`calendar:*:detail` |
 
-编辑的规则按功能逐个列出，不用 `calendar:*:*`：预期值的"公布后修改"只给管理员（PRD §13.1.2），FR-010 加入后不能被通配自动授予编辑。
+编辑的规则按功能逐个列出，不用 `calendar:*:*`：预期值的"公布后修改"（`calendar:forecast:correct`）只给管理员（PRD §13.1.2），不能被通配自动授予编辑。采集工程师、只读能看锁定冲突，但不能解锁或处理冲突（FR-011 异常流程，ERR-AUTH-002）：没有 `calendar:event:unlock`、`calendar:conflict:keep`、`calendar:conflict:adopt`。
+
+### 9.3 事件管理（FR-009）
+
+| 页面 | 路由 | 权限码 | 说明 |
+|---|---|---|---|
+| 日历事件 | `/Calendar/Event` | `calendar:event:index` | 筛选（BR-048）：日期范围（默认本周，按操作者时区周一 00:00 至下周一 00:00，§12 第 17 项）、经济体、重要性、状态、缺少预期值；列：时间（操作者时区）、经济体、指标（简称、编码）、参考期、重要性、状态、公布值 / 预期值 / 前值（按指标小数位和单位显示，锁定的带锁图标）；按排期时间升序，每页 50 条 |
+| 事件详情 | `/Calendar/Event/Detail/{id}` | `calendar:event:detail` | 排期（只读：操作者时区的时间、当地时间和时区、精度、维护排期的数据源、发布批次、来源"补建"）；数值（公布值、预期值、前值、前值修正、修正后数值，各带来源数据源、检测时间、来源快照，有 `collect:snapshot:detail` 时链接到快照；锁定的显示锁定人、时间、原因，旁边是"解锁"）；各数据源的数值；锁定冲突；变更历史（含改期，时间倒序）；按状态和权限显示操作。"关联快讯"由 FR-014 加入 |
+| 修改数值 | `/Calendar/Event/Edit/{id}` | `calendar:event:edit` | 公布值、前值、前值修正（区间型指标显示上限）和原因（必填），隐藏的 `row_version`；单独的表单页，提交前二次确认（前端约定 §5.3）；只保存改了的字段 |
+| 取消 | `/Calendar/Event/Cancel/{id}` | `calendar:event:cancel` | 与待确认事件的取消页相同（复用视图），待公布的事件也能取消 |
+| 解锁 | POST | `calendar:event:unlock` | 事件详情中每个锁定字段旁；二次确认 |
+| 待复核 | `/Calendar/Review` | `calendar:review:index` | 待复核的事件：指标、参考期、排期、进入待复核的原因（最近一条状态变更的原因）、原公布值（官方更正时）、各数据源的候选值；操作：确认采集值（选数据源）、改为人工值（打开修改数值页）、驳回（只对从未公布过的事件显示） |
+| 确认采集值 / 驳回 | POST | `calendar:review:confirm` / `reject` | 二次确认；驳回的原因见 §12 第 15 项 |
+
+- 列表的性能（FR-009 验收第 1 条）：经济体、重要性先在指标表中查出指标编码，再按 `indicator_code IN (...)` 和 `scheduled_at` 范围查事件（`ix_cal_event_scheduled_at`）；实施时在本地生成 10 万条事件，用 `EXPLAIN ANALYZE` 验证 1 秒内返回。
+- 事件详情是 FR-007 验收第 3 条（改期历史）和 FR-008 验收第 3 条（来源快照和检测时间）的落点，FR-009.1 完成后这两个父工单才能验收。
+
+### 9.4 预期值录入（FR-010）
+
+| 页面 | 路由 | 权限码 | 说明 |
+|---|---|---|---|
+| 预期值录入 | `/Calendar/Forecast` | `calendar:forecast:index` | 待录入清单（§3.8），可切换"全部重要性"；每行：指标、参考期、排期（操作者时区）、前值、预期值输入（区间型两个框，旁边显示单位）、来源说明、保存。行内提交只刷新当前行，保存成功的行显示"已录入"并聚焦下一行的输入框（HTMX，前端约定 §4.1 已登记，BR-059）；没有保存权限时只读 |
+| 保存预期值 | POST | `calendar:forecast:save` | 公布前（§3.8）；格式不对时在这一行提示（ERR-FC-001），被他人改过时提示刷新（ERR-FC-003）。事件详情中也有同样的表单，供列表以外的事件录入 |
+| 更正预期值 | `/Calendar/Forecast/Correct/{id}` | `calendar:forecast:correct` | 公布后，只有管理员；从事件详情进入，原因必填 |
+
+### 9.5 锁定冲突（FR-011）
+
+| 页面 | 路由 | 权限码 | 说明 |
+|---|---|---|---|
+| 锁定冲突 | `/Calendar/Conflict` | `calendar:conflict:index` | 待处理 / 已处理两个页签；列：指标、参考期、字段、锁定值（锁定人、时间、原因）、采集值（数据源、来源快照、最近检测时间）、首次检测时间；已处理的显示处理人、时间、处理方式 |
+| 保持锁定 / 解锁并采用 | POST | `calendar:conflict:keep` / `adopt` | 二次确认（§3.9） |
 
 ---
 
@@ -617,11 +710,16 @@ Suanpan.Crm/
 | ERR-EVT-003 | 日程条目匹配不到指标 | 写入未匹配条目（§4.5） |
 | ERR-EVT-006 | 公布值找不到事件 | 该指标有公布过的事件时补建并告警；刚开始采集时不补建（§5.2、§5.4） |
 | ERR-EVT-007 | 已公布的值再次采集到不同数值 | 进入待复核并告警（§5.2） |
-| ERR-EVT-008 | 取消事件时没有填原因 | 表单在原因字段提示 |
+| ERR-EVT-008 | 取消事件、修改受锁定保护的字段时没有填原因 | 表单在原因字段提示（v0.10 加上修改数值） |
 | ERR-EVT-009 | 并发编辑 | 按 `row_version` 拒绝保存，提示刷新后重试 |
 | ERR-EVT-010 | 非法状态流转 | `CalendarEventStatusRule` 拒绝，提示当前状态允许的操作 |
 | ERR-PARSE-005 | 参考期、日期时间无法识别 | 该条计为失败并记日志，其余照常入库；运行记为部分成功 |
 | ERR-PARSE-006 | 单位与指标字典不一致 | 该条计为失败，不入库 |
+
+| ERR-FC-001 | 预期值格式不符 | `EventValueRule` 拒绝，在这一行提示（v0.10） |
+| ERR-FC-002 | 事件已公布后编辑修改预期值 | 拒绝，提示"事件已公布"；管理员走更正（v0.10） |
+| ERR-FC-003 | 预期值被他人修改过 | 按 `row_version` 拒绝，提示刷新（v0.10） |
+| ERR-AUTH-002 | 采集工程师、只读解锁 | 权限码校验拒绝（v0.10） |
 
 ERR-EVT-001（延迟）由盯盘（FR-003）实现。
 
@@ -629,7 +727,11 @@ ERR-EVT-001（延迟）由盯盘（FR-003）实现。
 
 ## 11. 配置
 
-本文没有新增配置项。同步频率由采集任务的 cron 决定（§4.6）。
+同步频率由采集任务的 cron 决定（§4.6）。v0.10 新增：
+
+| 配置 | 位置 | 默认值 | 说明 |
+|---|---|---|---|
+| `calendar:forecast_note_options` | 系统配置 | 空 | 预期值来源说明的常用选项，逗号分隔（BR-054，§12 第 19 项） |
 
 ---
 
@@ -648,6 +750,25 @@ PRD 中的业务规则已在 v1.0.0.22 ~ v1.0.0.24 由 vivo.li 确认（BR-034�
 | 7 | 补建、非高重要性事件进入待复核的告警级别 | "重要"，已补进 PRD BR-129（v1.0.0.24）；FR-025 的告警规则上线后以其配置为准 | §6.2 |
 | 8 | 新增消息 `EventRescheduledEvent`（EV-003） | 从 M2 起发出，接收方在 FR-015、FR-023 实现 | §6.3 |
 | 9 | BLS 公布值的外部标识写法 | `{序列 ID}` 或 `{序列 ID}:{计算方式}`，计算方式 `chg`、`pct`、`pct12` | §5.1 |
+
+**v0.10 补充的 FR-009 ~ FR-011**：2026-10-31 vivo.li 确认，均按建议执行。第 10、11、14、15、16 项涉及 PRD 没写明的业务规则，已补进 PRD v1.0.0.25（BR-050、BR-051、BR-052、BR-061、FR-009 异常流程和验收第 4 条）：
+
+| # | 问题 | 结论 | 所在章节 |
+|---|---|---|---|
+| 10 | 哪些人工操作锁定"状态"（BR-060 列了状态） | 都不锁：保留、驳回之后要靠自动流程继续走；取消、已公布之后自动流程本来就不改。状态仍是可锁定字段，自动流程已按锁定处理（§3.3），以后有需要时再加人工锁定状态的操作 | §3.7 |
+| 11 | 人工能修改哪些数值 | 公布值（含上限）、前值（含上限）、前值修正；修正后数值由入库维护，不能人工改；区间型指标没有前值修正 | §3.7 |
+| 12 | 哪些状态能录入公布值 | 待公布、盯盘中、延迟、待确认（改为已公布）、已公布（只改值）；待复核走"改为人工值"；取消的不能改 | §3.7 |
+| 13 | 待复核"确认采集值"是否锁定公布值 | 不锁：这是采用采集值，不是人工修改（BR-050）；有多个数据源的候选值时由编辑选一个 | §3.7 |
+| 14 | 官方更正（已公布后进入待复核）怎么"驳回" | 状态机只有"待复核 → 延迟"，对已经公布过的事件不合适。这类事件的选项为"采用新值"（确认采集值）和"保留原值"（改为人工值，预填原公布值，锁定后同一采集值只记锁定冲突、不再进待复核）；"驳回"只对从未公布过的事件显示 | §3.7、§9.3 |
+| 15 | 驳回是否要填原因 | 必填，写进状态变更历史，便于追查为什么继续补采 | §3.7 |
+| 16 | BR-052 提示处理相关快讯 | 快讯（FR-014、FR-016）还没有。FR-009 在人工改动已公布的数值后发出 `EventValueEditedEvent`，快讯模块接收后提示；FR-009 验收第 4 条随 FR-016 一起验收 | §3.7、§6.3 |
+| 17 | 列表默认"本周"的起止 | 按操作者时区，周一 00:00 至下周一 00:00 | §9.3 |
+| 18 | 预期值"公布后"怎么判断（BR-057） | 状态为已公布、待复核，或公布值不为空；取消的事件不能录入 | §3.8 |
+| 19 | 常用来源的下拉选项（BR-054） | PRD 没有清单：做成系统配置 `calendar:forecast_note_options`，默认空；输入框用 datalist，也可自由填写 | §3.8、§11 |
+| 20 | 加锁要不要单独记一条"锁定"历史 | 不单独记：值的变更历史里有原因，锁定人和时间在 `locked_fields`；解锁单独记一条"解锁" | §3.7 |
+| 21 | 保持锁定后，下一次采集到同一个值又产生冲突 | 记住已处理冲突的采集值，相同的不再产生冲突，采集值变了才产生新的；需要改公布值入库的冲突写法（FR-008 的代码） | §3.9 |
+| 22 | 单独解锁时，该字段待处理的冲突怎么办 | 一并改为"已处理"，处理方式新增"已解锁"（`LockConflictResolution.Unlocked = 3`） | §3.9 |
+| 23 | 预期值提醒怎么实现（BR-056） | Job 每 15 分钟检查，每个事件只提醒一次（Redis 键 48 小时），级别"重要"；聚合、渠道等 FR-025 | §3.8 |
 
 ---
 
@@ -672,6 +793,19 @@ PRD 中的业务规则已在 v1.0.0.22 ~ v1.0.0.24 由 vivo.li 确认（BR-034�
 | 锁定（BR-062） | 集成测试：公布值、前值被锁定时不覆盖，值不同时有冲突记录、计入"因锁定跳过" |
 | 并发（ERR-EVT-009） | 集成测试：采集改过事件后，带旧 `row_version` 的取消被拒绝 |
 | 权限码 | `AreaCatalogTests` 登记本模块的权限码；`PresetRoleGrantsTests` 加入日历模块的预置授权 |
+| FR-009 #1 组合筛选、10 万条 1 秒内（v0.10） | 集成测试：各筛选条件组合、默认本周按操作者时区；性能在本地生成 10 万条数据用 `EXPLAIN ANALYZE` 验证，不进 CI |
+| FR-009 #2 修改后自动锁定，详情显示锁定人和时间 | 单元测试 `EventEditRule` 每种操作的状态、锁定、原因；集成测试：改公布值后已公布、锁定信息和变更历史正确、发出 `EventReleasedEvent`；管道测试：详情显示锁定人和时间 |
+| FR-009 #3 并发编辑不静默覆盖 | 集成测试：带旧 `row_version` 的修改被拒绝，事件不变 |
+| FR-009 #4 修改已被快讯引用的数值后提示 | 集成测试：改已公布事件的数值后发出 `EventValueEditedEvent`；提示本身随 FR-016 测试 |
+| BR-051 待复核的三种处理 | 集成测试：确认采集值取所选数据源的值和快照、不锁定；改为人工值锁定；驳回改为延迟；官方更正的事件不能驳回 |
+| BR-058、ERR-FC-001 格式 | 单元测试 `EventValueRule`：数值型带上限、区间型缺上限或上限小于下限、小数位超出 |
+| FR-010 #1 待录入清单 | 集成测试：只列未来 7 天、高重要性、未录入、未公布的事件；录入后不再出现 |
+| FR-010 #2 保存后停留并定位下一条 | 管道测试：HTMX 保存返回这一行的片段，下一行的输入框带 `autofocus` |
+| FR-010 #4 公布后编辑不能改、管理员要原因 | 集成测试：已公布时 `SaveAsync` 拒绝；`CorrectAsync` 没有原因时拒绝；管道测试：编辑没有 `calendar:forecast:correct` |
+| FR-010 #5 公布前 24 小时提醒 | 集成测试：符合条件的事件告警一次，再执行不重复 |
+| FR-011 #1 锁定字段不被采集和重新解析修改 | 已有入库测试（§13 锁定一行）；重新解析走同一入库服务 |
+| FR-011 #2 冲突列表看到两个值 | 集成测试：冲突查询带锁定值和采集值；保持锁定后同一采集值不再产生冲突 |
+| FR-011 #3 解锁后下一次采集更新 | 集成测试：解锁后再次入库，字段被更新、待处理冲突已关闭；解锁并采用直接写入采集值 |
 
 入库服务的集成测试在 `Suanpan.Services.Tests/Calendar/`，连数据库、在事务中执行（后端约定 §13.4）；告警、消息用测试替身记录调用。BLS 解析器的快照测试在 `Suanpan.Collector.Tests/Sources/US/Bls/`（ENG-009）。
 
@@ -690,6 +824,17 @@ PRD 中的业务规则已在 v1.0.0.22 ~ v1.0.0.24 由 vivo.li 确认（BR-034�
 | FR-008.1 公布值入库 | JAN-92 | JAN-22 | `ReleaseValueRule` 及单元测试；`CalendarReleaseIngestor`、`IReleaseValidator`；集成测试 | FR-007.3 |
 | ENG-009.1 BLS 适配器与解析器 | JAN-93 | JAN-14 | 官网日程（`us.blsweb`）和 API（`us.blsapi`）两个适配器、排期和公布值两个解析器、解析器目录登记；基于真实快照的测试；本地跑通一次真实采集 | FR-008.1 |
 
+v0.10 补充的 FR-009 ~ FR-011 评审通过，拆成以下子任务：
+
+| 子任务 | 工单 | 父工单 | 内容 | 依赖 |
+|---|---|---|---|---|
+| FR-009.1 事件列表与详情 | JAN-94 | JAN-23 | `ICalendarEventService` 的查询和详情；事件列表、详情页面；菜单调整；10 万条的性能验证；集成测试、管道测试。完成后验收 FR-007、FR-008 父工单 | — |
+| FR-009.2 人工修改与待复核 | JAN-95 | JAN-23 | `EventEditRule`、`EventValueRule` 及单元测试；修改数值、取消、解锁；待复核页面和三种处理；`EventValueEditedEvent`；预置角色规则；集成测试、管道测试 | FR-009.1 |
+| FR-010.1 预期值录入 | JAN-96 | JAN-24 | `ForecastRule`；`IForecastService`；清单（HTMX 行内）、保存、管理员更正；系统配置；提醒任务；集成测试、管道测试 | FR-009.2（共用 `EventValueRule`） |
+| FR-011.1 锁定冲突 | JAN-97 | JAN-25 | `ILockConflictService`；冲突页面、保持锁定、解锁并采用；入库不再重复产生已处理的冲突；`LockConflictResolution.Unlocked`；集成测试、管道测试 | FR-009.2 |
+
+FR-010.1 与 FR-011.1 可以并行。
+
 FR-007.4 与 FR-008.1 可以并行。ENG-009.1 的前置条件已满足：BLS 的 API Key（D-001）填在后台"BLS API"数据源的凭据中，User-Agent 的联系邮箱为部署配置（采集设计 §11 第 7 项）。
 
 ---
@@ -706,4 +851,6 @@ FR-007.4 与 FR-008.1 可以并行。ENG-009.1 的前置条件已满足：BLS �
 | v0.6 | 2026-10-29 | vivo.li / Claude | FR-008.1（JAN-92）实施：§3.5 `ReleaseValueRule` 的接口；§5.2 实现说明（行锁范围、补建的写法、各数据源数值的更新、来源快照、计数）；§8.1 不建 `CalendarErrorCodes`，`Releases/` 不分 Models |
 | v0.7 | 2026-10-29 | vivo.li / Claude | FR-007.4（JAN-91）实施：§4.4、§4.5 保留、取消、重新匹配的实现说明；§8.1 目录；§8.2 增加 `GetUnconfirmedAsync`、列表筛选；§9.1 实现说明（取消用表单页、已忽略用页签、"新增映射"链接的权限） |
 | v0.8 | 2026-10-29 | vivo.li / Claude | §14 ENG-009.1 的前置条件：User-Agent 的联系邮箱已提供，API Key 填在后台 BLS 数据源的凭据中；变更记录按版本排序 |
+| v0.10 | 2026-10-31 | vivo.li / Claude | 补充 FR-009 ~ FR-011 的人工部分：§1 范围；新增 §3.7 人工修改、§3.8 预期值、§3.9 锁定冲突的处理；§6.1 人工操作的事务；§6.3 新增 `EventValueEditedEvent`；§8 目录和接口；新增 §9.3 ~ §9.5 页面，§9.1 菜单排序，§9.2 预置角色；§10 错误码；§11 配置；§12 第 10 ~ 23 项待评审；§13 测试要点；§14 拟拆分的子任务 |
+| v0.11 | 2026-10-31 | vivo.li / Claude | 评审通过：§12 第 10 ~ 23 项均按建议执行，改为评审结论，第 10、11、14、15、16 项已补进 PRD v1.0.0.25；§14 回填 Linear 工单号（JAN-94 ~ JAN-97） |
 | v0.9 | 2026-10-29 | vivo.li / Claude | ENG-009.1（JAN-93）实施：BLS 拆成"BLS 发布日程"（官网）和"BLS API"两个数据源，各一个适配器（`us.blsweb`、`us.blsapi`），解析器标识改为 `us.blsweb.schedule`、`us.blsapi.release`；§4.1、§5.1 补充请求方式、任务参数、日期写法、缺值月份、单位的判断和首批 9 个指标的映射；§14 前置条件已满足 |
